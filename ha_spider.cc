@@ -52,6 +52,10 @@ ha_spider::ha_spider(
   conn_keys = NULL;
   spider_thread_id = 0;
   searched_bitmap = NULL;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  partition_handler_share = NULL;
+  pt_handler_share_creator = NULL;
+#endif
   result_list.sqls = NULL;
   result_list.insert_sqls = NULL;
   result_list.update_sqls = NULL;
@@ -75,6 +79,10 @@ ha_spider::ha_spider(
   conn_keys = NULL;
   spider_thread_id = 0;
   searched_bitmap = NULL;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  partition_handler_share = NULL;
+  pt_handler_share_creator = NULL;
+#endif
   result_list.sqls = NULL;
   result_list.insert_sqls = NULL;
   result_list.update_sqls = NULL;
@@ -100,22 +108,92 @@ int ha_spider::open(
   THD *thd = ha_thd();
   int error_num, roop_count;
   int init_sql_alloc_size;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  SPIDER_PARTITION_SHARE *partition_share;
+  uchar *idx_read_bitmap, *idx_write_bitmap,
+    *rnd_read_bitmap, *rnd_write_bitmap;
+  uint part_num;
+  bool create_pt_handler_share = FALSE, pt_handler_mutex = FALSE;
+#endif
   DBUG_ENTER("ha_spider::open");
   DBUG_PRINT("info",("spider this=%x", this));
-
-  if (!(searched_bitmap = (uchar *)
-    my_multi_malloc(MYF(MY_WME),
-      &searched_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
-      NullS))
-  ) {
-    error_num = HA_ERR_OUT_OF_MEM;
-    goto error_searched_bitmap_alloc;
-  }
 
   dup_key_idx = (uint) -1;
   if (!spider_get_share(name, table, thd, this, &error_num))
     goto error_get_share;
   thr_lock_data_init(&share->lock,&lock,NULL);
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  partition_share = share->partition_share;
+  table->file->get_no_parts("", &part_num);
+  if (partition_share)
+  {
+    pt_handler_mutex = TRUE;
+    pthread_mutex_lock(&partition_share->pt_handler_mutex);
+    if (
+      !partition_share->partition_handler_share ||
+      partition_share->partition_handler_share->table != table
+    )
+      create_pt_handler_share = TRUE;
+  }
+
+  if (create_pt_handler_share)
+  {
+    if (!(searched_bitmap = (uchar *)
+      my_multi_malloc(MYF(MY_WME),
+        &searched_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+        &partition_handler_share, sizeof(SPIDER_PARTITION_HANDLER_SHARE),
+        &idx_read_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+        &idx_write_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+        &rnd_read_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+        &rnd_write_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+        NullS))
+    ) {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_searched_bitmap_alloc;
+    }
+    DBUG_PRINT("info",("spider create partition_handler_share"));
+    partition_handler_share->use_count = 1;
+    if (partition_handler_share->use_count < part_num)
+      partition_share->partition_handler_share = partition_handler_share;
+    pthread_mutex_unlock(&partition_share->pt_handler_mutex);
+    pt_handler_mutex = FALSE;
+    DBUG_PRINT("info",("spider table=%x", table));
+    partition_handler_share->table = table;
+    partition_handler_share->searched_bitmap = NULL;
+    partition_handler_share->idx_read_bitmap = idx_read_bitmap;
+    partition_handler_share->idx_write_bitmap = idx_write_bitmap;
+    partition_handler_share->rnd_read_bitmap = rnd_read_bitmap;
+    partition_handler_share->rnd_write_bitmap = rnd_write_bitmap;
+    partition_handler_share->between_flg = FALSE;
+    partition_handler_share->idx_bitmap_is_set = FALSE;
+    partition_handler_share->rnd_bitmap_is_set = FALSE;
+    partition_handler_share->creator = this;
+    pt_handler_share_creator = this;
+  } else {
+#endif
+    if (!(searched_bitmap = (uchar *)
+      my_multi_malloc(MYF(MY_WME),
+        &searched_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+        NullS))
+    ) {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_searched_bitmap_alloc;
+    }
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    if (partition_share)
+    {
+      DBUG_PRINT("info",("spider copy partition_handler_share"));
+      partition_handler_share = (SPIDER_PARTITION_HANDLER_SHARE *)
+        partition_share->partition_handler_share;
+      partition_handler_share->use_count++;
+      if (partition_handler_share->use_count == part_num)
+        partition_share->partition_handler_share = NULL;
+      pthread_mutex_unlock(&partition_share->pt_handler_mutex);
+      pt_handler_mutex = FALSE;
+    }
+  }
+#endif
 
   init_sql_alloc_size =
     THDVAR(thd, init_sql_alloc_size) < 0 ?
@@ -181,15 +259,41 @@ int ha_spider::open(
 
 error:
   delete [] blob_buff;
+  blob_buff = NULL;
 error_init_blob_buff:
 error_init_result_list:
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  if (
+    partition_handler_share &&
+    pt_handler_share_creator == this
+  ) {
+    partition_share = share->partition_share;
+    if (!pt_handler_mutex)
+      pthread_mutex_lock(&partition_share->pt_handler_mutex);
+    if (partition_share->partition_handler_share == partition_handler_share)
+      partition_share->partition_handler_share = NULL;
+    pthread_mutex_unlock(&partition_share->pt_handler_mutex);
+    pt_handler_mutex = FALSE;
+  }
+  partition_handler_share = NULL;
+  pt_handler_share_creator = NULL;
+#endif
+  if (searched_bitmap)
+  {
+    my_free(searched_bitmap, MYF(0));
+    searched_bitmap = NULL;
+  }
+error_searched_bitmap_alloc:
+  if (pt_handler_mutex)
+    pthread_mutex_unlock(&partition_share->pt_handler_mutex);
   spider_free_share(share);
+  share = NULL;
 error_get_share:
   if (conn_keys)
+  {
     my_free(conn_keys, MYF(0));
-  if (searched_bitmap)
-    my_free(searched_bitmap, MYF(0));
-error_searched_bitmap_alloc:
+    conn_keys = NULL;
+  }
   DBUG_RETURN(error_num);
 }
 
@@ -197,9 +301,11 @@ int ha_spider::close()
 {
   int error_num = 0, roop_count;
   THD *thd = ha_thd();
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  SPIDER_PARTITION_SHARE *partition_share;
+#endif
   DBUG_ENTER("ha_spider::close");
   DBUG_PRINT("info",("spider this=%x", this));
-
   if (!thd || !thd_get_ha_data(thd, spider_hton_ptr))
   {
     for (roop_count = 0; roop_count < share->link_count; roop_count++)
@@ -208,17 +314,49 @@ int ha_spider::close()
 
   spider_db_free_result(this, TRUE);
   if (conn_keys)
+  {
     my_free(conn_keys, MYF(0));
+    conn_keys = NULL;
+  }
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  if (
+    partition_handler_share &&
+    pt_handler_share_creator == this
+  ) {
+    partition_share = share->partition_share;
+    pthread_mutex_lock(&partition_share->pt_handler_mutex);
+    if (partition_share->partition_handler_share == partition_handler_share)
+      partition_share->partition_handler_share = NULL;
+    pthread_mutex_unlock(&partition_share->pt_handler_mutex);
+  }
+  partition_handler_share = NULL;
+  pt_handler_share_creator = NULL;
+#endif
   if (searched_bitmap)
+  {
     my_free(searched_bitmap, MYF(0));
+    searched_bitmap = NULL;
+  }
   if (blob_buff)
+  {
     delete [] blob_buff;
+    blob_buff = NULL;
+  }
   if (result_list.sqls)
+  {
     delete [] result_list.sqls;
+    result_list.sqls = NULL;
+  }
   if (result_list.insert_sqls)
+  {
     delete [] result_list.insert_sqls;
+    result_list.insert_sqls = NULL;
+  }
   if (result_list.update_sqls)
+  {
     delete [] result_list.update_sqls;
+    result_list.update_sqls = NULL;
+  }
 
   spider_free_share(share);
   share = NULL;
@@ -663,6 +801,17 @@ int ha_spider::reset()
   DBUG_ENTER("ha_spider::reset");
   DBUG_PRINT("info",("spider this=%x", this));
   store_error_num = 0;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  if (
+    partition_handler_share &&
+    partition_handler_share->searched_bitmap
+  ) {
+    partition_handler_share->searched_bitmap = NULL;
+    partition_handler_share->between_flg = FALSE;
+    partition_handler_share->idx_bitmap_is_set = FALSE;
+    partition_handler_share->rnd_bitmap_is_set = FALSE;
+  }
+#endif
   if (!(tmp_trx = spider_get_trx(thd, &error_num)))
   {
     DBUG_PRINT("info",("spider get trx error"));
@@ -847,30 +996,7 @@ int ha_spider::index_init(
   }
 
   result_list.sql.length(0);
-  if (
-    result_list.current &&
-    (error_num = spider_db_free_result(this, FALSE))
-  )
-    DBUG_RETURN(error_num);
 
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-  spider_set_conn_bg_param(this);
-  if (result_list.bgs_phase > 0)
-  {
-    for (
-      roop_count = spider_conn_link_idx_next(share->link_statuses,
-        -1, share->link_count, lock_mode ?
-        SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK);
-      roop_count < share->link_count;
-      roop_count = spider_conn_link_idx_next(share->link_statuses,
-        roop_count, share->link_count, lock_mode ?
-        SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK)
-    ) {
-      if ((error_num = spider_create_conn_thread(conns[roop_count])))
-        DBUG_RETURN(error_num);
-    }
-  }
-#endif
   set_select_column_mode();
   DBUG_RETURN(0);
 }
@@ -901,25 +1027,15 @@ int ha_spider::index_read_map(
   start_key.flag = find_flag;
   result_list.sql.length(0);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-  spider_set_conn_bg_param(this);
-  if (result_list.bgs_phase > 0)
-  {
-    for (
-      roop_count = spider_conn_link_idx_next(share->link_statuses,
-        -1, share->link_count, lock_mode ?
-        SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK);
-      roop_count < share->link_count;
-      roop_count = spider_conn_link_idx_next(share->link_statuses,
-        roop_count, share->link_count, lock_mode ?
-        SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK)
-    ) {
-      if ((error_num = spider_create_conn_thread(conns[roop_count])))
-        DBUG_RETURN(error_num);
-    }
-  }
+  if ((error_num = spider_set_conn_bg_param(this)))
+    DBUG_RETURN(error_num);
+#endif
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  check_select_column(FALSE);
 #endif
   result_list.finish_flg = FALSE;
   result_list.record_num = 0;
+  spider_db_free_one_result_for_start_next(this);
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -1133,8 +1249,16 @@ int ha_spider::index_read_last_map(
   start_key.keypart_map = keypart_map;
   start_key.flag = HA_READ_KEY_EXACT;
   result_list.sql.length(0);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if ((error_num = spider_set_conn_bg_param(this)))
+    DBUG_RETURN(error_num);
+#endif
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  check_select_column(FALSE);
+#endif
   result_list.finish_flg = FALSE;
   result_list.record_num = 0;
+  spider_db_free_one_result_for_start_next(this);
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -1363,8 +1487,16 @@ int ha_spider::index_first(
   DBUG_PRINT("info",("spider this=%x", this));
   if (!result_list.sql.length())
   {
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if ((error_num = spider_set_conn_bg_param(this)))
+      DBUG_RETURN(error_num);
+#endif
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    check_select_column(FALSE);
+#endif
     result_list.finish_flg = FALSE;
     result_list.record_num = 0;
+    spider_db_free_one_result_for_start_next(this);
     if (keyread)
       result_list.keyread = TRUE;
     else
@@ -1575,8 +1707,16 @@ int ha_spider::index_last(
   DBUG_PRINT("info",("spider this=%x", this));
   if (!result_list.sql.length())
   {
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if ((error_num = spider_set_conn_bg_param(this)))
+      DBUG_RETURN(error_num);
+#endif
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    check_select_column(FALSE);
+#endif
     result_list.finish_flg = FALSE;
     result_list.record_num = 0;
+    spider_db_free_one_result_for_start_next(this);
     if (keyread)
       result_list.keyread = TRUE;
     else
@@ -1804,8 +1944,16 @@ int ha_spider::read_range_first(
   DBUG_ENTER("ha_spider::read_range_first");
   DBUG_PRINT("info",("spider this=%x", this));
   result_list.sql.length(0);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if ((error_num = spider_set_conn_bg_param(this)))
+    DBUG_RETURN(error_num);
+#endif
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  check_select_column(FALSE);
+#endif
   result_list.finish_flg = FALSE;
   result_list.record_num = 0;
+  spider_db_free_one_result_for_start_next(this);
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -2025,14 +2173,17 @@ int ha_spider::read_multi_range_first(
   DBUG_PRINT("info",("spider this=%x", this));
   multi_range_sorted = sorted;
   multi_range_buffer = buffer;
-  if (
-    result_list.current &&
-    (error_num = spider_db_free_result(this, FALSE))
-  )
-    DBUG_RETURN(error_num);
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if ((error_num = spider_set_conn_bg_param(this)))
+    DBUG_RETURN(error_num);
+#endif
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  check_select_column(FALSE);
+#endif
   result_list.finish_flg = FALSE;
   result_list.record_num = 0;
+  spider_db_free_one_result_for_start_next(this);
   result_list.sql.length(0);
   result_list.desc_flg = FALSE;
   result_list.sorted = sorted;
@@ -2257,7 +2408,8 @@ int ha_spider::read_multi_range_first(
       if (error_num == HA_ERR_END_OF_FILE)
       {
         result_list.finish_flg = TRUE;
-        result_list.current->finish_flg = TRUE;
+        if (result_list.current)
+          result_list.current->finish_flg = TRUE;
         table->status = STATUS_NOT_FOUND;
       }
       DBUG_RETURN(error_num);
@@ -2492,14 +2644,20 @@ int ha_spider::read_multi_range_next(
     if (!(error_num = spider_db_seek_next(table->record[0], this,
       search_link_idx, table)))
       DBUG_RETURN(0);
+    multi_range_curr++;
     if (
       error_num != HA_ERR_END_OF_FILE ||
-      multi_range_curr++ == multi_range_end
+      multi_range_curr == multi_range_end
     )
       DBUG_RETURN(error_num);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if ((error_num = spider_set_conn_bg_param(this)))
+      DBUG_RETURN(error_num);
+#endif
     result_list.finish_flg = FALSE;
     result_list.current->finish_flg = FALSE;
     result_list.record_num = 0;
+    spider_db_free_one_result_for_start_next(this);
     for (
       ;
       multi_range_curr < multi_range_end;
@@ -2698,7 +2856,8 @@ int ha_spider::read_multi_range_next(
       if (error_num == HA_ERR_END_OF_FILE)
       {
         result_list.finish_flg = TRUE;
-        result_list.current->finish_flg = TRUE;
+        if (result_list.current)
+          result_list.current->finish_flg = TRUE;
         table->status = STATUS_NOT_FOUND;
       }
       DBUG_RETURN(error_num);
@@ -2786,22 +2945,8 @@ int ha_spider::rnd_init(
 
       result_list.sql.length(0);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-      spider_set_conn_bg_param(this);
-      if (result_list.bgs_phase > 0)
-      {
-        for (
-          roop_count = spider_conn_link_idx_next(share->link_statuses,
-            -1, share->link_count, lock_mode ?
-            SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK);
-          roop_count < share->link_count;
-          roop_count = spider_conn_link_idx_next(share->link_statuses,
-            roop_count, share->link_count, lock_mode ?
-            SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK)
-        ) {
-          if ((error_num = spider_create_conn_thread(conns[roop_count])))
-            DBUG_RETURN(error_num);
-        }
-      }
+      if ((error_num = spider_set_conn_bg_param(this)))
+        DBUG_RETURN(error_num);
 #endif
       set_select_column_mode();
       result_list.keyread = FALSE;
@@ -2830,8 +2975,12 @@ int ha_spider::rnd_next(
 
   if (rnd_scan_and_first)
   {
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    check_select_column(TRUE);
+#endif
     result_list.finish_flg = FALSE;
     result_list.record_num = 0;
+    spider_db_free_one_result_for_start_next(this);
     if (
       (error_num = spider_db_append_select(this)) ||
       (error_num = spider_db_append_select_columns(this))
@@ -4422,47 +4571,128 @@ void ha_spider::set_select_column_mode()
     share->select_column_mode : THDVAR(thd, select_column_mode);
   if (select_column_mode)
   {
-    for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
-      roop_count++)
-    {
-      searched_bitmap[roop_count] =
-        ((uchar *) table->read_set->bitmap)[roop_count] |
-        ((uchar *) table->write_set->bitmap)[roop_count];
-      DBUG_PRINT("info",("spider roop_count=%d", roop_count));
-      DBUG_PRINT("info",("spider searched_bitmap=%d",
-        searched_bitmap[roop_count]));
-      DBUG_PRINT("info",("spider read_set=%d",
-        ((uchar *) table->read_set->bitmap)[roop_count]));
-      DBUG_PRINT("info",("spider write_set=%d",
-        ((uchar *) table->write_set->bitmap)[roop_count]));
-    }
-    if (result_list.lock_type == F_WRLCK && sql_command != SQLCOM_SELECT)
-    {
-      if (table_share->primary_key == MAX_KEY)
-      {
-        /* need all columns */
-        for (roop_count = 0; roop_count < table_share->fields; roop_count++)
-          spider_set_bit(searched_bitmap, roop_count);
-      } else {
-        /* need primary key columns */
-        key_info = &table_share->key_info[table_share->primary_key];
-        key_part = key_info->key_part;
-        for (roop_count = 0; roop_count < key_info->key_parts; roop_count++)
-        {
-          field = key_part[roop_count].field;
-          spider_set_bit(searched_bitmap, field->field_index);
-        }
-      }
-#ifndef DBUG_OFF
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+    if (
+      partition_handler_share &&
+      partition_handler_share->searched_bitmap
+    ) {
+      memcpy(searched_bitmap, partition_handler_share->searched_bitmap,
+        (table_share->fields + 7) / 8);
+      partition_handler_share->between_flg = FALSE;
+      DBUG_PRINT("info",("spider copy searched_bitmap"));
+    } else {
+#endif
       for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
         roop_count++)
-        DBUG_PRINT("info", ("spider change bitmap is %x",
+      {
+        searched_bitmap[roop_count] =
+          ((uchar *) table->read_set->bitmap)[roop_count] |
+          ((uchar *) table->write_set->bitmap)[roop_count];
+        DBUG_PRINT("info",("spider roop_count=%d", roop_count));
+        DBUG_PRINT("info",("spider searched_bitmap=%d",
           searched_bitmap[roop_count]));
+        DBUG_PRINT("info",("spider read_set=%d",
+          ((uchar *) table->read_set->bitmap)[roop_count]));
+        DBUG_PRINT("info",("spider write_set=%d",
+          ((uchar *) table->write_set->bitmap)[roop_count]));
+      }
+      if (result_list.lock_type == F_WRLCK && sql_command != SQLCOM_SELECT)
+      {
+        if (table_share->primary_key == MAX_KEY)
+        {
+          /* need all columns */
+          for (roop_count = 0; roop_count < table_share->fields; roop_count++)
+            spider_set_bit(searched_bitmap, roop_count);
+        } else {
+          /* need primary key columns */
+          key_info = &table_share->key_info[table_share->primary_key];
+          key_part = key_info->key_part;
+          for (roop_count = 0; roop_count < key_info->key_parts; roop_count++)
+          {
+            field = key_part[roop_count].field;
+            spider_set_bit(searched_bitmap, field->field_index);
+          }
+        }
+#ifndef DBUG_OFF
+        for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
+          roop_count++)
+          DBUG_PRINT("info", ("spider change bitmap is %x",
+            searched_bitmap[roop_count]));
 #endif
+      }
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+      if (partition_handler_share)
+      {
+        partition_handler_share->searched_bitmap = searched_bitmap;
+        partition_handler_share->between_flg = TRUE;
+        DBUG_PRINT("info",("spider set searched_bitmap"));
+      }
+    }
+#endif
+  }
+  DBUG_VOID_RETURN;
+}
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+void ha_spider::check_select_column(bool rnd)
+{
+  THD *thd = trx->thd;
+  DBUG_ENTER("ha_spider::check_select_column");
+  select_column_mode = THDVAR(thd, select_column_mode) == -1 ?
+    share->select_column_mode : THDVAR(thd, select_column_mode);
+  if (select_column_mode && partition_handler_share)
+  {
+    if (!rnd)
+    {
+      if (partition_handler_share->between_flg)
+      {
+        memcpy(partition_handler_share->idx_read_bitmap,
+          table->read_set->bitmap, (table_share->fields + 7) / 8);
+        memcpy(partition_handler_share->idx_write_bitmap,
+          table->write_set->bitmap, (table_share->fields + 7) / 8);
+        partition_handler_share->between_flg = FALSE;
+        partition_handler_share->idx_bitmap_is_set = TRUE;
+        DBUG_PRINT("info",("spider set idx_bitmap"));
+      } else if (partition_handler_share->idx_bitmap_is_set)
+      {
+        memcpy(table->read_set->bitmap,
+          partition_handler_share->idx_read_bitmap,
+          (table_share->fields + 7) / 8);
+        memcpy(table->write_set->bitmap,
+          partition_handler_share->idx_write_bitmap,
+          (table_share->fields + 7) / 8);
+        DBUG_PRINT("info",("spider copy idx_bitmap"));
+      }
+    } else {
+      if (
+        !partition_handler_share->rnd_bitmap_is_set &&
+        (
+          partition_handler_share->between_flg ||
+          partition_handler_share->idx_bitmap_is_set
+        )
+      ) {
+        memcpy(partition_handler_share->rnd_read_bitmap,
+          table->read_set->bitmap, (table_share->fields + 7) / 8);
+        memcpy(partition_handler_share->rnd_write_bitmap,
+          table->write_set->bitmap, (table_share->fields + 7) / 8);
+        partition_handler_share->between_flg = FALSE;
+        partition_handler_share->rnd_bitmap_is_set = TRUE;
+        DBUG_PRINT("info",("spider set rnd_bitmap"));
+      } else if (partition_handler_share->rnd_bitmap_is_set)
+      {
+        memcpy(table->read_set->bitmap,
+          partition_handler_share->rnd_read_bitmap,
+          (table_share->fields + 7) / 8);
+        memcpy(table->write_set->bitmap,
+          partition_handler_share->rnd_write_bitmap,
+          (table_share->fields + 7) / 8);
+        DBUG_PRINT("info",("spider copy rnd_bitmap"));
+      }
     }
   }
   DBUG_VOID_RETURN;
 }
+#endif
 
 bool ha_spider::check_and_start_bulk_update(
   spider_bulk_upd_start bulk_upd_start

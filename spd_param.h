@@ -35,6 +35,7 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_offset, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_limit, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(split_read, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_split_read, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_split_read_limit, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(init_sql_alloc_size, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(reset_sql_alloc, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(multi_split_read, int);

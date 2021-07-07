@@ -1332,6 +1332,7 @@ int spider_parse_connect_info(
   share->internal_limit = -1;
   share->split_read = -1;
   share->semi_split_read = -1;
+  share->semi_split_read_limit = -1;
   share->init_sql_alloc_size = -1;
   share->reset_sql_alloc = -1;
   share->multi_split_read = -1;
@@ -1533,6 +1534,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT("srt", scan_rate, 0);
           SPIDER_PARAM_INT_WITH_MAX("slm", selupd_lock_mode, 0, 2);
           SPIDER_PARAM_DOUBLE("ssr", semi_split_read, 0);
+          SPIDER_PARAM_LONGLONG("ssl", semi_split_read_limit, 0);
           SPIDER_PARAM_INT_WITH_MAX("stc", semi_table_lock_conn, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX("stl", semi_table_lock, 0, 1);
           SPIDER_PARAM_STR_LIST("srv", server_names);
@@ -1724,6 +1726,13 @@ int spider_parse_connect_info(
         case 20:
           SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
             "monitoring_server_id", monitoring_sid, 0, 4294967295);
+          error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
+          my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
+            MYF(0), tmp_ptr);
+          goto error;
+        case 21:
+          SPIDER_PARAM_LONGLONG(
+            "semi_split_read_limit", semi_split_read_limit, 0);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -2565,6 +2574,8 @@ int spider_set_connect_info_default(
     share->split_read = 9223372036854775807LL;
   if (share->semi_split_read == -1)
     share->semi_split_read = 0;
+  if (share->semi_split_read_limit == -1)
+    share->semi_split_read_limit = 9223372036854775807LL;
   if (share->init_sql_alloc_size == -1)
     share->init_sql_alloc_size = 1024;
   if (share->reset_sql_alloc == -1)
@@ -3493,6 +3504,13 @@ SPIDER_PARTITION_SHARE *spider_get_pt_share(
       goto error_init_crd_mutex;
     }
 
+    if (pthread_mutex_init(&partition_share->pt_handler_mutex,
+      MY_MUTEX_INIT_FAST))
+    {
+      *error_num = HA_ERR_OUT_OF_MEM;
+      goto error_init_pt_handler_mutex;
+    }
+
     if (my_hash_insert(&spider_open_pt_share, (uchar*) partition_share))
     {
       *error_num = HA_ERR_OUT_OF_MEM;
@@ -3506,6 +3524,8 @@ SPIDER_PARTITION_SHARE *spider_get_pt_share(
   DBUG_RETURN(partition_share);
 
 error_hash_insert:
+  VOID(pthread_mutex_destroy(&partition_share->pt_handler_mutex));
+error_init_pt_handler_mutex:
   VOID(pthread_mutex_destroy(&partition_share->crd_mutex));
 error_init_crd_mutex:
   VOID(pthread_mutex_destroy(&partition_share->sts_mutex));
@@ -3524,6 +3544,7 @@ int spider_free_pt_share(
   if (!--partition_share->use_count)
   {
     hash_delete(&spider_open_pt_share, (uchar*) partition_share);
+    VOID(pthread_mutex_destroy(&partition_share->pt_handler_mutex));
     VOID(pthread_mutex_destroy(&partition_share->crd_mutex));
     VOID(pthread_mutex_destroy(&partition_share->sts_mutex));
     my_free(partition_share, MYF(0));
@@ -4637,13 +4658,14 @@ longlong spider_split_read_param(
   longlong offset_limit = 0;
   double semi_split_read;
   longlong split_read;
+  longlong semi_split_read_limit;
   DBUG_ENTER("spider_split_read_param");
   if (table_list)
   {
     while (table_list->parent_l)
       table_list = table_list->parent_l;
     select_lex = table_list->select_lex;
-    if (select_lex)
+    if (select_lex && select_lex->explicit_limit)
     {
       select_limit = select_lex->select_limit ?
         select_lex->select_limit->val_int() : 0;
@@ -4655,16 +4677,20 @@ longlong spider_split_read_param(
     THDVAR(thd, semi_split_read) < 0 ?
     share->semi_split_read :
     THDVAR(thd, semi_split_read);
+  semi_split_read_limit =
+    THDVAR(thd, semi_split_read_limit) < 0 ?
+    share->semi_split_read_limit :
+    THDVAR(thd, semi_split_read_limit);
   if (semi_split_read > 0 && select_lex && select_lex->explicit_limit)
   {
     semi_split_read = semi_split_read * (select_limit + offset_limit);
     DBUG_PRINT("info",("spider semi_split_read=%f", semi_split_read));
-    if (semi_split_read > 9223372036854775807LL)
-      DBUG_RETURN(9223372036854775807LL);
+    if (semi_split_read >= semi_split_read_limit)
+      DBUG_RETURN(semi_split_read_limit);
     else {
       split_read = (longlong) semi_split_read;
       if (split_read < 0)
-        DBUG_RETURN(9223372036854775807LL);
+        DBUG_RETURN(semi_split_read_limit);
       else if (split_read == 0)
         DBUG_RETURN(1);
       else

@@ -433,6 +433,10 @@ int spider_db_fetch_minimum_columns(
   SPIDER_RESULT_LIST *result_list
 );
 
+void spider_db_free_one_result_for_start_next(
+  ha_spider *spider
+);
+
 void spider_db_free_one_result(
   SPIDER_RESULT_LIST *result_list,
   SPIDER_RESULT *result

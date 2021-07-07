@@ -49,6 +49,10 @@ public:
   SPIDER_CONDITION   *condition;
   String             *blob_buff;
   uchar              *searched_bitmap;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
+  ha_spider          *pt_handler_share_creator;
+#endif
   ha_spider          *next;
 
   bool               rnd_scan_and_first;
@@ -295,6 +299,9 @@ public:
   void cond_pop();
   st_table *get_table();
   void set_select_column_mode();
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  void check_select_column(bool rnd);
+#endif
   bool check_and_start_bulk_update(
     spider_bulk_upd_start bulk_upd_start
   );

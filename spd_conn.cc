@@ -543,10 +543,10 @@ SPIDER_CONN *spider_tree_delete(
 }
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-void spider_set_conn_bg_param(
+int spider_set_conn_bg_param(
   ha_spider *spider
 ) {
-  int bgs_mode;
+  int error_num, roop_count, bgs_mode;
   SPIDER_SHARE *share = spider->share;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   THD *thd = spider->trx->thd;
@@ -582,7 +582,23 @@ void spider_set_conn_bg_param(
       result_list->bgs_first_read :
       result_list->bgs_split_read;
   }
-  DBUG_VOID_RETURN;
+
+  if (result_list->bgs_phase > 0)
+  {
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, spider->lock_mode ?
+        SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, spider->lock_mode ?
+        SPIDER_LINK_STATUS_RECOVERY : SPIDER_LINK_STATUS_OK)
+    ) {
+      if ((error_num = spider_create_conn_thread(spider->conns[roop_count])))
+        DBUG_RETURN(error_num);
+    }
+  }
+  DBUG_RETURN(0);
 }
 
 int spider_create_conn_thread(
@@ -684,6 +700,36 @@ void spider_bg_conn_break(
     pthread_mutex_lock(&conn->bg_conn_mutex);
     pthread_mutex_unlock(&conn->bg_conn_mutex);
     conn->bg_break = FALSE;
+  }
+  DBUG_VOID_RETURN;
+}
+
+void spider_bg_all_conn_break(
+  ha_spider *spider
+) {
+  int roop_count;
+  SPIDER_CONN *conn;
+  SPIDER_SHARE *share = spider->share;
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  DBUG_ENTER("spider_bg_all_conn_break");
+  for (
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+    roop_count < share->link_count;
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+  ) {
+    conn = spider->conns[roop_count];
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if (conn && result_list->bgs_working)
+      spider_bg_conn_break(conn, spider);
+#endif
+    if (spider->quick_targets[roop_count])
+    {
+      DBUG_ASSERT(spider->quick_targets[roop_count] == conn->quick_target);
+      conn->quick_target = NULL;
+      spider->quick_targets[roop_count] = NULL;
+    }
   }
   DBUG_VOID_RETURN;
 }
@@ -1043,7 +1089,7 @@ void *spider_bg_sts_action(
   void *arg
 ) {
   SPIDER_SHARE *share = (SPIDER_SHARE*) arg;
-  int error_num, need_mons[share->link_count];
+  int error_num = 0, need_mons[share->link_count];
   ha_spider spider;
   SPIDER_CONN *conns[share->link_count];
   THD *thd;
@@ -1224,7 +1270,7 @@ void *spider_bg_crd_action(
   void *arg
 ) {
   SPIDER_SHARE *share = (SPIDER_SHARE*) arg;
-  int error_num, need_mons[share->link_count];
+  int error_num = 0, need_mons[share->link_count];
   ha_spider spider;
   TABLE table;
   SPIDER_CONN *conns[share->link_count];

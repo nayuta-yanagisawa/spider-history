@@ -267,6 +267,22 @@ MYSQL_THDVAR_INT(
 
 /*
  -1 :use table parameter
+  0-:the limit value
+ */
+MYSQL_THDVAR_LONGLONG(
+  semi_split_read_limit, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "The limit value for semi_split_read", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
   0 :no alloc
   1-:alloc size
  */
@@ -1285,6 +1301,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(internal_limit),
   MYSQL_SYSVAR(split_read),
   MYSQL_SYSVAR(semi_split_read),
+  MYSQL_SYSVAR(semi_split_read_limit),
   MYSQL_SYSVAR(init_sql_alloc_size),
   MYSQL_SYSVAR(reset_sql_alloc),
   MYSQL_SYSVAR(multi_split_read),
@@ -1365,7 +1382,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0210,
+  0x0211,
   NULL,
   spider_system_variables,
   NULL

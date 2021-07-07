@@ -84,7 +84,7 @@ SPIDER_CONN *spider_tree_delete(
 );
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-void spider_set_conn_bg_param(
+int spider_set_conn_bg_param(
   ha_spider *spider
 );
 
@@ -98,6 +98,10 @@ void spider_free_conn_thread(
 
 void spider_bg_conn_break(
   SPIDER_CONN *conn,
+  ha_spider *spider
+);
+
+void spider_bg_all_conn_break(
   ha_spider *spider
 );
 

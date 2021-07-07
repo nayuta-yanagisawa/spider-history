@@ -204,6 +204,21 @@ typedef struct st_spider_conn
 } SPIDER_CONN;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
+typedef struct st_spider_patition_handler_share
+{
+  uint               use_count;
+  TABLE              *table;
+  void               *creator;
+  uchar              *searched_bitmap;
+  uchar              *idx_read_bitmap;
+  uchar              *idx_write_bitmap;
+  uchar              *rnd_read_bitmap;
+  uchar              *rnd_write_bitmap;
+  bool               between_flg;
+  bool               idx_bitmap_is_set;
+  bool               rnd_bitmap_is_set;
+} SPIDER_PARTITION_HANDLER_SHARE;
+
 typedef struct st_spider_patition_share
 {
   char               *table_name;
@@ -211,6 +226,7 @@ typedef struct st_spider_patition_share
   uint               use_count;
   pthread_mutex_t    sts_mutex;
   pthread_mutex_t    crd_mutex;
+  pthread_mutex_t    pt_handler_mutex;
 
   volatile bool      sts_init;
   volatile bool      crd_init;
@@ -227,6 +243,8 @@ typedef struct st_spider_patition_share
   time_t             update_time;
 
   longlong           *cardinality;
+
+  volatile SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
 } SPIDER_PARTITION_SHARE;
 #endif
 
@@ -369,6 +387,7 @@ typedef struct st_spider_share
   longlong           internal_limit;
   longlong           split_read;
   double             semi_split_read;
+  longlong           semi_split_read_limit;
   int                init_sql_alloc_size;
   int                reset_sql_alloc;
   int                multi_split_read;

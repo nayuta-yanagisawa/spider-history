@@ -3357,6 +3357,41 @@ int spider_db_fetch_minimum_columns(
   DBUG_RETURN(0);
 }
 
+void spider_db_free_one_result_for_start_next(
+  ha_spider *spider
+) {
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  SPIDER_RESULT *result = (SPIDER_RESULT *) result_list->current;
+  DBUG_ENTER("spider_db_free_one_result_for_start_next");
+  spider_bg_all_conn_break(spider);
+
+  if (result_list->low_mem_read)
+  {
+    if (result)
+    {
+      do {
+        spider_db_free_one_result(result_list, result);
+        result = (SPIDER_RESULT *) result->next;
+      } while (result && (result->result || result->first_position));
+      result = (SPIDER_RESULT *) result_list->current;
+      if (
+        !result->result &&
+        !result->first_position
+      )
+        result_list->current = result->prev;
+    }
+  } else {
+    while (
+      result && result->next &&
+      (result->next->result || result->next->first_position)
+    ) {
+      result_list->current = result->next;
+      result = (SPIDER_RESULT *) result->next;
+    }
+  }
+  DBUG_VOID_RETURN;
+}
+
 void spider_db_free_one_result(
   SPIDER_RESULT_LIST *result_list,
   SPIDER_RESULT *result
@@ -3404,25 +3439,7 @@ int spider_db_free_result(
   SPIDER_CONN *conn;
   int roop_count;
   DBUG_ENTER("spider_db_free_result");
-  for (
-    roop_count = spider_conn_link_idx_next(share->link_statuses,
-      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
-    roop_count < share->link_count;
-    roop_count = spider_conn_link_idx_next(share->link_statuses,
-      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
-  ) {
-    conn = spider->conns[roop_count];
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-    if (conn && result_list->bgs_working)
-      spider_bg_conn_break(conn, spider);
-#endif
-    if (spider->quick_targets[roop_count])
-    {
-      DBUG_ASSERT(spider->quick_targets[roop_count] == conn->quick_target);
-      conn->quick_target = NULL;
-      spider->quick_targets[roop_count] = NULL;
-    }
-  }
+  spider_bg_all_conn_break(spider);
 
   if (
     final ||
@@ -4795,7 +4812,7 @@ int spider_db_show_table_status(
       share->auto_increment_value =
         (ulonglong) my_strtoll10(row[10], (char**) NULL, &error_num);
     else
-      share->auto_increment_value = 0;
+      share->auto_increment_value = 1;
     DBUG_PRINT("info",
       ("spider auto_increment_value=%lld", share->auto_increment_value));
     if (row[11])
@@ -4937,7 +4954,7 @@ int spider_db_show_table_status(
       share->auto_increment_value =
         (ulonglong) my_strtoll10(row[5], (char**) NULL, &error_num);
     else
-      share->auto_increment_value = 0;
+      share->auto_increment_value = 1;
     DBUG_PRINT("info",
       ("spider auto_increment_value=%lld", share->auto_increment_value));
     if (row[6])
@@ -7218,6 +7235,7 @@ int spider_db_print_item_type(
       DBUG_RETURN(spider_db_open_item_row((Item_row *) item, spider, str));
     case Item::SUBSELECT_ITEM:
     case Item::TRIGGER_FIELD_ITEM:
+    case Item::CACHE_ITEM:
       DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
     default:
       if (spider->share->access_charset->cset == system_charset_info->cset)
@@ -7250,8 +7268,10 @@ restart_first:
     restart_pos = str->length();
     if ((error_num = spider_db_print_item_type(item, spider, str)))
     {
-      if (error_num == ER_SPIDER_COND_SKIP_NUM)
-      {
+      if (
+        error_num == ER_SPIDER_COND_SKIP_NUM &&
+        item_cond->functype() == Item_func::COND_AND_FUNC
+      ) {
         DBUG_PRINT("info",("spider COND skip"));
         str->length(restart_pos);
         goto restart_first;
@@ -7277,8 +7297,10 @@ restart_first:
 
     if ((error_num = spider_db_print_item_type(item, spider, str)))
     {
-      if (error_num == ER_SPIDER_COND_SKIP_NUM)
-      {
+      if (
+        error_num == ER_SPIDER_COND_SKIP_NUM &&
+        item_cond->functype() == Item_func::COND_AND_FUNC
+      ) {
         DBUG_PRINT("info",("spider COND skip"));
         str->length(restart_pos);
       } else
