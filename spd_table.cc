@@ -77,6 +77,16 @@ uchar *spider_pt_share_get_key(
   *length = share->table_name_length;
   DBUG_RETURN((uchar*) share->table_name);
 }
+
+uchar *spider_pt_handler_share_get_key(
+  SPIDER_PARTITION_HANDLER_SHARE *share,
+  size_t *length,
+  my_bool not_used __attribute__ ((unused))
+) {
+  DBUG_ENTER("spider_pt_handler_share_get_key");
+  *length = sizeof(TABLE *);
+  DBUG_RETURN((uchar*) &share->table);
+}
 #endif
 
 uchar *spider_ha_get_key(
@@ -2668,6 +2678,74 @@ int spider_set_connect_info_default(
   DBUG_RETURN(0);
 }
 
+int spider_set_connect_info_default_db_table(
+  SPIDER_SHARE *share,
+  const char *db_name,
+  uint db_name_length,
+  const char *table_name,
+  uint table_name_length
+) {
+  int roop_count;
+  DBUG_ENTER("spider_set_connect_info_default_db_table");
+  for (roop_count = 0; roop_count < share->link_count; roop_count++)
+  {
+    if (!share->tgt_dbs[roop_count] && db_name)
+    {
+      DBUG_PRINT("info",("spider create default tgt_dbs"));
+      share->tgt_dbs_lengths[roop_count] = db_name_length;
+      if (
+        !(share->tgt_dbs[roop_count] = spider_create_string(
+          db_name,
+          db_name_length))
+      ) {
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      }
+    }
+
+    if (!share->tgt_table_names[roop_count] && table_name)
+    {
+      const char *tmp_ptr;
+      DBUG_PRINT("info",("spider create default tgt_table_names"));
+      if ((tmp_ptr = strstr(table_name, "#P#")))
+        table_name_length = (uint) PTR_BYTE_DIFF(tmp_ptr, table_name);
+      share->tgt_table_names_lengths[roop_count] = table_name_length;
+      if (
+        !(share->tgt_table_names[roop_count] = spider_create_string(
+          table_name,
+          table_name_length))
+      ) {
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      }
+    }
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_set_connect_info_default_dbtable(
+  SPIDER_SHARE *share,
+  const char *dbtable_name,
+  int dbtable_name_length
+) {
+  const char *ptr_db, *ptr_table;
+  my_ptrdiff_t ptr_diff_db, ptr_diff_table;
+  DBUG_ENTER("spider_set_connect_info_default_dbtable");
+  ptr_db = strchr(dbtable_name, FN_LIBCHAR);
+  ptr_db++;
+  ptr_diff_db = PTR_BYTE_DIFF(ptr_db, dbtable_name);
+  DBUG_PRINT("info",("spider ptr_diff_db = %ld", ptr_diff_db));
+  ptr_table = strchr(ptr_db, FN_LIBCHAR);
+  ptr_table++;
+  ptr_diff_table = PTR_BYTE_DIFF(ptr_table, ptr_db);
+  DBUG_PRINT("info",("spider ptr_diff_table = %ld", ptr_diff_table));
+  DBUG_RETURN(spider_set_connect_info_default_db_table(
+    share,
+    ptr_db,
+    (uint)(ptr_diff_table - 1),
+    ptr_table,
+    (uint)(dbtable_name_length - ptr_diff_db - ptr_diff_table)
+  ));
+}
+
 #ifndef DBUG_OFF
 void spider_print_keys(
   const char *key,
@@ -2915,7 +2993,8 @@ SPIDER_SHARE *spider_get_share(
     if (
       table_share->tmp_table == NO_TMP_TABLE &&
       sql_command != SQLCOM_DROP_TABLE &&
-      sql_command != SQLCOM_ALTER_TABLE
+      sql_command != SQLCOM_ALTER_TABLE &&
+      sql_command != SQLCOM_SHOW_CREATE
     ) {
       MEM_ROOT mem_root;
       TABLE *table_tables = NULL;
@@ -3046,6 +3125,7 @@ SPIDER_SHARE *spider_get_share(
     if (
       sql_command != SQLCOM_DROP_TABLE &&
       sql_command != SQLCOM_ALTER_TABLE &&
+      sql_command != SQLCOM_SHOW_CREATE &&
       (*error_num = spider_create_mon_threads(spider->trx, share))
     ) {
       share->init_error = TRUE;
@@ -3181,6 +3261,7 @@ SPIDER_SHARE *spider_get_share(
     if (
       sql_command != SQLCOM_DROP_TABLE &&
       sql_command != SQLCOM_ALTER_TABLE &&
+      sql_command != SQLCOM_SHOW_CREATE &&
       !THDVAR(thd, same_server_link)
     ) {
       SPIDER_INIT_ERROR_TABLE *spider_init_error_table;
@@ -3305,6 +3386,7 @@ SPIDER_SHARE *spider_get_share(
     if (
       sql_command != SQLCOM_DROP_TABLE &&
       sql_command != SQLCOM_ALTER_TABLE &&
+      sql_command != SQLCOM_SHOW_CREATE &&
       (*error_num = spider_create_mon_threads(spider->trx, share))
     ) {
       spider_free_share(share);
@@ -3431,6 +3513,7 @@ SPIDER_SHARE *spider_get_share(
         if (
           sql_command != SQLCOM_DROP_TABLE &&
           sql_command != SQLCOM_ALTER_TABLE &&
+          sql_command != SQLCOM_SHOW_CREATE &&
           !THDVAR(thd, same_server_link)
         ) {
           SPIDER_INIT_ERROR_TABLE *spider_init_error_table;
@@ -3644,6 +3727,14 @@ SPIDER_PARTITION_SHARE *spider_get_pt_share(
       goto error_init_pt_handler_mutex;
     }
 
+    if(
+      hash_init(&partition_share->pt_handler_hash, system_charset_info,
+        32, 0, 0, (hash_get_key) spider_pt_handler_share_get_key, 0, 0)
+    ) {
+      *error_num = HA_ERR_OUT_OF_MEM;
+      goto error_init_pt_handler_hash;
+    }
+
     if (my_hash_insert(&spider_open_pt_share, (uchar*) partition_share))
     {
       *error_num = HA_ERR_OUT_OF_MEM;
@@ -3657,6 +3748,8 @@ SPIDER_PARTITION_SHARE *spider_get_pt_share(
   DBUG_RETURN(partition_share);
 
 error_hash_insert:
+  hash_free(&partition_share->pt_handler_hash);
+error_init_pt_handler_hash:
   VOID(pthread_mutex_destroy(&partition_share->pt_handler_mutex));
 error_init_pt_handler_mutex:
   VOID(pthread_mutex_destroy(&partition_share->crd_mutex));
@@ -3677,6 +3770,7 @@ int spider_free_pt_share(
   if (!--partition_share->use_count)
   {
     hash_delete(&spider_open_pt_share, (uchar*) partition_share);
+    hash_free(&partition_share->pt_handler_hash);
     VOID(pthread_mutex_destroy(&partition_share->pt_handler_mutex));
     VOID(pthread_mutex_destroy(&partition_share->crd_mutex));
     VOID(pthread_mutex_destroy(&partition_share->sts_mutex));
@@ -3738,6 +3832,8 @@ int spider_open_all_tables(
   TABLE *table_tables;
   int error_num, *need_mon;
   SPIDER_SHARE tmp_share;
+  char *db_name, *table_name;
+  uint db_name_length, table_name_length;
   char *tmp_connect_info[15];
   uint tmp_connect_info_length[15];
   long tmp_long[5];
@@ -3783,6 +3879,8 @@ int spider_open_all_tables(
 
   do {
     if (
+      (error_num = spider_get_sys_tables(
+        table_tables, &db_name, &table_name, &mem_root)) ||
       (error_num = spider_get_sys_tables_connect_info(
         table_tables, &tmp_share, 0, &mem_root)) ||
       (error_num = spider_set_connect_info_default(
@@ -3792,6 +3890,25 @@ int spider_open_all_tables(
         NULL,
 #endif
         NULL
+      ))
+    ) {
+      spider_sys_index_end(table_tables);
+      spider_close_sys_table(trx->thd, table_tables,
+        &open_tables_backup, TRUE);
+      spider_free_tmp_share_alloc(&tmp_share);
+      free_root(&mem_root, MYF(0));
+      DBUG_RETURN(error_num);
+    }
+    db_name_length = strlen(db_name);
+    table_name_length = strlen(table_name);
+
+    if (
+      (error_num = spider_set_connect_info_default_db_table(
+        &tmp_share,
+        db_name,
+        db_name_length,
+        table_name,
+        table_name_length
       )) ||
       (error_num = spider_create_conn_keys(&tmp_share))
     ) {

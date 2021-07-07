@@ -2183,8 +2183,10 @@ int spider_db_append_into(
   str->q_append(SPIDER_SQL_OPEN_PAREN_STR, SPIDER_SQL_OPEN_PAREN_LEN);
   for (field = table->field; *field; field++)
   {
-    if (bitmap_is_set(table->write_set, (*field)->field_index))
-    {
+    if (
+      bitmap_is_set(table->write_set, (*field)->field_index) ||
+      bitmap_is_set(table->read_set, (*field)->field_index)
+    ) {
       field_name_length =
         share->column_name_str[(*field)->field_index].length();
       if (str->reserve(field_name_length +
@@ -5381,6 +5383,8 @@ SPIDER_POSITION *spider_db_create_position(
   }
   current->use_position = TRUE;
   pos->use_position = TRUE;
+  pos->mrr_with_cnt = spider->mrr_with_cnt;
+  pos->position_bitmap = spider->position_bitmap;
   DBUG_RETURN(pos);
 }
 
@@ -5519,9 +5523,11 @@ int spider_db_seek_tmp_minimum_columns(
   SPIDER_DB_ROW row = pos->row;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   DBUG_ENTER("spider_db_seek_tmp_minimum_columns");
+/*
   DBUG_ASSERT(spider->position_bitmap_init);
+*/
   /* for mrr */
-  if (spider->mrr_with_cnt)
+  if (pos->mrr_with_cnt)
   {
     DBUG_PRINT("info", ("spider mrr_with_cnt"));
     row++;
@@ -5534,7 +5540,7 @@ int spider_db_seek_tmp_minimum_columns(
     field++
   ) {
     DBUG_PRINT("info", ("spider field_index %u", (*field)->field_index));
-    if (spider_bit_is_set(spider->position_bitmap, (*field)->field_index))
+    if (spider_bit_is_set(pos->position_bitmap, (*field)->field_index))
     {
 /*
     if ((
@@ -6346,8 +6352,10 @@ int spider_db_bulk_insert(
 #endif
     for (field = table->field; *field; field++)
     {
-      if (bitmap_is_set(table->write_set, (*field)->field_index))
-      {
+      if (
+        bitmap_is_set(table->write_set, (*field)->field_index) ||
+        bitmap_is_set(table->read_set, (*field)->field_index)
+      ) {
         add_value = TRUE;
         if (
           (*field)->is_null() ||
@@ -9839,7 +9847,8 @@ int spider_db_udf_copy_rows(
 int spider_db_udf_copy_tables(
   SPIDER_COPY_TABLES *copy_tables,
   ha_spider *spider,
-  TABLE *table
+  TABLE *table,
+  longlong bulk_insert_rows
 ) {
   int error_num, roop_count, roop_count2;
   bool end_of_file = FALSE;
@@ -9855,6 +9864,7 @@ int spider_db_udf_copy_tables(
   String *insert_sql;
   KEY *key_info = &table->key_info[table->s->primary_key];
   KEY_PART_INFO *key_part = key_info->key_part;
+  int bulk_insert_interval;
   DBUG_ENTER("spider_db_udf_copy_tables");
   if (!(last_row_pos = (ulong *)
     my_multi_malloc(MYF(MY_WME),
@@ -10039,10 +10049,11 @@ int spider_db_udf_copy_tables(
             }
             select_sql->length(select_sql->length() - SPIDER_SQL_OR_LEN -
               SPIDER_SQL_OPEN_PAREN_LEN);
+            bulk_insert_rows = spider_udf_ct_bulk_insert_rows > 0 ?
+              spider_udf_ct_bulk_insert_rows : copy_tables->bulk_insert_rows;
             if (
               spider_db_append_key_order_str(select_sql, key_info, 0, FALSE) ||
-              spider_db_append_limit(select_sql, 0,
-                copy_tables->bulk_insert_rows) ||
+              spider_db_append_limit(select_sql, 0, bulk_insert_rows) ||
               (
                 copy_tables->use_transaction &&
                 spider_db_append_select_lock_str(select_sql,
@@ -10197,7 +10208,9 @@ int spider_db_udf_copy_tables(
         insert_sql->length(dst_tbl_conn->values_pos);
       }
       DBUG_PRINT("info",("spider sleep"));
-      my_sleep(copy_tables->bulk_insert_interval);
+      bulk_insert_interval = spider_udf_ct_bulk_insert_interval >= 0 ?
+        spider_udf_ct_bulk_insert_interval : copy_tables->bulk_insert_interval;
+      my_sleep(bulk_insert_interval);
     }
   }
   my_free(last_row_pos, MYF(0));

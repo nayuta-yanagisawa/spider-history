@@ -420,6 +420,11 @@ int spider_udf_get_copy_tgt_tables(
 #endif
         NULL
       )) ||
+      (error_num = spider_set_connect_info_default_db_table(
+        tmp_share,
+        copy_tables->spider_db_name, copy_tables->spider_db_name_length,
+        copy_tables->spider_table_name, copy_tables->spider_table_name_length
+      )) ||
       (error_num = spider_create_conn_keys(tmp_share))
     ) {
       spider_sys_index_end(table_tables);
@@ -778,6 +783,7 @@ long long spider_copy_tables_body(
   SPIDER_CONN *tmp_conn;
   String *select_sql, *insert_sql;
   MEM_ROOT mem_root;
+  longlong bulk_insert_rows;
   DBUG_ENTER("spider_copy_tables_body");
   if (
     thd->open_tables != 0 ||
@@ -918,9 +924,11 @@ long long spider_copy_tables_body(
 
   src_tbl_conn->where_pos = select_sql->length();
 
+  bulk_insert_rows = spider_udf_ct_bulk_insert_rows > 0 ?
+    spider_udf_ct_bulk_insert_rows : copy_tables->bulk_insert_rows;
   if (
     spider_db_append_key_order_str(select_sql, key_info, 0, FALSE) ||
-    spider_db_append_limit(select_sql, 0, copy_tables->bulk_insert_rows)
+    spider_db_append_limit(select_sql, 0, bulk_insert_rows)
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
@@ -1003,7 +1011,8 @@ long long spider_copy_tables_body(
     goto error;
   }
 
-  if ((error_num = spider_db_udf_copy_tables(copy_tables, spider, table)))
+  if ((error_num = spider_db_udf_copy_tables(copy_tables, spider, table,
+    bulk_insert_rows)))
     goto error_db_udf_copy_tables;
 
   for (table_conn = copy_tables->table_conn[0];

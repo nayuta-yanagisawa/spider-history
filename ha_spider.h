@@ -55,6 +55,10 @@ public:
   SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
   ha_spider          *pt_handler_share_creator;
 #endif
+  bool               is_clone;
+  bool               clone_bitmap_init;
+  ha_spider          *pt_clone_source_handler;
+  ha_spider          *pt_clone_last_searcher;
 
   /* for mrr */
   bool               mrr_with_cnt;
@@ -100,6 +104,9 @@ public:
   ha_spider(
     handlerton *hton,
     TABLE_SHARE *table_arg
+  );
+  handler *clone(
+    MEM_ROOT *mem_root
   );
   const char **bas_ext() const;
   int open(
@@ -256,6 +263,7 @@ public:
   int reset_auto_increment(
     ulonglong value
   );
+  void release_auto_increment();
   void start_bulk_insert(
     ha_rows rows
   );
@@ -351,6 +359,8 @@ public:
   );
   void cond_pop();
   st_table *get_table();
+  void set_searched_bitmap();
+  void set_clone_searched_bitmap();
   void set_select_column_mode();
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   void check_select_column(bool rnd);
@@ -361,5 +371,6 @@ public:
   int check_and_end_bulk_update(
     spider_bulk_upd_start bulk_upd_start
   );
+  uint check_partitioned();
   int drop_tmp_tables();
 };

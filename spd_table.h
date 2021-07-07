@@ -25,6 +25,12 @@ uchar *spider_pt_share_get_key(
   size_t *length,
   my_bool not_used __attribute__ ((unused))
 );
+
+uchar *spider_pt_handler_share_get_key(
+  SPIDER_PARTITION_HANDLER_SHARE *share,
+  size_t *length,
+  my_bool not_used __attribute__ ((unused))
+);
 #endif
 
 uchar *spider_ha_get_key(
@@ -110,6 +116,20 @@ int spider_set_connect_info_default(
   partition_element *sub_elem,
 #endif
   TABLE *table
+);
+
+int spider_set_connect_info_default_db_table(
+  SPIDER_SHARE *share,
+  const char *db_name,
+  uint db_name_length,
+  const char *table_name,
+  uint table_name_length
+);
+
+int spider_set_connect_info_default_dbtable(
+  SPIDER_SHARE *share,
+  const char *dbtable_name,
+  int dbtable_name_length
 );
 
 #ifndef DBUG_OFF

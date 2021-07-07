@@ -80,12 +80,77 @@ TABLE *spider_open_sys_table(
       goto error;
     }
   }
+  if (table_name_length == SPIDER_SYS_XA_TABLE_NAME_LEN)
+  {
+    if (
+      !memcmp(table_name,
+        SPIDER_SYS_XA_TABLE_NAME_STR, SPIDER_SYS_XA_TABLE_NAME_LEN) &&
+      table->s->fields != SPIDER_SYS_XA_COL_CNT
+    ) {
+      spider_close_sys_table(thd, table, open_tables_backup, need_lock);
+      my_free(table, MYF(0));
+      my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
+        ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
+        SPIDER_SYS_XA_TABLE_NAME_STR);
+      *error_num = ER_SPIDER_SYS_TABLE_VERSION_NUM;
+      goto error_col_num_chk;
+    }
+  } else if (table_name_length == SPIDER_SYS_XA_MEMBER_TABLE_NAME_LEN)
+  {
+    if (
+      !memcmp(table_name,
+        SPIDER_SYS_XA_MEMBER_TABLE_NAME_STR,
+        SPIDER_SYS_XA_MEMBER_TABLE_NAME_LEN) &&
+      table->s->fields != SPIDER_SYS_XA_MEMBER_COL_CNT
+    ) {
+      spider_close_sys_table(thd, table, open_tables_backup, need_lock);
+      my_free(table, MYF(0));
+      my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
+        ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
+        SPIDER_SYS_XA_MEMBER_TABLE_NAME_STR);
+      *error_num = ER_SPIDER_SYS_TABLE_VERSION_NUM;
+      goto error_col_num_chk;
+    }
+  } else if (table_name_length == SPIDER_SYS_TABLES_TABLE_NAME_LEN)
+  {
+    if (
+      !memcmp(table_name,
+        SPIDER_SYS_TABLES_TABLE_NAME_STR,
+        SPIDER_SYS_TABLES_TABLE_NAME_LEN) &&
+      table->s->fields != SPIDER_SYS_TABLES_COL_CNT
+    ) {
+      spider_close_sys_table(thd, table, open_tables_backup, need_lock);
+      my_free(table, MYF(0));
+      my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
+        ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
+        SPIDER_SYS_TABLES_TABLE_NAME_STR);
+      *error_num = ER_SPIDER_SYS_TABLE_VERSION_NUM;
+      goto error_col_num_chk;
+    }
+  } else if (table_name_length == SPIDER_SYS_LINK_MON_TABLE_NAME_LEN)
+  {
+    if (
+      !memcmp(table_name,
+        SPIDER_SYS_LINK_MON_TABLE_NAME_STR,
+        SPIDER_SYS_LINK_MON_TABLE_NAME_LEN) &&
+      table->s->fields != SPIDER_SYS_LINK_MON_TABLE_COL_CNT
+    ) {
+      spider_close_sys_table(thd, table, open_tables_backup, need_lock);
+      my_free(table, MYF(0));
+      my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
+        ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
+        SPIDER_SYS_LINK_MON_TABLE_NAME_STR);
+      *error_num = ER_SPIDER_SYS_TABLE_VERSION_NUM;
+      goto error_col_num_chk;
+    }
+  }
   DBUG_RETURN(table);
 
 error:
   my_free(table, MYF(0));
 error_malloc:
   thd->restore_backup_open_tables_state(open_tables_backup);
+error_col_num_chk:
   DBUG_RETURN(NULL);
 }
 

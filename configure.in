@@ -54,6 +54,36 @@ AC_DEFUN([MYSQL_PATH_TEST],[
 MYSQL_PATH_TEST
 AC_SUBST(MYSQL_INC)
 
+AC_DEFUN([MYSQL_INCLUDE_PATH_TEST],[
+  AC_MSG_CHECKING([mysql include path])
+  AC_ARG_WITH([mysql-include],
+    [AS_HELP_STRING([--with-mysql-include=PATH],[mysql include directory PATH])],
+    [
+      if test \
+        -f $withval/my_config.h ;
+      then
+        MYSQL_INCLUDE_PATH="-I $withval/"
+        AC_MSG_RESULT([yes])
+      else
+        AC_MSG_ERROR([Can't find "my_config.h". Please check --with-mysql-include=PATH option])
+      fi
+    ],
+    [
+      if test \
+        -f ../../include/my_config.h ;
+      then
+        MYSQL_INCLUDE_PATH="-I ../../include/"
+        AC_MSG_RESULT([no])
+      else
+        AC_MSG_ERROR([Can't find "my_config.h". Please set --with-mysql-include=PATH option])
+      fi
+    ]
+  )
+])
+
+MYSQL_INCLUDE_PATH_TEST
+AC_SUBST(MYSQL_INCLUDE_PATH)
+
 CXXFLAGS="$CXXFLAGS -fno-implicit-templates -fno-exceptions -fno-rtti"
 
 

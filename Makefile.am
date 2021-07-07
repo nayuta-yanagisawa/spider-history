@@ -1,7 +1,9 @@
 pkgplugindir   = $(pkglibdir)/plugin
 INCLUDES       = -I$(MYSQL_INC)$(top_srcdir)/include \
                  -I$(MYSQL_INC)$(top_srcdir)/regex \
-                 -I$(MYSQL_INC)$(top_srcdir)/sql
+                 -I$(MYSQL_INC)$(top_srcdir)/sql \
+                 -I$(MYSQL_INC)$(top_srcdir)/extra/yassl/include \
+                 $(MYSQL_INCLUDE_PATH)
 
 noinst_HEADERS = ha_spider.h spd_conn.h spd_db_conn.h \
                  spd_db_include.h spd_err.h spd_sys_table.h \

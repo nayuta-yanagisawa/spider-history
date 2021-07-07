@@ -214,6 +214,7 @@ typedef struct st_spider_patition_handler_share
   uint               use_count;
   TABLE              *table;
   void               *creator;
+  void               **handlers;
   uchar              *searched_bitmap;
   uchar              *idx_read_bitmap;
   uchar              *idx_write_bitmap;
@@ -232,6 +233,7 @@ typedef struct st_spider_patition_share
   pthread_mutex_t    sts_mutex;
   pthread_mutex_t    crd_mutex;
   pthread_mutex_t    pt_handler_mutex;
+  HASH               pt_handler_hash;
 
   volatile bool      sts_init;
   volatile bool      crd_init;
@@ -248,8 +250,9 @@ typedef struct st_spider_patition_share
   time_t             update_time;
 
   longlong           *cardinality;
-
+/*
   volatile SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
+*/
 } SPIDER_PARTITION_SHARE;
 #endif
 

@@ -1020,5 +1020,6 @@ int spider_db_udf_copy_rows(
 int spider_db_udf_copy_tables(
   SPIDER_COPY_TABLES *copy_tables,
   ha_spider *spider,
-  TABLE *table
+  TABLE *table,
+  longlong bulk_insert_rows
 );

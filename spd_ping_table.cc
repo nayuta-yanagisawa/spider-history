@@ -236,6 +236,9 @@ int spider_get_ping_table_mon(
 #endif
         NULL
       )) ||
+      (error_num = spider_set_connect_info_default_dbtable(
+        tmp_share, name, name_length
+      )) ||
       (error_num = spider_create_conn_keys(tmp_share))
     ) {
       spider_sys_index_end(table_link_mon);
@@ -359,6 +362,9 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
       NULL,
 #endif
       NULL
+    )) ||
+    (*error_num = spider_set_connect_info_default_dbtable(
+      tmp_share, name, name_length
     )) ||
     (*error_num = spider_create_conn_keys(tmp_share)) ||
     (*error_num = spider_db_create_table_names_str(tmp_share)) ||

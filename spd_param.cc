@@ -38,6 +38,8 @@ int spider_remote_autocommit;
 int spider_remote_sql_log_off;
 int spider_remote_trx_isolation;
 my_bool spider_connect_mutex;
+int spider_udf_ct_bulk_insert_interval;
+long long spider_udf_ct_bulk_insert_rows;
 
 static MYSQL_SYSVAR_BOOL(
   support_xa,
@@ -1333,6 +1335,40 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+/*
+ -1         : The UDF parameter is adopted.
+  0 or more : Milliseconds.
+ */
+MYSQL_SYSVAR_INT(
+  udf_ct_bulk_insert_interval,
+  spider_udf_ct_bulk_insert_interval,
+  PLUGIN_VAR_RQCMDARG,
+  "The interval time between bulk insert and next bulk insert at coping",
+  NULL,
+  NULL,
+  -1,
+  -1,
+  2147483647,
+  0
+);
+
+/*
+ -1,0       : The UDF parameter is adopted.
+  1 or more : Number of rows.
+ */
+MYSQL_SYSVAR_LONGLONG(
+  udf_ct_bulk_insert_rows,
+  spider_udf_ct_bulk_insert_rows,
+  PLUGIN_VAR_RQCMDARG,
+  "The number of rows inserted with bulk insert of one time at coping",
+  NULL,
+  NULL,
+  -1,
+  -1,
+  9223372036854775807LL,
+  0
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -1421,6 +1457,8 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(connect_mutex),
   MYSQL_SYSVAR(bka_engine),
   MYSQL_SYSVAR(bka_mode),
+  MYSQL_SYSVAR(udf_ct_bulk_insert_interval),
+  MYSQL_SYSVAR(udf_ct_bulk_insert_rows),
   NULL
 };
 
@@ -1434,7 +1472,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0216,
+  0x0217,
   NULL,
   spider_system_variables,
   NULL

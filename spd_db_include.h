@@ -32,6 +32,8 @@ typedef struct st_spider_position
   SPIDER_DB_ROW          row;
   ulong                  *lengths;
   bool                   use_position;
+  bool                   mrr_with_cnt;
+  uchar                  *position_bitmap;
 } SPIDER_POSITION;
 
 typedef struct st_spider_condition

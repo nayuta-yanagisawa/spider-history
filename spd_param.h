@@ -23,6 +23,8 @@ extern int spider_remote_autocommit;
 extern int spider_remote_sql_log_off;
 extern int spider_remote_trx_isolation;
 extern my_bool spider_connect_mutex;
+extern int spider_udf_ct_bulk_insert_interval;
+extern long long spider_udf_ct_bulk_insert_rows;
 
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_mode, unsigned int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_strict, unsigned int);

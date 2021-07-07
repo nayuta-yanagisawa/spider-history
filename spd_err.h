@@ -64,6 +64,8 @@
 #define ER_SPIDER_XA_NOT_EXISTS_STR "This xid is not exist"
 #define ER_SPIDER_XA_MEMBER_NOT_EXISTS_NUM 12608
 #define ER_SPIDER_XA_MEMBER_NOT_EXISTS_STR "This xid member is not exist"
+#define ER_SPIDER_SYS_TABLE_VERSION_NUM 12609
+#define ER_SPIDER_SYS_TABLE_VERSION_STR "System table %s is different version"
 #define ER_SPIDER_WRONG_CHARACTER_IN_NAME_NUM 12611
 #define ER_SPIDER_WRONG_CHARACTER_IN_NAME_STR "Wrong character in name string"
 #define ER_SPIDER_LOW_MEM_READ_PREV_NUM 12621
