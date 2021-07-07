@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -55,6 +55,18 @@ public:
   SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
   ha_spider          *pt_handler_share_creator;
 #endif
+
+  /* for mrr */
+  bool               mrr_with_cnt;
+  uint               multi_range_cnt;
+  uint               multi_range_hit_point;
+#ifdef HA_MRR_USE_DEFAULT_IMPL
+  uint               multi_range_num;
+  char               **multi_range_keys;
+#else
+  KEY_MULTI_RANGE    *multi_range_ranges;
+#endif
+
   ha_spider          *next;
 
   bool               rnd_scan_and_first;

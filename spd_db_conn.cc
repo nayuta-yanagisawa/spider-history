@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -3182,12 +3182,13 @@ int spider_db_fetch_row(
 }
 
 int spider_db_fetch_table(
-  SPIDER_SHARE *share,
+  ha_spider *spider,
   uchar *buf,
   TABLE *table,
   SPIDER_RESULT_LIST *result_list
 ) {
   int error_num;
+  SPIDER_SHARE *share = spider->share;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
   SPIDER_DB_ROW row;
@@ -3207,6 +3208,19 @@ int spider_db_fetch_table(
     row = current->first_position[result_list->current_row_num].row;
     lengths = current->first_position[result_list->current_row_num].lengths;
   }
+
+  /* for mrr */
+  if (spider->mrr_with_cnt)
+  {
+    DBUG_PRINT("info", ("spider mrr_with_cnt"));
+    if (*row)
+      spider->multi_range_hit_point = atoi(*row);
+    else
+      DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
+    row++;
+    lengths++;
+  }
+
   for (
     field = table->field;
     *field;
@@ -3236,13 +3250,14 @@ int spider_db_fetch_table(
 }
 
 int spider_db_fetch_key(
-  SPIDER_SHARE *share,
+  ha_spider *spider,
   uchar *buf,
   TABLE *table,
   const KEY *key_info,
   SPIDER_RESULT_LIST *result_list
 ) {
   int error_num;
+  SPIDER_SHARE *share = spider->share;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
   KEY_PART_INFO *key_part;
@@ -3264,6 +3279,19 @@ int spider_db_fetch_key(
     row = current->first_position[result_list->current_row_num].row;
     lengths = current->first_position[result_list->current_row_num].lengths;
   }
+
+  /* for mrr */
+  if (spider->mrr_with_cnt)
+  {
+    DBUG_PRINT("info", ("spider mrr_with_cnt"));
+    if (*row)
+      spider->multi_range_hit_point = atoi(*row);
+    else
+      DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
+    row++;
+    lengths++;
+  }
+
   for (
     key_part = key_info->key_part,
     part_num = 0;
@@ -3322,6 +3350,19 @@ int spider_db_fetch_minimum_columns(
     row = current->first_position[result_list->current_row_num].row;
     lengths = current->first_position[result_list->current_row_num].lengths;
   }
+
+  /* for mrr */
+  if (spider->mrr_with_cnt)
+  {
+    DBUG_PRINT("info", ("spider mrr_with_cnt"));
+    if (*row)
+      spider->multi_range_hit_point = atoi(*row);
+    else
+      DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
+    row++;
+    lengths++;
+  }
+
   for (
     field = table->field;
     *field;
@@ -3895,10 +3936,10 @@ int spider_db_fetch(
   if (!spider->select_column_mode)
   {
     if (result_list->keyread)
-      error_num = spider_db_fetch_key(spider->share, buf, table,
+      error_num = spider_db_fetch_key(spider, buf, table,
         result_list->key_info, result_list);
     else
-      error_num = spider_db_fetch_table(spider->share, buf, table,
+      error_num = spider_db_fetch_table(spider, buf, table,
         result_list);
   } else
     error_num = spider_db_fetch_minimum_columns(spider, buf, table,
@@ -4555,14 +4596,21 @@ int spider_db_seek_tmp_table(
   TABLE *table
 ) {
   int error_num;
-  ulong *lengths;
+  ulong *lengths = pos->lengths;
   Field **field;
   SPIDER_DB_ROW row = pos->row;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   DBUG_ENTER("spider_db_seek_tmp_table");
+  /* for mrr */
+  if (spider->mrr_with_cnt)
+  {
+    DBUG_PRINT("info", ("spider mrr_with_cnt"));
+    row++;
+    lengths++;
+  }
+
   for (
-    field = table->field,
-    lengths = pos->lengths;
+    field = table->field;
     *field;
     field++,
     lengths++
@@ -4599,14 +4647,21 @@ int spider_db_seek_tmp_key(
   KEY_PART_INFO *key_part;
   uint part_num;
   SPIDER_DB_ROW row = pos->row;
-  ulong *lengths;
+  ulong *lengths = pos->lengths;
   Field *field;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   DBUG_ENTER("spider_db_seek_tmp_key");
+  /* for mrr */
+  if (spider->mrr_with_cnt)
+  {
+    DBUG_PRINT("info", ("spider mrr_with_cnt"));
+    row++;
+    lengths++;
+  }
+
   for (
     key_part = key_info->key_part,
-    part_num = 0,
-    lengths = pos->lengths;
+    part_num = 0;
     part_num < key_info->key_parts;
     key_part++,
     part_num++,
@@ -4641,15 +4696,22 @@ int spider_db_seek_tmp_minimum_columns(
   TABLE *table
 ) {
   int error_num;
-  ulong *lengths;
+  ulong *lengths = pos->lengths;
   Field **field;
   SPIDER_DB_ROW row = pos->row;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   DBUG_ENTER("spider_db_seek_tmp_minimum_columns");
   DBUG_ASSERT(spider->position_bitmap_init);
+  /* for mrr */
+  if (spider->mrr_with_cnt)
+  {
+    DBUG_PRINT("info", ("spider mrr_with_cnt"));
+    row++;
+    lengths++;
+  }
+
   for (
-    field = table->field,
-    lengths = pos->lengths;
+    field = table->field;
     *field;
     field++
   ) {

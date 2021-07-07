@@ -1513,7 +1513,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT("mod", max_order, 0);
           SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
             "msi", monitoring_sid, 0, 4294967295);
-          SPIDER_PARAM_INT_WITH_MAX("msr", multi_split_read, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX("msr", multi_split_read, 0, 2147483647);
           SPIDER_PARAM_INT("nto", net_timeout, 0);
           SPIDER_PARAM_LONGLONG("prt", priority, 0);
           SPIDER_PARAM_INT_WITH_MAX("qch", query_cache, 0, 2);
@@ -1675,7 +1675,7 @@ int spider_parse_connect_info(
           goto error;
         case 16:
           SPIDER_PARAM_INT_WITH_MAX(
-            "multi_split_read", multi_split_read, 0, 1);
+            "multi_split_read", multi_split_read, 0, 2147483647);
           SPIDER_PARAM_INT_WITH_MAX(
             "selupd_lock_mode", selupd_lock_mode, 0, 2);
           SPIDER_PARAM_INT_WITH_MAX(
@@ -2581,7 +2581,7 @@ int spider_set_connect_info_default(
   if (share->reset_sql_alloc == -1)
     share->reset_sql_alloc = 1;
   if (share->multi_split_read == -1)
-    share->multi_split_read = 0;
+    share->multi_split_read = 100;
   if (share->max_order == -1)
     share->max_order = 32767;
   if (share->semi_table_lock == -1)

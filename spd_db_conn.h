@@ -412,14 +412,14 @@ int spider_db_fetch_row(
 );
 
 int spider_db_fetch_table(
-  SPIDER_SHARE *share,
+  ha_spider *spider,
   uchar *buf,
   TABLE *table,
   SPIDER_RESULT_LIST *result_list
 );
 
 int spider_db_fetch_key(
-  SPIDER_SHARE *share,
+  ha_spider *spider,
   uchar *buf,
   TABLE *table,
   const KEY *key_info,

@@ -328,7 +328,7 @@ MYSQL_THDVAR_INT(
   NULL, /* update */
   -1, /* def */
   -1, /* min */
-  1, /* max */
+  2147483647, /* max */
   0 /* blk */
 );
 
@@ -1382,7 +1382,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0213,
+  0x0214,
   NULL,
   spider_system_variables,
   NULL
