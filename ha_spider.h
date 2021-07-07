@@ -145,6 +145,41 @@ public:
     bool sorted
   );
   int read_range_next();
+#ifdef HA_MRR_USE_DEFAULT_IMPL
+  ha_rows multi_range_read_info_const(
+    uint keyno,
+    RANGE_SEQ_IF *seq,
+    void *seq_init_param,
+    uint n_ranges,
+    uint *bufsz,
+    uint *flags,
+    COST_VECT *cost
+  );
+  ha_rows multi_range_read_info(
+    uint keyno,
+    uint n_ranges,
+    uint keys,
+    uint *bufsz,
+    uint *flags,
+    COST_VECT *cost
+  );
+  int multi_range_read_init(
+    RANGE_SEQ_IF *seq,
+    void *seq_init_param,
+    uint n_ranges,
+    uint mode,
+    HANDLER_BUFFER *buf
+  );
+  int multi_range_read_next(
+    char **range_info
+  );
+  int multi_range_read_next_first(
+    char **range_info
+  );
+  int multi_range_read_next_next(
+    char **range_info
+  );
+#else
   int read_multi_range_first(
     KEY_MULTI_RANGE **found_range_p,
     KEY_MULTI_RANGE *ranges,
@@ -155,6 +190,7 @@ public:
   int read_multi_range_next(
     KEY_MULTI_RANGE **found_range_p
   );
+#endif
   int rnd_init(
     bool scan
   );

@@ -5913,9 +5913,15 @@ int spider_db_bulk_update_end(
         }
       }
 
-      while (!(error_num = result_list->upd_tmp_tbl->file->rnd_next(
-        result_list->upd_tmp_tbl->record[0])))
-      {
+      while (
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+        !(error_num = result_list->upd_tmp_tbl->file->ha_rnd_next(
+          result_list->upd_tmp_tbl->record[0]))
+#else
+        !(error_num = result_list->upd_tmp_tbl->file->rnd_next(
+          result_list->upd_tmp_tbl->record[0]))
+#endif
+      ) {
         result_list->upd_tmp_tbl->field[0]->val_str(&tmp_str);
         for (
           roop_count = spider_conn_link_idx_next(share->link_statuses,
@@ -5932,8 +5938,15 @@ int spider_db_bulk_update_end(
           else if (!tmp_table[roop_count])
             continue;
           else {
-            if (!(error_num = tmp_table[roop_count]->file->rnd_next(
-              tmp_table[roop_count]->record[0])))
+            if (
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+              !(error_num = tmp_table[roop_count]->file->ha_rnd_next(
+                tmp_table[roop_count]->record[0]))
+#else
+              !(error_num = tmp_table[roop_count]->file->rnd_next(
+                tmp_table[roop_count]->record[0]))
+#endif
+            )
               goto error_rnd_next;
             tmp_str2.set_charset(
               result_list->update_sqls[roop_count].charset());

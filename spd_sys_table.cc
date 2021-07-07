@@ -136,9 +136,15 @@ int spider_check_sys_table(
     table->key_info,
     table->key_info->key_length);
 
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+  DBUG_RETURN(table->file->ha_index_read_idx_map(
+    table->record[0], 0, (uchar *) table_key,
+    HA_WHOLE_KEY, HA_READ_KEY_EXACT));
+#else
   DBUG_RETURN(table->file->index_read_idx_map(
     table->record[0], 0, (uchar *) table_key,
     HA_WHOLE_KEY, HA_READ_KEY_EXACT));
+#endif
 }
 
 int spider_check_sys_table_with_find_flag(
@@ -154,9 +160,15 @@ int spider_check_sys_table_with_find_flag(
     table->key_info,
     table->key_info->key_length);
 
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+  DBUG_RETURN(table->file->ha_index_read_idx_map(
+    table->record[0], 0, (uchar *) table_key,
+    HA_WHOLE_KEY, find_flag));
+#else
   DBUG_RETURN(table->file->index_read_idx_map(
     table->record[0], 0, (uchar *) table_key,
     HA_WHOLE_KEY, find_flag));
+#endif
 }
 
 int spider_get_sys_table_by_idx(
@@ -176,10 +188,17 @@ int spider_get_sys_table_by_idx(
     table->key_info,
     table->key_info->key_length);
 
-  if ((error_num = table->file->index_read_idx_map(
-    table->record[0], idx, (uchar *) table_key,
-    make_prev_keypart_map(col_count), HA_READ_KEY_EXACT)))
-  {
+  if (
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+    (error_num = table->file->ha_index_read_idx_map(
+      table->record[0], idx, (uchar *) table_key,
+      make_prev_keypart_map(col_count), HA_READ_KEY_EXACT))
+#else
+    (error_num = table->file->index_read_idx_map(
+      table->record[0], idx, (uchar *) table_key,
+      make_prev_keypart_map(col_count), HA_READ_KEY_EXACT))
+#endif
+  ) {
     spider_sys_index_end(table);
     DBUG_RETURN(error_num);
   }
@@ -191,10 +210,17 @@ int spider_sys_index_next_same(
   char *table_key
 ) {
   DBUG_ENTER("spider_sys_index_next_same");
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+  DBUG_RETURN(table->file->ha_index_next_same(
+    table->record[0],
+    (const uchar*) table_key,
+    table->key_info->key_length));
+#else
   DBUG_RETURN(table->file->index_next_same(
     table->record[0],
     (const uchar*) table_key,
     table->key_info->key_length));
+#endif
 }
 
 int spider_sys_index_first(
@@ -206,8 +232,13 @@ int spider_sys_index_first(
   if ((error_num = spider_sys_index_init(table, idx, FALSE)))
     DBUG_RETURN(error_num);
 
-  if ((error_num = table->file->index_first(table->record[0])))
-  {
+  if (
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+    (error_num = table->file->ha_index_first(table->record[0]))
+#else
+    (error_num = table->file->index_first(table->record[0]))
+#endif
+  ) {
     spider_sys_index_end(table);
     DBUG_RETURN(error_num);
   }
@@ -218,7 +249,11 @@ int spider_sys_index_next(
   TABLE *table
 ) {
   DBUG_ENTER("spider_sys_index_next");
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+  DBUG_RETURN(table->file->ha_index_next(table->record[0]));
+#else
   DBUG_RETURN(table->file->index_next(table->record[0]));
+#endif
 }
 
 void spider_store_xa_pk(
@@ -1792,7 +1827,12 @@ int spider_sys_replace(
 
     if (table->file->ha_table_flags() & HA_DUPLICATE_POS)
     {
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+      error_num = table->file->ha_rnd_pos(table->record[1],
+        table->file->dup_ref);
+#else
       error_num = table->file->rnd_pos(table->record[1], table->file->dup_ref);
+#endif
       if (error_num)
       {
         if (error_num == HA_ERR_RECORD_DELETED)
@@ -1805,8 +1845,13 @@ int spider_sys_replace(
 
       key_copy((uchar*)table_key, table->record[0],
         table->key_info + key_num, 0);
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+      error_num = table->file->ha_index_read_idx_map(table->record[1], key_num,
+        (const uchar*)table_key, HA_WHOLE_KEY, HA_READ_KEY_EXACT);
+#else
       error_num = table->file->index_read_idx_map(table->record[1], key_num,
         (const uchar*)table_key, HA_WHOLE_KEY, HA_READ_KEY_EXACT);
+#endif
       if (error_num)
       {
         if (error_num == HA_ERR_RECORD_DELETED)
