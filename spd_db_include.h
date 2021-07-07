@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -90,6 +90,20 @@ typedef struct st_spider_result_list
   TABLE                  **upd_tmp_tbls;
   TMP_TABLE_PARAM        upd_tmp_tbl_prm;
   TMP_TABLE_PARAM        *upd_tmp_tbl_prms;
+  bool                   tmp_table_join;
+  uchar                  *tmp_table_join_first;
+  bool                   tmp_tables_created;
+  uchar                  *tmp_table_created;
+  bool                   tmp_table_join_break_after_get_next;
+  key_part_map           tmp_table_join_key_part_map;
+  String                 tmp_sql;
+  String                 *tmp_sqls;
+  bool                   tmp_reuse_sql;
+  int                    tmp_sql_pos1; /* drop db nm pos at tmp_table_join */
+  int                    tmp_sql_pos2; /* create db nm pos at tmp_table_join */
+  int                    tmp_sql_pos3; /* insert db nm pos at tmp_table_join */
+  int                    tmp_sql_pos4; /* insert val pos at tmp_table_join */
+  int                    tmp_sql_pos5; /* end of drop tbl at tmp_table_join */
   bool                   sorted;
   bool                   desc_flg;
   longlong               current_row_num;

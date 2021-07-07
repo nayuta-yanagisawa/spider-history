@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -361,6 +361,8 @@ int spider_free_share_alloc(
     }
     my_free(share->tgt_default_groups, MYF(0));
   }
+  if (share->bka_engine)
+    my_free(share->bka_engine, MYF(0));
   if (share->conn_keys)
     my_free(share->conn_keys, MYF(0));
   if (share->tgt_ports)
@@ -481,6 +483,11 @@ void spider_free_tmp_share_alloc(
   {
     my_free(share->tgt_default_groups[0], MYF(0));
     share->tgt_default_groups[0] = NULL;
+  }
+  if (share->bka_engine)
+  {
+    my_free(share->bka_engine, MYF(0));
+    share->bka_engine = NULL;
   }
   if (share->conn_keys)
   {
@@ -1365,6 +1372,7 @@ int spider_parse_connect_info(
   share->use_table_charset = -1;
   share->use_pushdown_udf = -1;
   share->direct_dup_insert = -1;
+  share->bka_mode = -1;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   for (roop_count = 4; roop_count > 0; roop_count--)
@@ -1478,6 +1486,8 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT("bmd", bgs_mode, 0);
           SPIDER_PARAM_LONGLONG("bsr", bgs_second_read, 0);
 #endif
+          SPIDER_PARAM_STR("bke", bka_engine);
+          SPIDER_PARAM_INT_WITH_MAX("bkm", bka_mode, 0, 1);
           SPIDER_PARAM_INT("bsz", bulk_size, 0);
           SPIDER_PARAM_INT_WITH_MAX("bum", bulk_update_mode, 0, 2);
           SPIDER_PARAM_INT("bus", bulk_update_size, 0);
@@ -1600,6 +1610,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT("bgs_mode", bgs_mode, 0);
 #endif
           SPIDER_PARAM_STR_LIST("ssl_cert", tgt_ssl_certs);
+          SPIDER_PARAM_INT_WITH_MAX("bka_mode", bka_mode, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1619,6 +1630,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT_WITH_MAX("quick_mode", quick_mode, 0, 2);
           SPIDER_PARAM_STR_LIST("ssl_cipher", tgt_ssl_ciphers);
           SPIDER_PARAM_STR_LIST("ssl_capath", tgt_ssl_capaths);
+          SPIDER_PARAM_STR("bka_engine", bka_engine);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1819,6 +1831,7 @@ int spider_parse_connect_info(
   if (share->link_count < share->monitoring_bg_interval_length)
     share->link_count = share->monitoring_bg_interval_length;
 #endif
+  share->link_bitmap_size = (share->link_count + 7) / 8;
   if ((error_num = spider_increase_string_list(
     &share->server_names,
     &share->server_names_lengths,
@@ -2638,6 +2651,20 @@ int spider_set_connect_info_default(
     share->use_pushdown_udf = 1;
   if (share->direct_dup_insert == -1)
     share->direct_dup_insert = 0;
+  if (share->bka_mode == -1)
+    share->bka_mode = 1;
+  if (!share->bka_engine)
+  {
+    DBUG_PRINT("info",("spider create default bka_engine"));
+    share->bka_engine_length = SPIDER_SQL_TMP_BKA_ENGINE_LEN;
+    if (
+      !(share->bka_engine = spider_create_string(
+        SPIDER_SQL_TMP_BKA_ENGINE_STR,
+        SPIDER_SQL_TMP_BKA_ENGINE_LEN))
+    ) {
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+  }
   DBUG_RETURN(0);
 }
 
@@ -2999,6 +3026,10 @@ SPIDER_SHARE *spider_get_share(
         &result_list->upd_tmp_tbls, sizeof(TABLE *) * share->link_count,
         &result_list->upd_tmp_tbl_prms,
           sizeof(TMP_TABLE_PARAM) * share->link_count,
+        &result_list->tmp_table_join_first,
+          sizeof(uchar) * share->link_bitmap_size,
+        &result_list->tmp_table_created,
+          sizeof(uchar) * share->link_bitmap_size,
         NullS))
     ) {
       share->init_error = TRUE;
@@ -3219,6 +3250,10 @@ SPIDER_SHARE *spider_get_share(
         &result_list->upd_tmp_tbls, sizeof(TABLE *) * share->link_count,
         &result_list->upd_tmp_tbl_prms,
           sizeof(TMP_TABLE_PARAM) * share->link_count,
+        &result_list->tmp_table_join_first,
+          sizeof(uchar) * share->link_bitmap_size,
+        &result_list->tmp_table_created,
+          sizeof(uchar) * share->link_bitmap_size,
         NullS))
     ) {
       spider_free_share(share);
@@ -4643,6 +4678,7 @@ void spider_set_tmp_share_pointer(
 #endif
   tmp_share->monitoring_limit[0] = -1;
   tmp_share->monitoring_sid[0] = -1;
+  tmp_share->bka_engine = NULL;
   DBUG_VOID_RETURN;
 }
 

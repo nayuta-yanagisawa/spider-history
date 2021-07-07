@@ -67,6 +67,9 @@ public:
   KEY_MULTI_RANGE    *multi_range_ranges;
 #endif
 
+  char               *append_tblnm_alias;
+  uint               append_tblnm_alias_length;
+
   ha_spider          *next;
 
   bool               rnd_scan_and_first;
@@ -91,6 +94,7 @@ public:
   bool               update_request;
   bool               pk_update;
   bool               force_auto_increment;
+  int                bka_mode;
 
   ha_spider();
   ha_spider(
@@ -357,4 +361,5 @@ public:
   int check_and_end_bulk_update(
     spider_bulk_upd_start bulk_upd_start
   );
+  int drop_tmp_tables();
 };

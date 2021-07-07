@@ -1283,6 +1283,37 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+/*
+ */
+MYSQL_THDVAR_STR(
+  bka_engine, /* name */
+#ifdef PLUGIN_VAR_CAN_MEMALLOC
+  PLUGIN_VAR_MEMALLOC |
+#endif
+  PLUGIN_VAR_RQCMDARG,
+  "Temporary table's engine for BKA", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  NULL /* def */
+);
+
+/*
+ -1 :use table parameter
+  0 :use union all
+  1 :use temporary table
+ */
+MYSQL_THDVAR_INT(
+  bka_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Mode of BKA for Spider", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -1369,6 +1400,8 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(connect_retry_interval),
   MYSQL_SYSVAR(connect_retry_count),
   MYSQL_SYSVAR(connect_mutex),
+  MYSQL_SYSVAR(bka_engine),
+  MYSQL_SYSVAR(bka_mode),
   NULL
 };
 
@@ -1382,7 +1415,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0214,
+  0x0215,
   NULL,
   spider_system_variables,
   NULL

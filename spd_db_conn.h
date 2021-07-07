@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -25,8 +25,24 @@
 #define SPIDER_SQL_OPEN_PAREN_LEN (sizeof(SPIDER_SQL_OPEN_PAREN_STR) - 1)
 #define SPIDER_SQL_CLOSE_PAREN_STR ")"
 #define SPIDER_SQL_CLOSE_PAREN_LEN (sizeof(SPIDER_SQL_CLOSE_PAREN_STR) - 1)
+#define SPIDER_SQL_COMMA_STR ","
+#define SPIDER_SQL_COMMA_LEN (sizeof(SPIDER_SQL_COMMA_STR) - 1)
 #define SPIDER_SQL_UNION_ALL_STR ")union all("
 #define SPIDER_SQL_UNION_ALL_LEN (sizeof(SPIDER_SQL_UNION_ALL_STR) - 1)
+
+#define SPIDER_SQL_ID_STR "id"
+#define SPIDER_SQL_ID_LEN (sizeof(SPIDER_SQL_ID_STR) - 1)
+#define SPIDER_SQL_TMP_BKA_ENGINE_STR "memory"
+#define SPIDER_SQL_TMP_BKA_ENGINE_LEN (sizeof(SPIDER_SQL_TMP_BKA_ENGINE_STR) - 1)
+
+#define SPIDER_SQL_A_DOT_STR "a."
+#define SPIDER_SQL_A_DOT_LEN (sizeof(SPIDER_SQL_A_DOT_STR) - 1)
+#define SPIDER_SQL_B_DOT_STR "b."
+#define SPIDER_SQL_B_DOT_LEN (sizeof(SPIDER_SQL_B_DOT_STR) - 1)
+#define SPIDER_SQL_A_STR "a"
+#define SPIDER_SQL_A_LEN (sizeof(SPIDER_SQL_A_STR) - 1)
+#define SPIDER_SQL_B_STR "b"
+#define SPIDER_SQL_B_LEN (sizeof(SPIDER_SQL_B_STR) - 1)
 
 #define SPIDER_SQL_INT_LEN 20
 #define SPIDER_UDF_PING_TABLE_PING_ONLY (1 << 0)
@@ -226,6 +242,12 @@ int spider_db_append_column_value(
   const uchar *new_ptr
 );
 
+int spider_db_append_column_values(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str
+);
+
 int spider_db_append_select(
   ha_spider *spider
 );
@@ -261,6 +283,17 @@ int spider_db_append_from(
   String *str,
   ha_spider *spider,
   int link_idx
+);
+
+int spider_db_append_from_with_alias(
+  String *str,
+  char **table_names,
+  uint *table_name_lengths,
+  char **table_aliases,
+  uint *table_alias_lengths,
+  uint table_count,
+  int *table_name_pos,
+  bool over_write
 );
 
 int spider_db_append_into(
@@ -304,12 +337,68 @@ int spider_db_append_select_columns(
   ha_spider *spider
 );
 
+int spider_db_append_table_select_with_alias(
+  String *str,
+  const TABLE *table,
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+);
+
+int spider_db_append_key_select_with_alias(
+  String *str,
+  const KEY *key_info,
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+);
+
+int spider_db_append_minimum_select_with_alias(
+  String *str,
+  const TABLE *table,
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+);
+
+int spider_db_append_select_columns_with_alias(
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+);
+
 int spider_db_append_null(
   SPIDER_SHARE *share,
   String *str,
   KEY_PART_INFO *key_part,
   const key_range *key,
   const uchar **ptr
+);
+
+int spider_db_append_null_value(
+  String *str,
+  KEY_PART_INFO *key_part,
+  const uchar **ptr
+);
+
+int spider_db_append_key_column_types(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_append_key_columns(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_append_key_join_columns_for_bka(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str,
+  char **table_aliases,
+  uint *table_alias_lengths
 );
 
 int spider_db_append_key_hint(
@@ -403,6 +492,42 @@ int spider_db_append_flush_tables(
   bool lock
 );
 
+void spider_db_create_tmp_bka_table_name(
+  ha_spider *spider,
+  char *tmp_table_name,
+  int *tmp_table_name_length,
+  int link_idx
+);
+
+int spider_db_append_create_tmp_bka_table(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str,
+  char *tmp_table_name,
+  int tmp_table_name_length,
+  int *db_name_pos,
+  CHARSET_INFO *table_charset
+);
+
+int spider_db_append_drop_tmp_bka_table(
+  ha_spider *spider,
+  String *str,
+  char *tmp_table_name,
+  int tmp_table_name_length,
+  int *db_name_pos,
+  int *drop_table_end_pos,
+  bool with_semicolon
+);
+
+int spider_db_append_insert_tmp_bka_table(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str,
+  char *tmp_table_name,
+  int tmp_table_name_length,
+  int *db_name_pos
+);
+
 int spider_db_fetch_row(
   SPIDER_SHARE *share,
   Field *field,
@@ -458,6 +583,10 @@ int spider_db_next_result(
 );
 
 void spider_db_discard_result(
+  SPIDER_CONN *conn
+);
+
+void spider_db_discard_multiple_result(
   SPIDER_CONN *conn
 );
 

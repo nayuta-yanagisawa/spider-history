@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software); you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -96,3 +96,5 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(udf_ds_bulk_insert_rows, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(udf_ds_table_loop_mode, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(connect_retry_interval, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(connect_retry_count, int);
+extern DECLARE_MYSQL_THDVAR_BASIC(bka_engine, char *);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(bka_mode, int);

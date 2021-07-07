@@ -36,12 +36,14 @@ const char *name_quote_str = SPIDER_SQL_NAME_QUOTE_STR;
 #define SPIDER_SQL_VALUE_QUOTE_LEN (sizeof(SPIDER_SQL_VALUE_QUOTE_STR) - 1)
 #define SPIDER_SQL_DOT_STR "."
 #define SPIDER_SQL_DOT_LEN (sizeof(SPIDER_SQL_DOT_STR) - 1)
-#define SPIDER_SQL_COMMA_STR ","
-#define SPIDER_SQL_COMMA_LEN (sizeof(SPIDER_SQL_COMMA_STR) - 1)
 #define SPIDER_SQL_SEMICOLON_STR ";"
 #define SPIDER_SQL_SEMICOLON_LEN sizeof(SPIDER_SQL_SEMICOLON_STR) - 1
+#define SPIDER_SQL_UNDERSCORE_STR "_"
+#define SPIDER_SQL_UNDERSCORE_LEN sizeof(SPIDER_SQL_UNDERSCORE_STR) - 1
 #define SPIDER_SQL_EQUAL_STR " = "
 #define SPIDER_SQL_EQUAL_LEN (sizeof(SPIDER_SQL_EQUAL_STR) - 1)
+#define SPIDER_SQL_PF_EQUAL_STR " <=> "
+#define SPIDER_SQL_PF_EQUAL_LEN (sizeof(SPIDER_SQL_PF_EQUAL_STR) - 1)
 #define SPIDER_SQL_GT_STR " > "
 #define SPIDER_SQL_GT_LEN (sizeof(SPIDER_SQL_GT_STR) - 1)
 #define SPIDER_SQL_GTEQUAL_STR " >= "
@@ -236,6 +238,19 @@ const char *name_quote_str = SPIDER_SQL_NAME_QUOTE_STR;
 #define SPIDER_SQL_FLUSH_LOGS_LEN sizeof(SPIDER_SQL_FLUSH_LOGS_STR) - 1
 #define SPIDER_SQL_ONE_STR "1"
 #define SPIDER_SQL_ONE_LEN sizeof(SPIDER_SQL_ONE_STR) - 1
+
+#define SPIDER_SQL_DROP_TMP_STR "drop temporary table if exists "
+#define SPIDER_SQL_DROP_TMP_LEN (sizeof(SPIDER_SQL_DROP_TMP_STR) - 1)
+#define SPIDER_SQL_CREATE_TMP_STR "create temporary table "
+#define SPIDER_SQL_CREATE_TMP_LEN (sizeof(SPIDER_SQL_CREATE_TMP_STR) - 1)
+#define SPIDER_SQL_TMP_BKA_STR "tmp_spider_bka_"
+#define SPIDER_SQL_TMP_BKA_LEN (sizeof(SPIDER_SQL_TMP_BKA_STR) - 1)
+#define SPIDER_SQL_ENGINE_STR ")engine="
+#define SPIDER_SQL_ENGINE_LEN (sizeof(SPIDER_SQL_ENGINE_STR) - 1)
+#define SPIDER_SQL_DEF_CHARSET_STR " default charset="
+#define SPIDER_SQL_DEF_CHARSET_LEN (sizeof(SPIDER_SQL_DEF_CHARSET_STR) - 1)
+#define SPIDER_SQL_ID_TYPE_STR " bigint"
+#define SPIDER_SQL_ID_TYPE_LEN (sizeof(SPIDER_SQL_ID_TYPE_STR) - 1)
 
 #define SPIDER_SQL_PING_TABLE_STR "spider_ping_table("
 #define SPIDER_SQL_PING_TABLE_LEN (sizeof(SPIDER_SQL_PING_TABLE_STR) - 1)
@@ -1665,6 +1680,59 @@ int spider_db_append_column_value(
   DBUG_RETURN(0);
 }
 
+int spider_db_append_column_values(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str
+) {
+  int error_num;
+  const uchar *ptr;
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  SPIDER_SHARE *share = spider->share;
+  KEY *key_info = result_list->key_info;
+  uint key_count;
+  key_part_map full_key_part_map = make_prev_keypart_map(key_info->key_parts);
+  key_part_map start_key_part_map;
+  KEY_PART_INFO *key_part;
+  Field *field;
+  DBUG_ENTER("spider_db_append_column_values");
+
+  start_key_part_map = start_key->keypart_map & full_key_part_map;
+  DBUG_PRINT("info", ("spider key_info->key_parts=%lu", key_info->key_parts));
+  DBUG_PRINT("info", ("spider full_key_part_map=%lu", full_key_part_map));
+  DBUG_PRINT("info", ("spider start_key_part_map=%lu", start_key_part_map));
+
+  if (!start_key_part_map)
+    DBUG_RETURN(0);
+
+  for (
+    key_part = key_info->key_part,
+    key_count = 0;
+    start_key_part_map;
+    start_key_part_map >>= 1,
+    key_part++,
+    key_count++
+  ) {
+    ptr = start_key->key + key_count;
+    field = key_part->field;
+    if ((error_num = spider_db_append_null_value(str, key_part, &ptr)))
+    {
+      if (error_num > 0)
+        DBUG_RETURN(error_num);
+    } else {
+      if (spider_db_append_column_value(share, str, field, ptr))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+
+    if (str->reserve(SPIDER_SQL_COMMA_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+  str->length(str->length() - SPIDER_SQL_COMMA_LEN);
+
+  DBUG_RETURN(0);
+}
+
 int spider_db_append_select(
   ha_spider *spider
 ) {
@@ -1920,6 +1988,39 @@ int spider_db_append_from(
   str->q_append(SPIDER_SQL_FROM_STR, SPIDER_SQL_FROM_LEN);
   result_list->table_name_pos = str->length();
   spider_db_append_table_name_with_adjusting(str, share, link_idx);
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_from_with_alias(
+  String *str,
+  char **table_names,
+  uint *table_name_lengths,
+  char **table_aliases,
+  uint *table_alias_lengths,
+  uint table_count,
+  int *table_name_pos,
+  bool over_write
+) {
+  uint roop_count, length = 0;
+  DBUG_ENTER("spider_db_append_from_with_alias");
+  if (!over_write)
+  {
+    for (roop_count = 0; roop_count < table_count; roop_count++)
+      length += table_name_lengths[roop_count] + SPIDER_SQL_SPACE_LEN +
+        table_alias_lengths[roop_count] + SPIDER_SQL_COMMA_LEN;
+    if (str->reserve(SPIDER_SQL_FROM_LEN + length))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(SPIDER_SQL_FROM_STR, SPIDER_SQL_FROM_LEN);
+    *table_name_pos = str->length();
+  }
+  for (roop_count = 0; roop_count < table_count; roop_count++)
+  {
+    str->q_append(table_names[roop_count], table_name_lengths[roop_count]);
+    str->q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
+    str->q_append(table_aliases[roop_count], table_alias_lengths[roop_count]);
+    str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+  str->length(str->length() - SPIDER_SQL_COMMA_LEN);
   DBUG_RETURN(0);
 }
 
@@ -2184,6 +2285,121 @@ int spider_db_append_select_columns(
     &result_list->sql, spider->get_table(), spider));
 }
 
+int spider_db_append_table_select_with_alias(
+  String *str,
+  const TABLE *table,
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+) {
+  SPIDER_SHARE *share = spider->share;
+  Field **field;
+  int field_length;
+  DBUG_ENTER("spider_db_append_table_select_with_alias");
+  for (field = table->field; *field; field++)
+  {
+    field_length = share->column_name_str[(*field)->field_index].length();
+    if (str->reserve(alias_length + field_length +
+      (SPIDER_SQL_NAME_QUOTE_LEN) * 2 + SPIDER_SQL_COMMA_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(alias, alias_length);
+    spider_db_append_column_name(share, str, (*field)->field_index);
+    str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+  str->length(str->length() - SPIDER_SQL_COMMA_LEN);
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_key_select_with_alias(
+  String *str,
+  const KEY *key_info,
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+) {
+  SPIDER_SHARE *share = spider->share;
+  KEY_PART_INFO *key_part;
+  Field *field;
+  uint part_num;
+  int field_length;
+  DBUG_ENTER("spider_db_append_key_select_with_alias");
+  for (key_part = key_info->key_part, part_num = 0;
+    part_num < key_info->key_parts; key_part++, part_num++)
+  {
+    field = key_part->field;
+    field_length = share->column_name_str[field->field_index].length();
+    if (str->reserve(alias_length + field_length +
+      (SPIDER_SQL_NAME_QUOTE_LEN) * 2 + SPIDER_SQL_COMMA_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(alias, alias_length);
+    spider_db_append_column_name(share, str, field->field_index);
+    str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+  str->length(str->length() - SPIDER_SQL_COMMA_LEN);
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_minimum_select_with_alias(
+  String *str,
+  const TABLE *table,
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+) {
+  SPIDER_SHARE *share = spider->share;
+  Field **field;
+  int field_length;
+  bool appended = FALSE;
+  DBUG_ENTER("spider_db_append_minimum_select_with_alias");
+  for (field = table->field; *field; field++)
+  {
+    if (
+      spider_bit_is_set(spider->searched_bitmap, (*field)->field_index) |
+      bitmap_is_set(table->read_set, (*field)->field_index) |
+      bitmap_is_set(table->write_set, (*field)->field_index)
+    ) {
+      field_length = share->column_name_str[(*field)->field_index].length();
+      if (str->reserve(alias_length + field_length +
+        (SPIDER_SQL_NAME_QUOTE_LEN) * 2 + SPIDER_SQL_COMMA_LEN))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      str->q_append(alias, alias_length);
+      spider_db_append_column_name(share, str, (*field)->field_index);
+      str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+      appended = TRUE;
+    }
+  }
+  if (appended)
+    str->length(str->length() - SPIDER_SQL_COMMA_LEN);
+  else {
+    if (str->reserve(SPIDER_SQL_ONE_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(SPIDER_SQL_ONE_STR, SPIDER_SQL_ONE_LEN);
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_select_columns_with_alias(
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+) {
+  SPIDER_SHARE *share = spider->share;
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  DBUG_ENTER("spider_db_append_select_columns_with_alias");
+  if (!spider->select_column_mode)
+  {
+    if (result_list->keyread)
+      DBUG_RETURN(spider_db_append_key_select_with_alias(
+        &result_list->sql, result_list->key_info, spider,
+        alias, alias_length));
+    else
+      DBUG_RETURN(spider_db_append_table_select_with_alias(
+        &result_list->sql, spider->get_table(), spider, alias, alias_length));
+  }
+  DBUG_RETURN(spider_db_append_minimum_select_with_alias(
+    &result_list->sql, spider->get_table(), spider, alias, alias_length));
+}
+
 int spider_db_append_null(
   SPIDER_SHARE *share,
   String *str,
@@ -2215,6 +2431,184 @@ int spider_db_append_null(
       DBUG_RETURN(-1);
     }
   }
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_null_value(
+  String *str,
+  KEY_PART_INFO *key_part,
+  const uchar **ptr
+) {
+  DBUG_ENTER("spider_db_append_null_value");
+  if (key_part->null_bit)
+  {
+    if (*(*ptr)++)
+    {
+      if (str->reserve(SPIDER_SQL_NULL_LEN))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      str->q_append(SPIDER_SQL_NULL_STR, SPIDER_SQL_NULL_LEN);
+      DBUG_RETURN(-1);
+    }
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_key_column_types(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str
+) {
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  SPIDER_SHARE *share = spider->share;
+  KEY *key_info = result_list->key_info;
+  uint key_name_length, key_count;
+  key_part_map full_key_part_map = make_prev_keypart_map(key_info->key_parts);
+  key_part_map start_key_part_map;
+  KEY_PART_INFO *key_part;
+  Field *field;
+  char tmp_buf[MAX_FIELD_WIDTH];
+  String tmp_str(tmp_buf, sizeof(tmp_buf), system_charset_info);
+  DBUG_ENTER("spider_db_append_key_column_types");
+
+  start_key_part_map = start_key->keypart_map & full_key_part_map;
+  DBUG_PRINT("info", ("spider key_info->key_parts=%lu", key_info->key_parts));
+  DBUG_PRINT("info", ("spider full_key_part_map=%lu", full_key_part_map));
+  DBUG_PRINT("info", ("spider start_key_part_map=%lu", start_key_part_map));
+
+  if (!start_key_part_map)
+    DBUG_RETURN(0);
+
+  for (
+    key_part = key_info->key_part,
+    key_count = 0;
+    start_key_part_map;
+    start_key_part_map >>= 1,
+    key_part++,
+    key_count++
+  ) {
+    field = key_part->field;
+    key_name_length = my_sprintf(tmp_buf, (tmp_buf, "c%u", key_count));
+    if (str->reserve(key_name_length + SPIDER_SQL_SPACE_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(tmp_buf, key_name_length);
+    str->q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
+
+    if (tmp_str.ptr() != tmp_buf)
+      tmp_str.set(tmp_buf, sizeof(tmp_buf), system_charset_info);
+    else
+      tmp_str.set_charset(system_charset_info);
+    field->sql_type(tmp_str);
+    str->append(tmp_str);
+
+    if (str->reserve(SPIDER_SQL_COMMA_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+  str->length(str->length() - SPIDER_SQL_COMMA_LEN);
+
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_key_columns(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str
+) {
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  SPIDER_SHARE *share = spider->share;
+  KEY *key_info = result_list->key_info;
+  uint key_name_length, key_count;
+  key_part_map full_key_part_map = make_prev_keypart_map(key_info->key_parts);
+  key_part_map start_key_part_map;
+  char tmp_buf[MAX_FIELD_WIDTH];
+  DBUG_ENTER("spider_db_append_key_columns");
+
+  start_key_part_map = start_key->keypart_map & full_key_part_map;
+  DBUG_PRINT("info", ("spider key_info->key_parts=%lu", key_info->key_parts));
+  DBUG_PRINT("info", ("spider full_key_part_map=%lu", full_key_part_map));
+  DBUG_PRINT("info", ("spider start_key_part_map=%lu", start_key_part_map));
+
+  if (!start_key_part_map)
+    DBUG_RETURN(0);
+
+  for (
+    key_count = 0;
+    start_key_part_map;
+    start_key_part_map >>= 1,
+    key_count++
+  ) {
+    key_name_length = my_sprintf(tmp_buf, (tmp_buf, "c%u", key_count));
+    if (str->reserve(key_name_length + SPIDER_SQL_COMMA_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(tmp_buf, key_name_length);
+    str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+  str->length(str->length() - SPIDER_SQL_COMMA_LEN);
+
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_key_join_columns_for_bka(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str,
+  char **table_aliases,
+  uint *table_alias_lengths
+) {
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  SPIDER_SHARE *share = spider->share;
+  KEY *key_info = result_list->key_info;
+  uint length, key_name_length, key_count;
+  key_part_map full_key_part_map = make_prev_keypart_map(key_info->key_parts);
+  key_part_map start_key_part_map;
+  KEY_PART_INFO *key_part;
+  Field *field;
+  char tmp_buf[MAX_FIELD_WIDTH];
+  bool where_pos = (str->length() == spider->result_list.where_pos);
+  DBUG_ENTER("spider_db_append_key_join_columns_for_bka");
+
+  start_key_part_map = start_key->keypart_map & full_key_part_map;
+  DBUG_PRINT("info", ("spider key_info->key_parts=%lu", key_info->key_parts));
+  DBUG_PRINT("info", ("spider full_key_part_map=%lu", full_key_part_map));
+  DBUG_PRINT("info", ("spider start_key_part_map=%lu", start_key_part_map));
+
+  if (!start_key_part_map)
+    DBUG_RETURN(0);
+
+  if (where_pos)
+  {
+    if (str->reserve(SPIDER_SQL_WHERE_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(SPIDER_SQL_WHERE_STR, SPIDER_SQL_WHERE_LEN);
+  } else {
+    if (str->reserve(SPIDER_SQL_AND_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(SPIDER_SQL_AND_STR, SPIDER_SQL_AND_LEN);
+  }
+
+  for (
+    key_part = key_info->key_part,
+    key_count = 0;
+    start_key_part_map;
+    start_key_part_map >>= 1,
+    key_part++,
+    key_count++
+  ) {
+    field = key_part->field;
+    key_name_length = share->column_name_str[field->field_index].length();
+    length = my_sprintf(tmp_buf, (tmp_buf, "c%u", key_count));
+    if (str->reserve(length + table_alias_lengths[0] + key_name_length +
+      table_alias_lengths[1] + SPIDER_SQL_PF_EQUAL_LEN + SPIDER_SQL_AND_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    str->q_append(table_aliases[0], table_alias_lengths[0]);
+    str->q_append(tmp_buf, length);
+    str->q_append(SPIDER_SQL_PF_EQUAL_STR, SPIDER_SQL_PF_EQUAL_LEN);
+    str->q_append(table_aliases[1], table_alias_lengths[1]);
+    spider_db_append_column_name(share, str, field->field_index);
+    str->q_append(SPIDER_SQL_AND_STR, SPIDER_SQL_AND_LEN);
+  }
+  str->length(str->length() - SPIDER_SQL_AND_LEN);
+
   DBUG_RETURN(0);
 }
 
@@ -3141,6 +3535,128 @@ int spider_db_append_flush_tables(
   DBUG_RETURN(0);
 }
 
+void spider_db_create_tmp_bka_table_name(
+  ha_spider *spider,
+  char *tmp_table_name,
+  int *tmp_table_name_length,
+  int link_idx
+) {
+  SPIDER_SHARE *share = spider->share;
+  uint adjust_length =
+    share->db_nm_max_length - share->db_names_str[link_idx].length() +
+    share->table_nm_max_length - share->table_names_str[link_idx].length(),
+    length;
+  DBUG_ENTER("spider_db_create_tmp_bka_table_name");
+  *tmp_table_name_length = share->db_nm_max_length +
+    share->table_nm_max_length;
+  memset(tmp_table_name, ' ', adjust_length);
+  tmp_table_name += adjust_length;
+  memcpy(tmp_table_name, share->db_names_str[link_idx].c_ptr(),
+    share->db_names_str[link_idx].length());
+  tmp_table_name += share->db_names_str[link_idx].length();
+  length = my_sprintf(tmp_table_name, (tmp_table_name,
+    "%s%s%lx%s", SPIDER_SQL_DOT_STR, SPIDER_SQL_TMP_BKA_STR, spider,
+    SPIDER_SQL_UNDERSCORE_STR));
+  *tmp_table_name_length += length;
+  tmp_table_name += length;
+  memcpy(tmp_table_name, share->table_names_str[link_idx].c_ptr(),
+    share->table_names_str[link_idx].length());
+  DBUG_VOID_RETURN;
+}
+
+int spider_db_append_create_tmp_bka_table(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str,
+  char *tmp_table_name,
+  int tmp_table_name_length,
+  int *db_name_pos,
+  CHARSET_INFO *table_charset
+) {
+  int error_num;
+  SPIDER_SHARE *share = spider->share;
+  THD *thd = spider->trx->thd;
+  char *bka_engine = THDVAR(thd, bka_engine) ?
+    THDVAR(thd, bka_engine) : share->bka_engine;
+  uint bka_engine_length = strlen(bka_engine),
+    cset_length = strlen(table_charset->csname);
+  DBUG_ENTER("spider_db_append_create_tmp_bka_table");
+  if (str->reserve(SPIDER_SQL_CREATE_TMP_LEN + tmp_table_name_length +
+    SPIDER_SQL_OPEN_PAREN_LEN + SPIDER_SQL_ID_LEN + SPIDER_SQL_ID_TYPE_LEN +
+    SPIDER_SQL_COMMA_LEN))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  str->q_append(SPIDER_SQL_CREATE_TMP_STR, SPIDER_SQL_CREATE_TMP_LEN);
+  *db_name_pos = str->length();
+  str->q_append(tmp_table_name, tmp_table_name_length);
+  str->q_append(SPIDER_SQL_OPEN_PAREN_STR, SPIDER_SQL_OPEN_PAREN_LEN);
+  str->q_append(SPIDER_SQL_ID_STR, SPIDER_SQL_ID_LEN);
+  str->q_append(SPIDER_SQL_ID_TYPE_STR, SPIDER_SQL_ID_TYPE_LEN);
+  str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  if ((error_num = spider_db_append_key_column_types(start_key, spider, str)))
+    DBUG_RETURN(error_num);
+  if (str->reserve(SPIDER_SQL_ENGINE_LEN + bka_engine_length +
+    SPIDER_SQL_DEF_CHARSET_LEN + cset_length + SPIDER_SQL_SEMICOLON_LEN))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  str->q_append(SPIDER_SQL_ENGINE_STR, SPIDER_SQL_ENGINE_LEN);
+  str->q_append(bka_engine, bka_engine_length);
+  str->q_append(SPIDER_SQL_DEF_CHARSET_STR, SPIDER_SQL_DEF_CHARSET_LEN);
+  str->q_append(table_charset->csname, cset_length);
+  str->q_append(SPIDER_SQL_SEMICOLON_STR, SPIDER_SQL_SEMICOLON_LEN);
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_drop_tmp_bka_table(
+  ha_spider *spider,
+  String *str,
+  char *tmp_table_name,
+  int tmp_table_name_length,
+  int *db_name_pos,
+  int *drop_table_end_pos,
+  bool with_semicolon
+) {
+  DBUG_ENTER("spider_db_append_drop_tmp_bka_table");
+  if (str->reserve(SPIDER_SQL_DROP_TMP_LEN + tmp_table_name_length +
+    (with_semicolon ? SPIDER_SQL_SEMICOLON_LEN : 0)))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  str->q_append(SPIDER_SQL_DROP_TMP_STR, SPIDER_SQL_DROP_TMP_LEN);
+  *db_name_pos = str->length();
+  str->q_append(tmp_table_name, tmp_table_name_length);
+  *drop_table_end_pos = str->length();
+  if (with_semicolon)
+    str->q_append(SPIDER_SQL_SEMICOLON_STR, SPIDER_SQL_SEMICOLON_LEN);
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_insert_tmp_bka_table(
+  const key_range *start_key,
+  ha_spider *spider,
+  String *str,
+  char *tmp_table_name,
+  int tmp_table_name_length,
+  int *db_name_pos
+) {
+  int error_num;
+  DBUG_ENTER("spider_db_append_insert_tmp_bka_table");
+  if (str->reserve(SPIDER_SQL_INSERT_LEN + SPIDER_SQL_INTO_LEN +
+    tmp_table_name_length + SPIDER_SQL_OPEN_PAREN_LEN + SPIDER_SQL_ID_LEN +
+    SPIDER_SQL_COMMA_LEN))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  str->q_append(SPIDER_SQL_INSERT_STR, SPIDER_SQL_INSERT_LEN);
+  str->q_append(SPIDER_SQL_INTO_STR, SPIDER_SQL_INTO_LEN);
+  *db_name_pos = str->length();
+  str->q_append(tmp_table_name, tmp_table_name_length);
+  str->q_append(SPIDER_SQL_OPEN_PAREN_STR, SPIDER_SQL_OPEN_PAREN_LEN);
+  str->q_append(SPIDER_SQL_ID_STR, SPIDER_SQL_ID_LEN);
+  str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  if ((error_num = spider_db_append_key_columns(start_key, spider, str)))
+    DBUG_RETURN(error_num);
+  if (str->reserve(SPIDER_SQL_VALUES_LEN + SPIDER_SQL_OPEN_PAREN_LEN))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  str->q_append(SPIDER_SQL_VALUES_STR, SPIDER_SQL_VALUES_LEN);
+  str->q_append(SPIDER_SQL_OPEN_PAREN_STR, SPIDER_SQL_OPEN_PAREN_LEN);
+  DBUG_RETURN(0);
+}
+
 int spider_db_fetch_row(
   SPIDER_SHARE *share,
   Field *field,
@@ -3585,6 +4101,24 @@ int spider_db_free_result(
       result_list->update_sql.length(0);
       for (roop_count = 0; roop_count < share->link_count; roop_count++)
         result_list->update_sqls[roop_count].length(0);
+
+      if (result_list->tmp_sql.alloced_length() > alloc_size * 2)
+      {
+        result_list->tmp_sql.free();
+        if (result_list->tmp_sql.real_alloc(init_sql_alloc_size))
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        for (roop_count = 0; roop_count < share->link_count; roop_count++)
+        {
+          if (result_list->tmp_sqls[roop_count].alloced_length() >
+            alloc_size * 2)
+          {
+            result_list->tmp_sqls[roop_count].free();
+            if (result_list->tmp_sqls[roop_count].real_alloc(
+              init_sql_alloc_size))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+          }
+        }
+      }
     }
   } else {
     while (result)
@@ -3922,6 +4456,20 @@ void spider_db_discard_result(
   if ((result =
     conn->db_conn->methods->use_result(conn->db_conn)))
     mysql_free_result(result);
+  DBUG_VOID_RETURN;
+}
+
+void spider_db_discard_multiple_result(
+  SPIDER_CONN *conn
+) {
+  SPIDER_DB_RESULT *result;
+  DBUG_ENTER("spider_db_discard_multiple_result");
+  do
+  {
+    if ((result =
+      conn->db_conn->methods->use_result(conn->db_conn)))
+      mysql_free_result(result);
+  } while (!spider_db_next_result(conn));
   DBUG_VOID_RETURN;
 }
 

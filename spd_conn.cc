@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -927,9 +927,11 @@ void *spider_bg_conn_action(
     if (conn->bg_search)
     {
       int tmp_pos;
-      String *sql;
+      String *sql, *tmp_sql;
+      SPIDER_SHARE *share;
       DBUG_PRINT("info",("spider bg search start"));
       spider = (ha_spider*) conn->bg_target;
+      share = spider->share;
       result_list = &spider->result_list;
       result_list->bgs_error = 0;
       if (
@@ -937,18 +939,69 @@ void *spider_bg_conn_action(
         result_list->bgs_phase == 1 ||
         !result_list->bgs_current->result
       ) {
-        if (spider->share->same_db_table_name)
+        if (share->same_db_table_name)
+        {
           sql = &result_list->sql;
-        else {
+          tmp_sql = &result_list->tmp_sql;
+        } else {
+          char tmp_table_name[MAX_FIELD_WIDTH * 2],
+            tgt_table_name[MAX_FIELD_WIDTH * 2];
+          int tmp_table_name_length;
+          String tgt_table_name_str(tgt_table_name, MAX_FIELD_WIDTH * 2,
+            share->db_names_str[conn->link_idx].charset());
+          char *table_names[2], *table_aliases[2];
+          uint table_name_lengths[2], table_alias_lengths[2];
+          tgt_table_name_str.length(0);
+          if (result_list->tmp_table_join)
+          {
+            spider_db_create_tmp_bka_table_name(spider,
+              tmp_table_name, &tmp_table_name_length, conn->link_idx);
+            spider_db_append_table_name_with_adjusting(&tgt_table_name_str,
+              share, conn->link_idx);
+            table_names[0] = tmp_table_name;
+            table_names[1] = tgt_table_name_str.c_ptr();
+            table_name_lengths[0] = tmp_table_name_length;
+            table_name_lengths[1] = tgt_table_name_str.length();
+            table_aliases[0] = SPIDER_SQL_A_STR;
+            table_aliases[1] = SPIDER_SQL_B_STR;
+            table_alias_lengths[0] = SPIDER_SQL_A_LEN;
+            table_alias_lengths[1] = SPIDER_SQL_B_LEN;
+          }
           sql = &result_list->sqls[conn->link_idx];
           if (sql->copy(result_list->sql))
             result_list->bgs_error = HA_ERR_OUT_OF_MEM;
           else {
             tmp_pos = sql->length();
             sql->length(result_list->table_name_pos);
-            spider_db_append_table_name_with_adjusting(sql, spider->share,
-              conn->link_idx);
+            if (result_list->tmp_table_join)
+            {
+              if ((error_num = spider_db_append_from_with_alias(
+                sql, table_names, table_name_lengths,
+                table_aliases, table_alias_lengths, 2,
+                &result_list->table_name_pos, TRUE))
+              )
+                result_list->bgs_error = error_num;
+            } else {
+              spider_db_append_table_name_with_adjusting(sql, spider->share,
+                conn->link_idx);
+            }
             sql->length(tmp_pos);
+          }
+          tmp_sql = &result_list->tmp_sqls[conn->link_idx];
+          if (result_list->tmp_table_join && !result_list->bgs_error)
+          {
+            if (tmp_sql->copy(result_list->tmp_sql))
+              result_list->bgs_error = HA_ERR_OUT_OF_MEM;
+            else {
+              tmp_pos = tmp_sql->length();
+              tmp_sql->length(result_list->tmp_sql_pos1);
+              tmp_sql->q_append(tmp_table_name, tmp_table_name_length);
+              tmp_sql->length(result_list->tmp_sql_pos2);
+              tmp_sql->q_append(tmp_table_name, tmp_table_name_length);
+              tmp_sql->length(result_list->tmp_sql_pos3);
+              tmp_sql->q_append(tmp_table_name, tmp_table_name_length);
+              tmp_sql->length(tmp_pos);
+            }
           }
         }
         if (!result_list->bgs_error)
@@ -960,22 +1013,45 @@ void *spider_bg_conn_action(
           if (!(result_list->bgs_error =
             spider_db_set_names(spider, conn, conn->link_idx)))
           {
-            if (spider_db_query(
-              conn,
-              sql->ptr(),
-              sql->length(),
-              &spider->need_mons[conn->link_idx])
-            )
-              result_list->bgs_error = spider_db_errorno(conn);
-            else {
-              if (!conn->bg_discard_result)
-              {
-                result_list->bgs_error =
-                  spider_db_store_result(spider, conn->link_idx,
-                    result_list->table);
-              } else {
-                result_list->bgs_error = 0;
-                spider_db_discard_result(conn);
+            if (
+              result_list->tmp_table_join &&
+              spider_bit_is_set(result_list->tmp_table_join_first,
+                conn->link_idx)
+            ) {
+              spider_clear_bit(result_list->tmp_table_join_first,
+                conn->link_idx);
+              spider_set_bit(result_list->tmp_table_created,
+                conn->link_idx);
+              result_list->tmp_tables_created = TRUE;
+              if (spider_db_query(
+                conn,
+                tmp_sql->ptr(),
+                tmp_sql->length(),
+                &spider->need_mons[conn->link_idx])
+              )
+                result_list->bgs_error = spider_db_errorno(conn);
+              else
+                spider_db_discard_multiple_result(conn);
+            }
+            if (!result_list->bgs_error)
+            {
+              if (spider_db_query(
+                conn,
+                sql->ptr(),
+                sql->length(),
+                &spider->need_mons[conn->link_idx])
+              )
+                result_list->bgs_error = spider_db_errorno(conn);
+              else {
+                if (!conn->bg_discard_result)
+                {
+                  result_list->bgs_error =
+                    spider_db_store_result(spider, conn->link_idx,
+                      result_list->table);
+                } else {
+                  result_list->bgs_error = 0;
+                  spider_db_discard_result(conn);
+                }
               }
             }
           }

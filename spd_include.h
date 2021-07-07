@@ -15,6 +15,8 @@
 
 #define spider_set_bit(BITMAP, BIT) \
   ((BITMAP)[(BIT) / 8] |= (1 << ((BIT) & 7)))
+#define spider_clear_bit(BITMAP, BIT) \
+  ((BITMAP)[(BIT) / 8] &= ~(1 << ((BIT) & 7)))
 #define spider_bit_is_set(BITMAP, BIT) \
   (uint) ((BITMAP)[(BIT) / 8] & (1 << ((BIT) & 7)))
 
@@ -282,6 +284,7 @@ typedef struct st_spider_share
   uint               table_name_length;
   uint               use_count;
   uint               link_count;
+  uint               link_bitmap_size;
   pthread_mutex_t    mutex;
   pthread_mutex_t    sts_mutex;
   pthread_mutex_t    crd_mutex;
@@ -420,6 +423,10 @@ typedef struct st_spider_share
   int                use_table_charset;
   int                use_pushdown_udf;
   int                direct_dup_insert;
+
+  int                bka_mode;
+  char               *bka_engine;
+  int                bka_engine_length;
 
   char               **server_names;
   char               **tgt_table_names;
