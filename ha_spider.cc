@@ -1175,15 +1175,36 @@ int ha_spider::rnd_init(
   rnd_scan_and_first = scan;
   if (scan)
   {
+/*
     if (
       result_list.current &&
       result_list.low_mem_read &&
       (error_num = spider_db_free_result(this, FALSE))
     )
       DBUG_RETURN(error_num);
+*/
+    if (
+      result_list.current &&
+      result_list.low_mem_read
+    ) {
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+      if (conn && result_list.bgs_working)
+        spider_bg_conn_break(conn, this);
+#endif
+      if (conn && conn->quick_target == this)
+        conn->quick_target = NULL;
+      result_list.record_num = 0;
+      result_list.finish_flg = FALSE;
+      result_list.quick_phase = 0;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+      result_list.bgs_phase = 0;
+#endif
+    }
 
-    if (result_list.current)
-    {
+    if (
+      result_list.current &&
+      !result_list.low_mem_read
+    ) {
       result_list.current = result_list.first;
       spider_db_set_pos_to_first_row(&result_list);
       rnd_scan_and_first = FALSE;
@@ -1279,8 +1300,7 @@ void ha_spider::position(
   DBUG_PRINT("info",("spider first_row=%x", result_list.current->first_row));
   DBUG_PRINT("info",
     ("spider current_row_num=%ld", result_list.current_row_num));
-  my_store_ptr(ref, ref_length, (my_off_t)
-    spider_db_create_position(this));
+  my_store_ptr(ref, ref_length, (my_off_t) spider_db_create_position(this));
   DBUG_VOID_RETURN;
 }
 
@@ -1288,13 +1308,15 @@ int ha_spider::rnd_pos(
   uchar *buf,
   uchar *pos
 ) {
+  SPIDER_POSITION *tmp_pos;
   DBUG_ENTER("ha_spider::rnd_pos");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider pos=%x", pos));
   DBUG_PRINT("info",("spider buf=%x", buf));
   DBUG_PRINT("info",("spider ref=%x", my_get_ptr(pos, ref_length)));
-  DBUG_RETURN(spider_db_seek_tmp(buf,
-    (SPIDER_POSITION*) my_get_ptr(pos, ref_length), this, table));
+  if (!(tmp_pos = (SPIDER_POSITION*) my_get_ptr(pos, ref_length)))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  DBUG_RETURN(spider_db_seek_tmp(buf, tmp_pos, this, table));
 }
 
 int ha_spider::info(

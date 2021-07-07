@@ -48,6 +48,7 @@ typedef struct st_spider_conn
   uint               conn_key_length;
   SPIDER_DB_CONN     *db_conn;
   pthread_mutex_t    mta_conn_mutex;
+  query_id_t         ping_query_id;
   uint               join_trx;
   int                trx_isolation;
   bool               semi_trx_isolation_chk;

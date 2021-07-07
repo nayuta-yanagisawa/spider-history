@@ -507,6 +507,12 @@ int spider_db_open_item_ref(
   String *str
 );
 
+int spider_db_open_item_row(
+  Item_row *item_row,
+  ha_spider *spider,
+  String *str
+);
+
 int spider_db_append_condition(
   ha_spider *spider,
   String *str

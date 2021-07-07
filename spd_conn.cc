@@ -95,6 +95,7 @@ void spider_free_conn_from_trx(
       THDVAR(trx->thd, conn_recycle_mode) == 1
     ) {
       /* conn_recycle_mode == 1 */
+      conn->ping_query_id = 0;
       pthread_mutex_lock(&spider_conn_mutex);
       if (my_hash_insert(&spider_open_connections, (uchar*) conn))
       {
@@ -227,23 +228,33 @@ SPIDER_CONN *spider_get_conn(
         DBUG_PRINT("info",("spider create new conn"));
         if(!(conn = spider_create_conn(share, error_num)))
           goto error;
+        if (spider)
+          spider->conn = conn;
       } else {
         hash_delete(&spider_open_connections, (uchar*) conn);
         pthread_mutex_unlock(&spider_conn_mutex);
         DBUG_PRINT("info",("spider get global conn"));
+        if (spider)
+        {
+          spider->conn = conn;
+          if (
+            trx->thd &&
+            !conn->trx_start &&
+            (*error_num = spider_db_ping(spider))
+          )
+            goto error;
+        }
       }
     } else {
       DBUG_PRINT("info",("spider create new conn"));
       /* conn_recycle_strict = 0 and conn_recycle_mode = 0 or 2 */
       if(!(conn = spider_create_conn(share, error_num)))
         goto error;
+      if (spider)
+        spider->conn = conn;
     }
     conn->thd = trx->thd;
     conn->priority = share->priority;
-    if (spider)
-    {
-      spider->conn = conn;
-    }
 
     if (another)
     {
@@ -261,6 +272,15 @@ SPIDER_CONN *spider_get_conn(
         goto error;
       }
     }
+  } else if (spider)
+  {
+    spider->conn = conn;
+    if (
+      trx->thd &&
+      !conn->trx_start &&
+      (*error_num = spider_db_ping(spider))
+    )
+      goto error;
   }
 
   DBUG_PRINT("info",("spider conn=%x", conn));
@@ -583,7 +603,7 @@ int spider_bg_conn_search(
   int error_num;
   SPIDER_CONN *conn = spider->conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
-  DBUG_ENTER("spider_bg_search");
+  DBUG_ENTER("spider_bg_conn_search");
   if (first)
   {
     DBUG_PRINT("info",("spider bg first search"));
@@ -641,6 +661,7 @@ int spider_bg_conn_search(
     DBUG_PRINT("info",("spider bg search"));
     if (result_list->current->finish_flg)
     {
+      DBUG_PRINT("info",("spider bg end of file"));
       result_list->table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(HA_ERR_END_OF_FILE);
     }
@@ -653,6 +674,7 @@ int spider_bg_conn_search(
     }
     if (result_list->bgs_error)
     {
+      DBUG_PRINT("info",("spider bg error"));
       if (result_list->bgs_error == HA_ERR_END_OF_FILE)
       {
         result_list->current = result_list->current->next;
@@ -753,14 +775,6 @@ void *spider_bg_conn_action(
       my_thread_end();
       DBUG_RETURN(NULL);
     }
-    if (conn->bg_break)
-    {
-      DBUG_PRINT("info",("spider bg break start"));
-      spider = (ha_spider*) conn->bg_target;
-      result_list = &spider->result_list;
-      result_list->bgs_working = FALSE;
-      continue;
-    }
     if (conn->bg_search)
     {
       DBUG_PRINT("info",("spider bg search start"));
@@ -789,6 +803,14 @@ void *spider_bg_conn_action(
       result_list->bgs_working = FALSE;
       if (conn->bg_caller_wait)
         pthread_cond_signal(&conn->bg_conn_cond);
+      continue;
+    }
+    if (conn->bg_break)
+    {
+      DBUG_PRINT("info",("spider bg break start"));
+      spider = (ha_spider*) conn->bg_target;
+      result_list = &spider->result_list;
+      result_list->bgs_working = FALSE;
       continue;
     }
   }
@@ -895,12 +917,16 @@ void *spider_bg_sts_action(
       if (conn)
       {
         pthread_mutex_lock(&conn->mta_conn_mutex);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
         VOID(spider_get_sts(share, share->bg_sts_try_time, &spider,
           share->bg_sts_interval, share->bg_sts_mode,
-#ifdef WITH_PARTITION_STORAGE_ENGINE
           share->bg_sts_sync,
-#endif
           2));
+#else
+        VOID(spider_get_sts(share, share->bg_sts_try_time, &spider,
+          share->bg_sts_interval, share->bg_sts_mode,
+          2));
+#endif
         pthread_mutex_unlock(&conn->mta_conn_mutex);
       }
     }
@@ -1014,12 +1040,16 @@ void *spider_bg_crd_action(
       if (conn)
       {
         pthread_mutex_lock(&conn->mta_conn_mutex);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
         VOID(spider_get_crd(share, share->bg_crd_try_time, &spider, &table,
           share->bg_crd_interval, share->bg_crd_mode,
-#ifdef WITH_PARTITION_STORAGE_ENGINE
           share->bg_crd_sync,
-#endif
           2));
+#else
+        VOID(spider_get_crd(share, share->bg_crd_try_time, &spider, &table,
+          share->bg_crd_interval, share->bg_crd_mode,
+          2));
+#endif
         pthread_mutex_unlock(&conn->mta_conn_mutex);
       }
     }

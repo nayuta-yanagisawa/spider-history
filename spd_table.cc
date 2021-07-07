@@ -283,23 +283,95 @@ char *spider_get_string_between_quote(
   char *ptr,
   bool alloc
 ) {
-  char *start_ptr, *end_ptr;
+  char *start_ptr, *end_ptr, *tmp_ptr, *esc_ptr;
+  bool find_flg = FALSE, esc_flg = FALSE;
   DBUG_ENTER("spider_get_string_between_quote");
 
   start_ptr = strchr(ptr, '\'');
   end_ptr = strchr(ptr, '"');
   if (start_ptr && (!end_ptr || start_ptr < end_ptr))
   {
-    if (!(end_ptr = strchr(++start_ptr, '\'')))
-      DBUG_RETURN(NULL);
-  }
-  else if (
-    !(start_ptr = end_ptr) ||
-    !(end_ptr = strchr(++start_ptr, '"'))
-  )
+    tmp_ptr = ++start_ptr;
+    while (!find_flg)
+    {
+      if (!(end_ptr = strchr(tmp_ptr, '\'')))
+        DBUG_RETURN(NULL);
+      esc_ptr = tmp_ptr;
+      while (!find_flg)
+      {
+        esc_ptr = strchr(esc_ptr, '\\');
+        if (!esc_ptr || esc_ptr > end_ptr)
+          find_flg = TRUE;
+        else if (esc_ptr == end_ptr - 1)
+        {
+          esc_flg = TRUE;
+          tmp_ptr = end_ptr + 1;
+          break;
+        } else {
+          esc_flg = TRUE;
+          esc_ptr += 2;
+        }
+      }
+    }
+  } else if (end_ptr)
+  {
+    start_ptr = end_ptr;
+    tmp_ptr = ++start_ptr;
+    while (!find_flg)
+    {
+      if (!(end_ptr = strchr(tmp_ptr, '"')))
+        DBUG_RETURN(NULL);
+      esc_ptr = tmp_ptr;
+      while (!find_flg)
+      {
+        esc_ptr = strchr(esc_ptr, '\\');
+        if (!esc_ptr || esc_ptr > end_ptr)
+          find_flg = TRUE;
+        else if (esc_ptr == end_ptr - 1)
+        {
+          esc_flg = TRUE;
+          tmp_ptr = end_ptr + 1;
+          break;
+        } else {
+          esc_flg = TRUE;
+          esc_ptr += 2;
+        }
+      }
+    }
+  } else
     DBUG_RETURN(NULL);
 
   *end_ptr = '\0';
+  if (esc_flg)
+  {
+    esc_ptr = start_ptr;
+    while (TRUE)
+    {
+      esc_ptr = strchr(esc_ptr, '\\');
+      if (!esc_ptr)
+        break;
+      switch(*(esc_ptr + 1))
+      {
+        case 'b':
+          *esc_ptr = '\b';
+          break;
+        case 'n':
+          *esc_ptr = '\n';
+          break;
+        case 'r':
+          *esc_ptr = '\r';
+          break;
+        case 't':
+          *esc_ptr = '\t';
+          break;
+        default:
+          *esc_ptr = *(esc_ptr + 1);
+          break;
+      }
+      esc_ptr++;
+      strcpy(esc_ptr, esc_ptr + 1);
+    }
+  }
   if (alloc)
   {
     DBUG_RETURN(
@@ -1741,6 +1813,7 @@ int spider_open_all_tables(
       }
       memcpy(share, &tmp_share, sizeof(*share));
       spider->share = share;
+      spider->trx = trx;
 
       /* create another conn */
       if (
