@@ -19,6 +19,8 @@
 #define SPIDER_SYS_XA_MEMBER_TABLE_NAME_LEN (sizeof(SPIDER_SYS_XA_MEMBER_TABLE_NAME_STR) - 1)
 #define SPIDER_SYS_TABLES_TABLE_NAME_STR "spider_tables"
 #define SPIDER_SYS_TABLES_TABLE_NAME_LEN (sizeof(SPIDER_SYS_TABLES_TABLE_NAME_STR) - 1)
+#define SPIDER_SYS_LINK_MON_TABLE_NAME_STR "spider_link_mon_servers"
+#define SPIDER_SYS_LINK_MON_TABLE_NAME_LEN (sizeof(SPIDER_SYS_LINK_MON_TABLE_NAME_STR) - 1)
 
 #define SPIDER_SYS_XA_PREPARED_STR "PREPARED"
 #define SPIDER_SYS_XA_NOT_YET_STR "NOT YET"
@@ -61,6 +63,12 @@ int spider_sys_index_end(
 int spider_check_sys_table(
   TABLE *table,
   char *table_key
+);
+
+int spider_check_sys_table_with_find_flag(
+  TABLE *table,
+  char *table_key,
+  enum ha_rkey_function find_flag
 );
 
 int spider_get_sys_table_by_idx(
@@ -138,6 +146,11 @@ void spider_store_tables_link_status(
   long link_status
 );
 
+void spider_store_link_chk_server_id(
+  TABLE *table,
+  uint32 server_id
+);
+
 int spider_insert_xa(
   TABLE *table,
   XID *xid,
@@ -164,13 +177,23 @@ int spider_update_xa(
 int spider_update_tables_name(
   TABLE *table,
   const char *from,
-  const char *to
+  const char *to,
+  int *old_link_count
 );
 
 int spider_update_tables_priority(
   TABLE *table,
   SPIDER_ALTER_TABLE *alter_table,
-  const char *name
+  const char *name,
+  int *old_link_count
+);
+
+int spider_update_tables_link_status(
+  TABLE *table,
+  char *name,
+  uint name_length,
+  int link_idx,
+  long link_status
 );
 
 int spider_delete_xa(
@@ -185,7 +208,8 @@ int spider_delete_xa_member(
 
 int spider_delete_tables(
   TABLE *table,
-  const char *name
+  const char *name,
+  int *old_link_count
 );
 
 int spider_get_sys_xid(
@@ -225,6 +249,28 @@ int spider_get_sys_tables_connect_info(
 );
 
 int spider_get_sys_tables_link_status(
+  TABLE *table,
+  SPIDER_SHARE *share,
+  int link_idx,
+  MEM_ROOT *mem_root
+);
+
+int spider_sys_update_tables_link_status(
+  SPIDER_TRX *trx,
+  char *name,
+  uint name_length,
+  int link_idx,
+  long link_status,
+  bool need_lock
+);
+
+int spider_get_sys_link_mon_server_id(
+  TABLE *table,
+  uint32 *server_id,
+  MEM_ROOT *mem_root
+);
+
+int spider_get_sys_link_mon_connect_info(
   TABLE *table,
   SPIDER_SHARE *share,
   int link_idx,

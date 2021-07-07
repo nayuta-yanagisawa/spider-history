@@ -68,6 +68,15 @@ int spider_create_long_list(
   long max_val
 );
 
+int spider_create_longlong_list(
+  longlong **longlong_list,
+  uint *list_length,
+  char *str,
+  uint length,
+  longlong min_val,
+  longlong max_val
+);
+
 int spider_increase_string_list(
   char ***string_list,
   uint **string_length_list,
@@ -78,6 +87,12 @@ int spider_increase_string_list(
 
 int spider_increase_long_list(
   long **long_list,
+  uint *list_length,
+  uint link_count
+);
+
+int spider_increase_longlong_list(
+  longlong **longlong_list,
   uint *list_length,
   uint link_count
 );
@@ -201,6 +216,7 @@ char *spider_create_table_name_string(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 void spider_get_partition_info(
   const char *table_name,
+  uint table_name_length,
   const TABLE *table,
   partition_element **part_elem,
   partition_element **sub_elem
@@ -245,4 +261,12 @@ SPIDER_INIT_ERROR_TABLE *spider_get_init_error_table(
 
 bool spider_check_pk_update(
   TABLE *table
+);
+
+void spider_set_tmp_share_pointer(
+  SPIDER_SHARE *tmp_share,
+  char **tmp_connect_info,
+  uint *tmp_connect_info_length,
+  long *tmp_long,
+  longlong *tmp_longlong
 );

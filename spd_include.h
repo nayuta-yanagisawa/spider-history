@@ -23,6 +23,11 @@
 #define SPIDER_LINK_STATUS_RECOVERY          2
 #define SPIDER_LINK_STATUS_NG                3
 
+#define SPIDER_LINK_MON_OK                   0
+#define SPIDER_LINK_MON_NG                  -1
+#define SPIDER_LINK_MON_DRAW_FEW_MON         1
+#define SPIDER_LINK_MON_DRAW                 2
+
 /* alter table */
 typedef struct st_spider_alter_table
 {
@@ -147,6 +152,10 @@ typedef struct st_spider_conn
   pthread_mutex_t    bg_conn_sync_mutex;
   volatile void      *bg_target;
 #endif
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile
+#endif
+    int              *need_mon;
 } SPIDER_CONN;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -348,6 +357,9 @@ typedef struct st_spider_share
   char               **conn_keys;
   long               *tgt_ports;
   long               *link_statuses;
+  long               *monitoring_kind;
+  longlong           *monitoring_limit;
+  longlong           *monitoring_sid;
 
   uint               *server_names_lengths;
   uint               *tgt_table_names_lengths;
@@ -380,6 +392,9 @@ typedef struct st_spider_share
   uint               conn_keys_length;
   uint               tgt_ports_length;
   uint               link_statuses_length;
+  uint               monitoring_kind_length;
+  uint               monitoring_limit_length;
+  uint               monitoring_sid_length;
 
   SPIDER_ALTER_TABLE alter_table;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -455,6 +470,47 @@ typedef struct st_spider_bg_direct_sql
   pthread_cond_t             bg_cond;
   volatile SPIDER_DIRECT_SQL *direct_sql;
 } SPIDER_BG_DIRECT_SQL;
+
+typedef struct st_spider_mon_table_result
+{
+  int                        result_status;
+  SPIDER_TRX                 *trx;
+} SPIDER_MON_TABLE_RESULT;
+
+typedef struct st_spider_table_mon
+{
+  SPIDER_SHARE               *share;
+  uint32                     server_id;
+  st_spider_table_mon        *next;
+} SPIDER_TABLE_MON;
+
+typedef struct st_spider_table_mon_list
+{
+  char                       *key;
+  uint                       key_length;
+
+  uint                       use_count;
+  uint                       mutex_hash;
+
+  char                       *table_name;
+  int                        link_id;
+  uint                       table_name_length;
+
+  int                        list_size;
+  SPIDER_TABLE_MON           *first;
+  SPIDER_TABLE_MON           *current;
+  volatile int               mon_status;
+
+  SPIDER_SHARE               *share;
+
+  pthread_mutex_t            caller_mutex;
+  pthread_mutex_t            receptor_mutex;
+  pthread_mutex_t            monitor_mutex;
+  pthread_mutex_t            update_status_mutex;
+  volatile int               last_caller_result;
+  volatile int               last_receptor_result;
+  volatile int               last_mon_result;
+} SPIDER_TABLE_MON_LIST;
 
 char *spider_create_string(
   const char *str,

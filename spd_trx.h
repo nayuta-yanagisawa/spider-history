@@ -81,17 +81,20 @@ int spider_free_trx(
 );
 
 int spider_check_and_set_trx_isolation(
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int *need_mon
 );
 
 int spider_check_and_set_autocommit(
   THD *thd,
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int *need_mon
 );
 
 int spider_check_and_set_sql_log_off(
   THD *thd,
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int *need_mon
 );
 
 int spider_xa_lock(
@@ -104,12 +107,14 @@ int spider_xa_unlock(
 
 int spider_start_internal_consistent_snapshot(
   SPIDER_TRX *trx,
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int *need_mon
 );
 
 int spider_internal_start_trx(
   ha_spider *spider,
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int link_idx
 );
 
 int spider_internal_xa_commit(

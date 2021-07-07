@@ -28,14 +28,20 @@
 #define SPIDER_SQL_UNION_ALL_STR ")union all("
 #define SPIDER_SQL_UNION_ALL_LEN (sizeof(SPIDER_SQL_UNION_ALL_STR) - 1)
 
+#define SPIDER_SQL_INT_LEN 20
+#define SPIDER_UDF_PING_TABLE_PING_ONLY (1 << 0)
+#define SPIDER_UDF_PING_TABLE_USE_WHERE (1 << 1)
+
 int spider_db_connect(
   const SPIDER_SHARE *share,
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int link_idx
 );
 
 int spider_db_ping(
   ha_spider *spider,
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int link_idx
 );
 
 void spider_db_disconnect(
@@ -43,13 +49,15 @@ void spider_db_disconnect(
 );
 
 int spider_db_before_query(
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int *need_mon
 );
 
 int spider_db_query(
   SPIDER_CONN *conn,
   const char *query,
-  uint length
+  uint length,
+  int *need_mon
 );
 
 int spider_db_errorno(
@@ -58,22 +66,26 @@ int spider_db_errorno(
 
 int spider_db_set_trx_isolation(
   SPIDER_CONN *conn,
-  int trx_isolation
+  int trx_isolation,
+  int *need_mon
 );
 
 int spider_db_set_autocommit(
   SPIDER_CONN *conn,
-  bool autocommit
+  bool autocommit,
+  int *need_mon
 );
 
 int spider_db_set_sql_log_off(
   SPIDER_CONN *conn,
-  bool sql_log_off
+  bool sql_log_off,
+  int *need_mon
 );
 
 int spider_db_set_names(
-  SPIDER_SHARE *share,
-  SPIDER_CONN *conn
+  ha_spider *spider,
+  SPIDER_CONN *conn,
+  int link_idx
 );
 
 size_t spider_db_real_escape_string(
@@ -84,11 +96,13 @@ size_t spider_db_real_escape_string(
 );
 
 int spider_db_consistent_snapshot(
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int *need_mon
 );
 
 int spider_db_start_transaction(
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  int *need_mon
 );
 
 int spider_db_commit(
@@ -112,7 +126,8 @@ void spider_db_append_xid_str(
 
 int spider_db_xa_start(
   SPIDER_CONN *conn,
-  XID *xid
+  XID *xid,
+  int *need_mon
 );
 
 int spider_db_xa_end(
@@ -529,7 +544,8 @@ int spider_db_bulk_insert(
 );
 
 int spider_db_update_auto_increment(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_update(
@@ -679,4 +695,60 @@ int spider_db_udf_append_set_names(
 
 void spider_db_udf_free_set_names(
   SPIDER_TRX *trx
+);
+
+int spider_db_udf_ping_table(
+  SPIDER_TABLE_MON_LIST *table_mon_list,
+  SPIDER_SHARE *share,
+  SPIDER_TRX *trx,
+  SPIDER_CONN *conn,
+  char *where_clause,
+  uint where_clause_length,
+  bool ping_only,
+  bool use_where,
+  longlong limit
+);
+
+int spider_db_udf_ping_table_append_mon_next(
+  String *str,
+  char *child_table_name,
+  uint child_table_name_length,
+  int link_id,
+  char *where_clause,
+  uint where_clause_length,
+  longlong first_sid,
+  int full_mon_count,
+  int current_mon_count,
+  int success_count,
+  int fault_count,
+  int flags,
+  longlong limit
+);
+
+int spider_db_udf_ping_table_append_select(
+  String *str,
+  SPIDER_SHARE *share,
+  SPIDER_TRX *trx,
+  String *where_str,
+  bool use_where,
+  longlong limit
+);
+
+int spider_db_udf_ping_table_mon_next(
+  SPIDER_TRX *trx,
+  SPIDER_TABLE_MON *table_mon,
+  SPIDER_CONN *conn,
+  SPIDER_MON_TABLE_RESULT *mon_table_result,
+  char *child_table_name,
+  uint child_table_name_length,
+  int link_id,
+  char *where_clause,
+  uint where_clause_length,
+  longlong first_sid,
+  int full_mon_count,
+  int current_mon_count,
+  int success_count,
+  int fault_count,
+  int flags,
+  longlong limit
 );

@@ -83,4 +83,27 @@ void spider_bg_direct_sql_add(
   spider_direct_sql_body(initid, args, is_null, error, TRUE);
 }
 #endif
+
+long long spider_ping_table(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *is_null,
+  char *error
+) {
+  return spider_ping_table_body(initid, args, is_null, error);
+}
+
+my_bool spider_ping_table_init(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *message
+) {
+  return spider_ping_table_init_body(initid, args, message);
+}
+
+void spider_ping_table_deinit(
+  UDF_INIT *initid
+) {
+  spider_ping_table_deinit_body(initid);
+}
 }

@@ -75,6 +75,7 @@ am_libspider_a_OBJECTS = libspider_a-spd_param.$(OBJEXT) \
 	libspider_a-spd_conn.$(OBJEXT) libspider_a-spd_table.$(OBJEXT) \
 	libspider_a-spd_direct_sql.$(OBJEXT) \
 	libspider_a-spd_udf.$(OBJEXT) \
+	libspider_a-spd_ping_table.$(OBJEXT) \
 	libspider_a-ha_spider.$(OBJEXT)
 libspider_a_OBJECTS = $(am_libspider_a_OBJECTS)
 libLTLIBRARIES_INSTALL = $(INSTALL)
@@ -85,7 +86,8 @@ am_ha_spider_la_OBJECTS = ha_spider_la-spd_param.lo \
 	ha_spider_la-spd_sys_table.lo ha_spider_la-spd_trx.lo \
 	ha_spider_la-spd_db_conn.lo ha_spider_la-spd_conn.lo \
 	ha_spider_la-spd_table.lo ha_spider_la-spd_direct_sql.lo \
-	ha_spider_la-spd_udf.lo ha_spider_la-ha_spider.lo
+	ha_spider_la-spd_udf.lo ha_spider_la-spd_ping_table.lo \
+	ha_spider_la-ha_spider.lo
 ha_spider_la_OBJECTS = $(am_ha_spider_la_OBJECTS)
 ha_spider_la_LINK = $(LIBTOOL) --tag=CXX $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CXXLD) $(ha_spider_la_CXXFLAGS) \
@@ -358,6 +360,8 @@ plugin_ibmdb2i_shared_target = @plugin_ibmdb2i_shared_target@
 plugin_ibmdb2i_static_target = @plugin_ibmdb2i_static_target@
 plugin_innobase_shared_target = @plugin_innobase_shared_target@
 plugin_innobase_static_target = @plugin_innobase_static_target@
+plugin_innodb_plugin_shared_target = @plugin_innodb_plugin_shared_target@
+plugin_innodb_plugin_static_target = @plugin_innodb_plugin_static_target@
 plugin_myisam_shared_target = @plugin_myisam_shared_target@
 plugin_myisam_static_target = @plugin_myisam_static_target@
 plugin_myisammrg_shared_target = @plugin_myisammrg_shared_target@
@@ -410,7 +414,7 @@ INCLUDES = -I$(MYSQL_INC)$(top_srcdir)/include \
 noinst_HEADERS = ha_spider.h spd_conn.h spd_db_conn.h \
                  spd_db_include.h spd_err.h spd_sys_table.h \
                  spd_table.h spd_trx.h spd_include.h spd_param.h \
-                 spd_direct_sql.h spd_udf.h
+                 spd_direct_sql.h spd_udf.h spd_ping_table.h
 
 lib_LTLIBRARIES = $(PLUGIN_SPIDER_LTLIBRARIES_TARGET)
 EXTRA_LTLIBRARIES = ha_spider.la
@@ -427,6 +431,7 @@ ha_spider_la_SOURCES = \
                    spd_table.cc \
                    spd_direct_sql.cc \
                    spd_udf.cc \
+                   spd_ping_table.cc \
                    ha_spider.cc
 
 lib_LIBRARIES = $(PLUGIN_SPIDER_LIBRARIES_TARGET)
@@ -443,6 +448,7 @@ libspider_a_SOURCES = \
                    spd_table.cc \
                    spd_direct_sql.cc \
                    spd_udf.cc \
+                   spd_ping_table.cc \
                    ha_spider.cc
 
 EXTRA_DIST = plug.in
@@ -582,20 +588,22 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_conn.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_db_conn.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_direct_sql.Plo@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_udf.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_param.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_ping_table.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_sys_table.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_table.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_trx.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_udf.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-ha_spider.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_conn.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_db_conn.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_direct_sql.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_udf.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_param.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_ping_table.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_sys_table.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_table.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_trx.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_udf.Po@am__quote@
 
 .cc.o:
 @am__fastdepCXX_TRUE@	$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -730,6 +738,20 @@ libspider_a-spd_udf.obj: spd_udf.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-spd_udf.obj `if test -f 'spd_udf.cc'; then $(CYGPATH_W) 'spd_udf.cc'; else $(CYGPATH_W) '$(srcdir)/spd_udf.cc'; fi`
 
+libspider_a-spd_ping_table.o: spd_ping_table.cc
+@am__fastdepCXX_TRUE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-spd_ping_table.o -MD -MP -MF $(DEPDIR)/libspider_a-spd_ping_table.Tpo -c -o libspider_a-spd_ping_table.o `test -f 'spd_ping_table.cc' || echo '$(srcdir)/'`spd_ping_table.cc
+@am__fastdepCXX_TRUE@	mv -f $(DEPDIR)/libspider_a-spd_ping_table.Tpo $(DEPDIR)/libspider_a-spd_ping_table.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_ping_table.cc' object='libspider_a-spd_ping_table.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-spd_ping_table.o `test -f 'spd_ping_table.cc' || echo '$(srcdir)/'`spd_ping_table.cc
+
+libspider_a-spd_ping_table.obj: spd_ping_table.cc
+@am__fastdepCXX_TRUE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-spd_ping_table.obj -MD -MP -MF $(DEPDIR)/libspider_a-spd_ping_table.Tpo -c -o libspider_a-spd_ping_table.obj `if test -f 'spd_ping_table.cc'; then $(CYGPATH_W) 'spd_ping_table.cc'; else $(CYGPATH_W) '$(srcdir)/spd_ping_table.cc'; fi`
+@am__fastdepCXX_TRUE@	mv -f $(DEPDIR)/libspider_a-spd_ping_table.Tpo $(DEPDIR)/libspider_a-spd_ping_table.Po
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_ping_table.cc' object='libspider_a-spd_ping_table.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-spd_ping_table.obj `if test -f 'spd_ping_table.cc'; then $(CYGPATH_W) 'spd_ping_table.cc'; else $(CYGPATH_W) '$(srcdir)/spd_ping_table.cc'; fi`
+
 libspider_a-ha_spider.o: ha_spider.cc
 @am__fastdepCXX_TRUE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-ha_spider.o -MD -MP -MF $(DEPDIR)/libspider_a-ha_spider.Tpo -c -o libspider_a-ha_spider.o `test -f 'ha_spider.cc' || echo '$(srcdir)/'`ha_spider.cc
 @am__fastdepCXX_TRUE@	mv -f $(DEPDIR)/libspider_a-ha_spider.Tpo $(DEPDIR)/libspider_a-ha_spider.Po
@@ -799,6 +821,13 @@ ha_spider_la-spd_udf.lo: spd_udf.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_udf.cc' object='ha_spider_la-spd_udf.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(LIBTOOL) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-spd_udf.lo `test -f 'spd_udf.cc' || echo '$(srcdir)/'`spd_udf.cc
+
+ha_spider_la-spd_ping_table.lo: spd_ping_table.cc
+@am__fastdepCXX_TRUE@	$(LIBTOOL) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-spd_ping_table.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-spd_ping_table.Tpo -c -o ha_spider_la-spd_ping_table.lo `test -f 'spd_ping_table.cc' || echo '$(srcdir)/'`spd_ping_table.cc
+@am__fastdepCXX_TRUE@	mv -f $(DEPDIR)/ha_spider_la-spd_ping_table.Tpo $(DEPDIR)/ha_spider_la-spd_ping_table.Plo
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_ping_table.cc' object='ha_spider_la-spd_ping_table.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-spd_ping_table.lo `test -f 'spd_ping_table.cc' || echo '$(srcdir)/'`spd_ping_table.cc
 
 ha_spider_la-ha_spider.lo: ha_spider.cc
 @am__fastdepCXX_TRUE@	$(LIBTOOL) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-ha_spider.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-ha_spider.Tpo -c -o ha_spider_la-ha_spider.lo `test -f 'ha_spider.cc' || echo '$(srcdir)/'`ha_spider.cc

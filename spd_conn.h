@@ -41,6 +41,7 @@ void spider_free_conn_from_trx(
 
 SPIDER_CONN *spider_create_conn(
   const SPIDER_SHARE *share,
+  ha_spider *spider,
   int link_id,
   int *error_num
 );

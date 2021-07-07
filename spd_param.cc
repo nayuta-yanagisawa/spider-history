@@ -32,6 +32,7 @@ my_bool spider_support_xa;
 uint spider_table_init_error_interval;
 int spider_use_table_charset;
 uint spider_udf_table_lock_mutex_count;
+uint spider_udf_table_mon_mutex_count;
 char *spider_remote_access_charset;
 int spider_remote_autocommit;
 int spider_remote_sql_log_off;
@@ -1053,6 +1054,22 @@ static MYSQL_SYSVAR_UINT(
 );
 
 /*
+  1-: mutex count
+ */
+static MYSQL_SYSVAR_UINT(
+  udf_table_mon_mutex_count,
+  spider_udf_table_mon_mutex_count,
+  PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+  "Mutex count of table mon for Spider UDFs",
+  NULL,
+  NULL,
+  20,
+  1,
+  4294967295U,
+  0
+);
+
+/*
   1-:number of rows
  */
 MYSQL_THDVAR_LONGLONG(
@@ -1228,6 +1245,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(use_pushdown_udf),
   MYSQL_SYSVAR(direct_dup_insert),
   MYSQL_SYSVAR(udf_table_lock_mutex_count),
+  MYSQL_SYSVAR(udf_table_mon_mutex_count),
   MYSQL_SYSVAR(udf_ds_bulk_insert_rows),
   MYSQL_SYSVAR(udf_ds_table_loop_mode),
   MYSQL_SYSVAR(remote_access_charset),
@@ -1247,7 +1265,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0208,
+  0x0209,
   NULL,
   spider_system_variables,
   NULL

@@ -42,6 +42,7 @@ public:
   ulonglong          trx_conn_adjustment;
   char               **conn_keys;
   SPIDER_CONN        **conns;
+  int                *need_mons;
   int                search_link_idx;
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;

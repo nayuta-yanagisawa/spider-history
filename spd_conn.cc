@@ -24,6 +24,7 @@
 #include "spd_conn.h"
 #include "spd_table.h"
 #include "spd_direct_sql.h"
+#include "spd_ping_table.h"
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 extern pthread_attr_t spider_pt_attr;
@@ -133,9 +134,11 @@ void spider_free_conn_from_trx(
 
 SPIDER_CONN *spider_create_conn(
   const SPIDER_SHARE *share,
+  ha_spider *spider,
   int link_idx,
   int *error_num
 ) {
+  int need_mon = 0;
   SPIDER_CONN *conn;
   char *tmp_name, *tmp_host, *tmp_username, *tmp_password, *tmp_socket;
   char *tmp_wrapper;
@@ -192,6 +195,10 @@ SPIDER_CONN *spider_create_conn(
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
   conn->link_idx = link_idx;
+  if (spider)
+    conn->need_mon = &spider->need_mons[link_idx];
+  else
+    conn->need_mon = &need_mon;
 
   if (pthread_mutex_init(&conn->mta_conn_mutex, MY_MUTEX_INIT_FAST))
   {
@@ -207,7 +214,7 @@ SPIDER_CONN *spider_create_conn(
     goto error_init_lock_table_hash;
   }
 
-  if ((*error_num = spider_db_connect(share, conn)))
+  if ((*error_num = spider_db_connect(share, conn, link_idx)))
     goto error;
   conn->ping_time = (time_t) time((time_t*) 0);
 
@@ -256,7 +263,7 @@ SPIDER_CONN *spider_get_conn(
       {
         pthread_mutex_unlock(&spider_conn_mutex);
         DBUG_PRINT("info",("spider create new conn"));
-        if(!(conn = spider_create_conn(share, link_idx, error_num)))
+        if (!(conn = spider_create_conn(share, spider, link_idx, error_num)))
           goto error;
         *conn->conn_key = *conn_key;
         if (spider)
@@ -271,7 +278,7 @@ SPIDER_CONN *spider_get_conn(
     } else {
       DBUG_PRINT("info",("spider create new conn"));
       /* conn_recycle_strict = 0 and conn_recycle_mode = 0 or 2 */
-      if(!(conn = spider_create_conn(share, link_idx, error_num)))
+      if (!(conn = spider_create_conn(share, spider, link_idx, error_num)))
         goto error;
       *conn->conn_key = *conn_key;
       if (spider)
@@ -631,6 +638,7 @@ int spider_bg_conn_search(
     conn->bg_search = TRUE;
     conn->bg_caller_wait = TRUE;
     conn->bg_target = spider;
+    conn->link_idx = link_idx;
     conn->bg_discard_result = discard_result;
     pthread_cond_signal(&conn->bg_conn_cond);
     pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
@@ -732,6 +740,7 @@ int spider_bg_conn_search(
             DBUG_RETURN(error_num);
         }
         conn->bg_target = spider;
+        conn->link_idx = link_idx;
         conn->bg_discard_result = discard_result;
         result_list->bgs_working = TRUE;
         conn->bg_search = TRUE;
@@ -827,15 +836,17 @@ void *spider_bg_conn_action(
         if (!result_list->bgs_error)
         {
           pthread_mutex_lock(&conn->mta_conn_mutex);
+          conn->need_mon = &spider->need_mons[conn->link_idx];
           conn->mta_conn_mutex_lock_already = TRUE;
           conn->mta_conn_mutex_unlock_later = TRUE;
           if (!(result_list->bgs_error =
-            spider_db_set_names(spider->share, conn)))
+            spider_db_set_names(spider, conn, conn->link_idx)))
           {
             if (spider_db_query(
               conn,
               sql->ptr(),
-              sql->length())
+              sql->length(),
+              &spider->need_mons[conn->link_idx])
             )
               result_list->bgs_error = spider_db_errorno(conn);
             else {
@@ -960,7 +971,7 @@ void *spider_bg_sts_action(
   void *arg
 ) {
   SPIDER_SHARE *share = (SPIDER_SHARE*) arg;
-  int error_num;
+  int error_num, need_mons[share->link_count];
   ha_spider spider;
   SPIDER_CONN *conns[share->link_count];
   THD *thd;
@@ -983,7 +994,9 @@ void *spider_bg_sts_action(
   spider.trx = spider_global_trx;
   spider.share = share;
   spider.conns = conns;
+  spider.need_mons = need_mons;
   memset(&conns, 0, sizeof(SPIDER_CONN *) * share->link_count);
+  memset(&need_mons, 0, sizeof(int) * share->link_count);
   spider.search_link_idx = spider_conn_first_link_idx(thd,
     share->link_statuses, share->link_count, SPIDER_LINK_STATUS_OK);
   /* init end */
@@ -1001,37 +1014,84 @@ void *spider_bg_sts_action(
       my_thread_end();
       DBUG_RETURN(NULL);
     }
-    if (difftime(share->bg_sts_try_time, share->sts_get_time) >=
-      share->bg_sts_interval)
+    if (spider.search_link_idx == -1)
     {
-      if (!conns[spider.search_link_idx])
+      spider.search_link_idx = spider_conn_next_link_idx(
+        thd, share->link_statuses, spider.search_link_idx,
+        share->link_count, SPIDER_LINK_STATUS_OK);
+    }
+    if (spider.search_link_idx >= 0)
+    {
+      if (difftime(share->bg_sts_try_time, share->sts_get_time) >=
+        share->bg_sts_interval)
       {
-        pthread_mutex_lock(&spider_global_trx_mutex);
-        spider_get_conn(share, 0, share->conn_keys[spider.search_link_idx],
-          spider_global_trx, &spider, FALSE, FALSE, &error_num);
-        pthread_mutex_unlock(&spider_global_trx_mutex);
-      }
-      if (conns[spider.search_link_idx])
-      {
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-        if (spider_get_sts(share, spider.search_link_idx,
-          share->bg_sts_try_time, &spider,
-          share->bg_sts_interval, share->bg_sts_mode,
-          share->bg_sts_sync,
-          2))
-#else
-        if (spider_get_sts(share, spider.search_link_idx,
-          share->bg_sts_try_time, &spider,
-          share->bg_sts_interval, share->bg_sts_mode,
-          2))
-#endif
+        if (!conns[spider.search_link_idx])
         {
-          spider.search_link_idx = spider_conn_next_link_idx(
-            thd, share->link_statuses, spider.search_link_idx,
-            share->link_count, SPIDER_LINK_STATUS_OK);
+          pthread_mutex_lock(&spider_global_trx_mutex);
+          spider_get_conn(share, 0, share->conn_keys[spider.search_link_idx],
+            spider_global_trx, &spider, FALSE, FALSE, &error_num);
+          if (
+            error_num &&
+            share->monitoring_kind[spider.search_link_idx] &&
+            need_mons[spider.search_link_idx]
+          ) {
+            error_num = spider_ping_table_mon_from_table(
+                spider_global_trx,
+                share,
+                share->monitoring_sid[spider.search_link_idx],
+                share->table_name,
+                share->table_name_length,
+                spider.search_link_idx,
+                "",
+                0,
+                share->monitoring_kind[spider.search_link_idx],
+                share->monitoring_limit[spider.search_link_idx],
+                TRUE
+              );
+          }
+          pthread_mutex_unlock(&spider_global_trx_mutex);
+        }
+        if (conns[spider.search_link_idx])
+        {
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+          if (spider_get_sts(share, spider.search_link_idx,
+            share->bg_sts_try_time, &spider,
+            share->bg_sts_interval, share->bg_sts_mode,
+            share->bg_sts_sync,
+            2))
+#else
+          if (spider_get_sts(share, spider.search_link_idx,
+            share->bg_sts_try_time, &spider,
+            share->bg_sts_interval, share->bg_sts_mode,
+            2))
+#endif
+          {
+            if (
+              share->monitoring_kind[spider.search_link_idx] &&
+              need_mons[spider.search_link_idx]
+            ) {
+              pthread_mutex_lock(&spider_global_trx_mutex);
+              error_num = spider_ping_table_mon_from_table(
+                  spider_global_trx,
+                  share,
+                  share->monitoring_sid[spider.search_link_idx],
+                  share->table_name,
+                  share->table_name_length,
+                  spider.search_link_idx,
+                  "",
+                  0,
+                  share->monitoring_kind[spider.search_link_idx],
+                  share->monitoring_limit[spider.search_link_idx],
+                  TRUE
+                );
+              pthread_mutex_unlock(&spider_global_trx_mutex);
+            }
+            spider.search_link_idx = -1;
+          }
         }
       }
     }
+    memset(need_mons, 0, sizeof(int) * share->link_count);
     share->bg_sts_thd_wait = TRUE;
     pthread_cond_wait(&share->bg_sts_cond, &share->sts_mutex);
   }
@@ -1088,7 +1148,7 @@ void *spider_bg_crd_action(
   void *arg
 ) {
   SPIDER_SHARE *share = (SPIDER_SHARE*) arg;
-  int error_num;
+  int error_num, need_mons[share->link_count];
   ha_spider spider;
   TABLE table;
   SPIDER_CONN *conns[share->link_count];
@@ -1116,7 +1176,9 @@ void *spider_bg_crd_action(
   spider.change_table_ptr(&table, share->table_share);
   spider.share = share;
   spider.conns = conns;
+  spider.need_mons = need_mons;
   memset(&conns, 0, sizeof(SPIDER_CONN *) * share->link_count);
+  memset(&need_mons, 0, sizeof(int) * share->link_count);
   spider.search_link_idx = spider_conn_first_link_idx(thd,
     share->link_statuses, share->link_count, SPIDER_LINK_STATUS_OK);
   /* init end */
@@ -1134,38 +1196,85 @@ void *spider_bg_crd_action(
       my_thread_end();
       DBUG_RETURN(NULL);
     }
-    if (difftime(share->bg_crd_try_time, share->crd_get_time) >=
-      share->bg_crd_interval)
+    if (spider.search_link_idx == -1)
     {
-      if (!conns[spider.search_link_idx])
+      spider.search_link_idx = spider_conn_next_link_idx(
+        thd, share->link_statuses, spider.search_link_idx,
+        share->link_count, SPIDER_LINK_STATUS_OK);
+    }
+    if (spider.search_link_idx >= 0)
+    {
+      if (difftime(share->bg_crd_try_time, share->crd_get_time) >=
+        share->bg_crd_interval)
       {
-        pthread_mutex_lock(&spider_global_trx_mutex);
-        spider_get_conn(share, spider.search_link_idx,
-          share->conn_keys[spider.search_link_idx],
-          spider_global_trx, &spider, FALSE, FALSE, &error_num);
-        pthread_mutex_unlock(&spider_global_trx_mutex);
-      }
-      if (conns[spider.search_link_idx])
-      {
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-        if (spider_get_crd(share, spider.search_link_idx,
-          share->bg_crd_try_time, &spider, &table,
-          share->bg_crd_interval, share->bg_crd_mode,
-          share->bg_crd_sync,
-          2))
-#else
-        if (spider_get_crd(share, spider.search_link_idx,
-          share->bg_crd_try_time, &spider, &table,
-          share->bg_crd_interval, share->bg_crd_mode,
-          2))
-#endif
+        if (!conns[spider.search_link_idx])
         {
-          spider.search_link_idx = spider_conn_next_link_idx(
-            thd, share->link_statuses, spider.search_link_idx,
-            share->link_count, SPIDER_LINK_STATUS_OK);
+          pthread_mutex_lock(&spider_global_trx_mutex);
+          spider_get_conn(share, spider.search_link_idx,
+            share->conn_keys[spider.search_link_idx],
+            spider_global_trx, &spider, FALSE, FALSE, &error_num);
+          if (
+            error_num &&
+            share->monitoring_kind[spider.search_link_idx] &&
+            need_mons[spider.search_link_idx]
+          ) {
+            error_num = spider_ping_table_mon_from_table(
+                spider_global_trx,
+                share,
+                share->monitoring_sid[spider.search_link_idx],
+                share->table_name,
+                share->table_name_length,
+                spider.search_link_idx,
+                "",
+                0,
+                share->monitoring_kind[spider.search_link_idx],
+                share->monitoring_limit[spider.search_link_idx],
+                TRUE
+              );
+          }
+          pthread_mutex_unlock(&spider_global_trx_mutex);
+        }
+        if (conns[spider.search_link_idx])
+        {
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+          if (spider_get_crd(share, spider.search_link_idx,
+            share->bg_crd_try_time, &spider, &table,
+            share->bg_crd_interval, share->bg_crd_mode,
+            share->bg_crd_sync,
+            2))
+#else
+          if (spider_get_crd(share, spider.search_link_idx,
+            share->bg_crd_try_time, &spider, &table,
+            share->bg_crd_interval, share->bg_crd_mode,
+            2))
+#endif
+          {
+            if (
+              share->monitoring_kind[spider.search_link_idx] &&
+              need_mons[spider.search_link_idx]
+            ) {
+              pthread_mutex_lock(&spider_global_trx_mutex);
+              error_num = spider_ping_table_mon_from_table(
+                  spider_global_trx,
+                  share,
+                  share->monitoring_sid[spider.search_link_idx],
+                  share->table_name,
+                  share->table_name_length,
+                  spider.search_link_idx,
+                  "",
+                  0,
+                  share->monitoring_kind[spider.search_link_idx],
+                  share->monitoring_limit[spider.search_link_idx],
+                  TRUE
+                );
+              pthread_mutex_unlock(&spider_global_trx_mutex);
+            }
+            spider.search_link_idx = -1;
+          }
         }
       }
     }
+    memset(need_mons, 0, sizeof(int) * share->link_count);
     share->bg_crd_thd_wait = TRUE;
     pthread_cond_wait(&share->bg_crd_cond, &share->crd_mutex);
   }
@@ -1189,6 +1298,12 @@ int spider_conn_first_link_idx(
     }
   }
 
+  if (active_links == 0)
+  {
+    DBUG_PRINT("info",("spider all links are failed"));
+    DBUG_RETURN(-1);
+  }
+
   DBUG_PRINT("info",("spider first link_idx=%d",
     link_idxs[(thd->server_id + thd_get_thread_id(thd)) % active_links]));
   DBUG_RETURN(link_idxs[(thd->server_id + thd_get_thread_id(thd)) %
@@ -1206,13 +1321,19 @@ int spider_conn_next_link_idx(
   DBUG_ENTER("spider_conn_next_link_idx");
   tmp_link_idx = spider_conn_first_link_idx(thd, link_statuses, link_count,
     link_status);
-  if (tmp_link_idx == link_idx)
-  {
-    link_idx++;
-    if (link_idx >= link_count)
-      link_idx = 0;
-    DBUG_PRINT("info",("spider next link_idx=%d", link_idx));
-    DBUG_RETURN(link_idx);
+  if (
+    tmp_link_idx >= 0 &&
+    tmp_link_idx == link_idx
+  ) {
+    do {
+      tmp_link_idx++;
+      if (tmp_link_idx >= link_count)
+        tmp_link_idx = 0;
+      if (tmp_link_idx == link_idx)
+        break;
+    } while (link_statuses[tmp_link_idx] > link_status);
+    DBUG_PRINT("info",("spider next link_idx=%d", tmp_link_idx));
+    DBUG_RETURN(tmp_link_idx);
   }
   DBUG_PRINT("info",("spider next link_idx=%d", tmp_link_idx));
   DBUG_RETURN(tmp_link_idx);

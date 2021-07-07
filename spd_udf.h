@@ -41,3 +41,20 @@ long long spider_direct_sql_bg_end(
   UDF_INIT *initid
 );
 #endif
+
+long long spider_ping_table_body(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *is_null,
+  char *error
+);
+
+my_bool spider_ping_table_init_body(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *message
+);
+
+void spider_ping_table_deinit_body(
+  UDF_INIT *initid
+);

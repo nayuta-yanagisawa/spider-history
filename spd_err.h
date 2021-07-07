@@ -21,6 +21,31 @@
 #define ER_SPIDER_INVALID_UDF_PARAM_STR "The UDF parameter '%-.64s' is invalid"
 #define ER_SPIDER_DIFFERENT_LINK_COUNT_NUM 12504
 #define ER_SPIDER_DIFFERENT_LINK_COUNT_STR "Different multiple table link parameter's count"
+#define ER_SPIDER_UDF_PING_TABLE_PARAM_TOO_LONG_NUM 12505
+#define ER_SPIDER_UDF_PING_TABLE_PARAM_TOO_LONG_STR "Server name or table name are too long"
+#define ER_SPIDER_UDF_PING_TABLE_PARAM_REQIRED_NUM 12506
+#define ER_SPIDER_UDF_PING_TABLE_PARAM_REQIRED_STR "Server name or table name are required"
+#define ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM 12507
+#define ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR "This UDF can't execute if other tables are opened"
+#define ER_SPIDER_UDF_PING_TABLE_NO_SERVER_ID_NUM 12508
+#define ER_SPIDER_UDF_PING_TABLE_NO_SERVER_ID_STR "Current server_id is not exist"
+#define ER_SPIDER_UDF_PING_TABLE_DIFFERENT_MON_NUM 12509
+#define ER_SPIDER_UDF_PING_TABLE_DIFFERENT_MON_STR "Monitor count is different"
+#define ER_SPIDER_LINK_MON_OK_NUM 12510
+#define ER_SPIDER_LINK_MON_OK_STR "Table '%s.%s' get a problem, but mon is OK"
+#define ER_SPIDER_LINK_MON_NG_NUM 12511
+#define ER_SPIDER_LINK_MON_NG_STR "Table '%s.%s' get a problem"
+#define ER_SPIDER_LINK_MON_DRAW_FEW_MON_NUM 12512
+#define ER_SPIDER_LINK_MON_DRAW_FEW_MON_STR "Can not judge by enough monitor for table '%s.%s'"
+#define ER_SPIDER_LINK_MON_DRAW_NUM 12513
+#define ER_SPIDER_LINK_MON_DRAW_STR "Can not judge status for table '%s.%s'"
+#define ER_SPIDER_ALL_LINKS_FAILED_NUM 12514
+#define ER_SPIDER_ALL_LINKS_FAILED_STR "All links of '%s.%s' are failed"
+#define ER_SPIDER_TMP_TABLE_MON_NUM 12515
+#define ER_SPIDER_TMP_TABLE_MON_STR "Can't use monitor by temporary table"
+#define ER_SPIDER_MON_AT_ALTER_TABLE_NUM 12516
+#define ER_SPIDER_MON_AT_ALTER_TABLE_STR "Got an error in alter or drop table"
+
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_NUM 12601
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_STR "Can't use both spider_use_consistent_snapshot = 1 and spider_internal_xa = 1"
 #define ER_SPIDER_XA_LOCKED_NUM 12602
