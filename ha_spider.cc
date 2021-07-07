@@ -322,6 +322,8 @@ int ha_spider::external_lock(
       ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR, MYF(0));
     DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
   }
+  if (sql_command == SQLCOM_TRUNCATE)
+    DBUG_RETURN(0);
   if (
     (!conn->join_trx &&
       (error_num = spider_internal_start_trx(this)))

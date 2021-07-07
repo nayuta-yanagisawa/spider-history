@@ -330,6 +330,14 @@ int spider_db_errorno(
       conn->error_str = (char*) mysql_error(conn->db_conn);
       conn->error_length = strlen(conn->error_str);
       DBUG_RETURN(HA_ERR_FOUND_DUPP_KEY);
+    } else if (
+      error_num == ER_XAER_NOTA &&
+      current_thd &&
+      THDVAR(current_thd, force_commit) == 1
+    ) {
+      push_warning(current_thd, MYSQL_ERROR::WARN_LEVEL_WARN,
+        error_num, mysql_error(conn->db_conn));
+      DBUG_RETURN(error_num);
     }
     my_message(error_num, mysql_error(conn->db_conn), MYF(0));
     DBUG_RETURN(error_num);

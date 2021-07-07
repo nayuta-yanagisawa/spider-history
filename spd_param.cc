@@ -152,7 +152,7 @@ MYSQL_THDVAR_LONGLONG(
   NULL, /* update */
   -1, /* def */
   -1, /* min */
-  9223372036854775807, /* max */
+  9223372036854775807LL, /* max */
   0 /* blk */
 );
 
@@ -168,7 +168,7 @@ MYSQL_THDVAR_LONGLONG(
   NULL, /* update */
   -1, /* def */
   -1, /* min */
-  9223372036854775807, /* max */
+  9223372036854775807LL, /* max */
   0 /* blk */
 );
 
@@ -184,7 +184,7 @@ MYSQL_THDVAR_LONGLONG(
   NULL, /* update */
   -1, /* def */
   -1, /* min */
-  9223372036854775807, /* max */
+  9223372036854775807LL, /* max */
   0 /* blk */
 );
 
@@ -301,7 +301,7 @@ MYSQL_THDVAR_UINT(
   NULL, /* update */
   16384, /* def */
   0, /* min */
-  4294967295, /* max */
+  4294967295U, /* max */
   0 /* blk */
 );
 
@@ -528,7 +528,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0002,
+  0x0003,
   NULL,
   spider_system_variables,
   NULL

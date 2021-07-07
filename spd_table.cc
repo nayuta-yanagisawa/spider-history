@@ -741,9 +741,9 @@ int spider_parse_connect_info(
   if (share->internal_offset == -1)
     share->internal_offset = 0;
   if (share->internal_limit == -1)
-    share->internal_limit = 9223372036854775807;
+    share->internal_limit = 9223372036854775807LL;
   if (share->split_read == -1)
-    share->split_read = 9223372036854775807;
+    share->split_read = 9223372036854775807LL;
   if (share->init_sql_alloc_size == -1)
     share->init_sql_alloc_size = 1024;
   if (share->reset_sql_alloc == -1)
@@ -1165,7 +1165,8 @@ int spider_open_all_tables(
   )
     DBUG_RETURN(error_num);
   if (
-    (error_num = spider_get_sys_table_by_idx(table_tables, tables_key, 1))
+    (error_num = spider_get_sys_table_by_idx(table_tables, tables_key, 1,
+      SPIDER_SYS_TABLES_IDX1_COL_CNT))
   ) {
     if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
     {
@@ -1315,17 +1316,9 @@ bool spider_show_status(
 int spider_db_done(
   void *p
 ) {
-  SPIDER_XA_LOCK *xa_lock;
   SPIDER_CONN *conn;
   DBUG_ENTER("spider_db_done");
 
-  pthread_mutex_lock(&spider_xa_lock_mutex);
-  while ((xa_lock = (SPIDER_XA_LOCK*) hash_element(&spider_xa_locks, 0)))
-  {
-    hash_delete(&spider_xa_locks, (uchar*) xa_lock);
-    my_free(xa_lock, MYF(0));
-  }
-  pthread_mutex_unlock(&spider_xa_lock_mutex);
   pthread_mutex_lock(&spider_conn_mutex);
   while ((conn = (SPIDER_CONN*) hash_element(&spider_open_connections, 0)))
   {
@@ -1333,10 +1326,8 @@ int spider_db_done(
     spider_free_conn(conn);
   }
   pthread_mutex_unlock(&spider_conn_mutex);
-  hash_free(&spider_xa_locks);
   hash_free(&spider_open_connections);
   hash_free(&spider_open_tables);
-  VOID(pthread_mutex_destroy(&spider_xa_lock_mutex));
   VOID(pthread_mutex_destroy(&spider_conn_mutex));
   VOID(pthread_mutex_destroy(&spider_tbl_mutex));
 
@@ -1398,19 +1389,12 @@ int spider_db_init(
     error_num = HA_ERR_OUT_OF_MEM;
     goto error_conn_mutex_init;
   }
-  if(pthread_mutex_init(&spider_xa_lock_mutex, MY_MUTEX_INIT_FAST))
-  {
-    error_num = HA_ERR_OUT_OF_MEM;
-    goto error_xa_mutex_init;
-  }
 
   if(
     hash_init(&spider_open_tables, system_charset_info, 32, 0, 0,
                    (hash_get_key) spider_tbl_get_key, 0, 0) ||
     hash_init(&spider_open_connections, system_charset_info, 32, 0, 0,
-                   (hash_get_key) spider_conn_get_key, 0, 0) ||
-    hash_init(&spider_xa_locks, system_charset_info, 32, 0, 0,
-                   (hash_get_key) spider_xa_lock_get_key, 0, 0)
+                   (hash_get_key) spider_conn_get_key, 0, 0)
   ) {
     error_num = HA_ERR_OUT_OF_MEM;
     goto error;
@@ -1419,8 +1403,6 @@ int spider_db_init(
   DBUG_RETURN(0);
 
 error:
-  VOID(pthread_mutex_destroy(&spider_xa_lock_mutex));
-error_xa_mutex_init:
   VOID(pthread_mutex_destroy(&spider_conn_mutex));
 error_conn_mutex_init:
   VOID(pthread_mutex_destroy(&spider_tbl_mutex));

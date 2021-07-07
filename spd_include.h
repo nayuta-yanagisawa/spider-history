@@ -22,13 +22,6 @@ typedef struct st_spider_alter_table
   longlong           tmp_priority;
 } SPIDER_ALTER_TABLE;
 
-/* xa lock */
-typedef struct st_spider_xa_lock
-{
-  char               xa_lock_key[XIDDATASIZE + sizeof(long) + 5];
-  uint               xa_lock_key_length;
-} SPIDER_XA_LOCK;
-
 /* database connection */
 typedef struct st_spider_conn
 {
@@ -77,6 +70,7 @@ typedef struct st_spider_transaction
   HASH               trx_conn_hash;
   HASH               trx_another_conn_hash;
   HASH               trx_alter_table_hash;
+  XID_STATE          internal_xid_state;
   SPIDER_CONN        *join_trx_top;
 } SPIDER_TRX;
 

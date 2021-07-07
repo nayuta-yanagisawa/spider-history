@@ -25,6 +25,12 @@
 #define SPIDER_SYS_XA_COMMIT_STR "COMMIT"
 #define SPIDER_SYS_XA_ROLLBACK_STR "ROLLBACK"
 
+#define SPIDER_SYS_XA_PK_COL_CNT 3
+#define SPIDER_SYS_XA_IDX1_COL_CNT 1
+#define SPIDER_SYS_XA_MEMBER_PK_COL_CNT 6
+#define SPIDER_SYS_TABLES_PK_COL_CNT 2
+#define SPIDER_SYS_TABLES_IDX1_COL_CNT 1
+
 TABLE *spider_open_sys_table(
   THD *thd,
   char *table_name,
@@ -57,7 +63,8 @@ int spider_check_sys_table(
 int spider_get_sys_table_by_idx(
   TABLE *table,
   char *table_key,
-  const int idx
+  const int idx,
+  const int col_count
 );
 
 int spider_sys_index_next_same(

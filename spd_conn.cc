@@ -300,7 +300,7 @@ SPIDER_CONN *spider_tree_first(
 ) {
   SPIDER_CONN *current = top;
   DBUG_ENTER("spider_tree_first");
-  while (TRUE)
+  while (current)
   {
     if (current->c_small == NULL)
       break;
@@ -329,10 +329,10 @@ SPIDER_CONN *spider_tree_next(
   SPIDER_CONN *current
 ) {
   DBUG_ENTER("spider_tree_next");
+  if (current->c_big)
+    DBUG_RETURN(spider_tree_first(current->c_big));
   while (TRUE)
   {
-    if (current->c_big)
-      DBUG_RETURN(spider_tree_first(current->c_big));
     if (current->p_big)
       DBUG_RETURN(current->p_big);
     if (!current->p_small)

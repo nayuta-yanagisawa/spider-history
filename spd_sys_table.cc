@@ -99,7 +99,8 @@ int spider_check_sys_table(
 int spider_get_sys_table_by_idx(
   TABLE *table,
   char *table_key,
-  const int idx
+  const int idx,
+  const int col_count
 ) {
   int error_num;
   DBUG_ENTER("spider_get_sys_table_by_idx");
@@ -114,7 +115,7 @@ int spider_get_sys_table_by_idx(
 
   DBUG_RETURN(table->file->index_read_idx_map(
     table->record[0], idx, (uchar *) table_key,
-    HA_WHOLE_KEY, HA_READ_KEY_EXACT));
+    make_prev_keypart_map(col_count), HA_READ_KEY_EXACT));
 }
 
 int spider_sys_index_next_same(
@@ -489,20 +490,26 @@ int spider_delete_xa_member(
   table->use_all_columns();
   spider_store_xa_pk(table, xid);
 
-  if ((error_num = spider_get_sys_table_by_idx(table, table_key, 0)))
+  if ((error_num = spider_get_sys_table_by_idx(table, table_key, 0,
+    SPIDER_SYS_XA_PK_COL_CNT)))
   {
+    spider_sys_index_end(table);
     if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
     {
       table->file->print_error(error_num, MYF(0));
       DBUG_RETURN(error_num);
     }
+/*
     my_message(ER_SPIDER_XA_MEMBER_NOT_EXISTS_NUM,
       ER_SPIDER_XA_MEMBER_NOT_EXISTS_STR, MYF(0));
     DBUG_RETURN(ER_SPIDER_XA_MEMBER_NOT_EXISTS_NUM);
+*/
+    DBUG_RETURN(0);
   } else {
     do {
       if ((error_num = table->file->ha_delete_row(table->record[0])))
       {
+        spider_sys_index_end(table);
         table->file->print_error(error_num, MYF(0));
         DBUG_RETURN(error_num);
       }

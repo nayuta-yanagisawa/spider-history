@@ -13,12 +13,6 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-uchar *spider_xa_lock_get_key(
-  SPIDER_XA_LOCK *xa_lock,
-  size_t *length,
-  my_bool not_used __attribute__ ((unused))
-);
-
 int spider_free_trx_conn(
   SPIDER_TRX *trx,
   bool trx_free
@@ -86,13 +80,12 @@ int spider_check_and_set_sql_log_off(
   SPIDER_CONN *conn
 );
 
-SPIDER_XA_LOCK *spider_xa_lock(
-  XID *xid,
-  int *error_num
+int spider_xa_lock(
+  XID_STATE *xid_state
 );
 
 int spider_xa_unlock(
-  SPIDER_XA_LOCK *xa_lock
+  XID_STATE *xid_state
 );
 
 int spider_start_internal_consistent_snapshot(
@@ -127,6 +120,11 @@ int spider_internal_xa_prepare(
 
 int spider_internal_xa_recover(
   THD* thd,
+  XID* xid_list,
+  uint len
+);
+
+int spider_initinal_xa_recover(
   XID* xid_list,
   uint len
 );
@@ -190,4 +188,10 @@ int spider_end_trx(
 int spider_check_trx_and_get_conn(
   THD *thd,
   ha_spider *spider
+);
+
+THD *spider_create_tmp_thd();
+
+void spider_free_tmp_thd(
+  THD *thd
 );
