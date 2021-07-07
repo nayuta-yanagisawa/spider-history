@@ -13,6 +13,8 @@
   along with this program); if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+extern my_bool spider_support_xa;
+
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_mode, unsigned int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_strict, unsigned int);
 extern DECLARE_MYSQL_THDVAR_BASIC(sync_trx_isolation, char);

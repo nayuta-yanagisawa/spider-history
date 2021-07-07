@@ -74,54 +74,84 @@ int spider_get_server(
     goto error;
   }
 
-  if (!share->tgt_wrapper)
+  if (!share->tgt_wrapper && server->scheme)
   {
-    if ((share->tgt_wrapper = server->scheme))
-      share->tgt_wrapper_length = strlen(share->tgt_wrapper);
-  } else if (server->scheme)
-    my_free(server->scheme, MYF(0));
+    share->tgt_wrapper_length = strlen(server->scheme);
+    if (!(share->tgt_wrapper =
+      spider_create_string(server->scheme, share->tgt_wrapper_length)))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error;
+    }
+    DBUG_PRINT("info",("spider tgt_wrapper=%s", share->tgt_wrapper));
+  }
 
-  if (!share->tgt_host)
+  if (!share->tgt_host && server->host)
   {
-    if ((share->tgt_host = server->host))
-      share->tgt_host_length = strlen(share->tgt_host);
-  } else if (server->host)
-    my_free(server->host, MYF(0));
+    share->tgt_host_length = strlen(server->host);
+    if (!(share->tgt_host =
+      spider_create_string(server->host, share->tgt_host_length)))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error;
+    }
+    DBUG_PRINT("info",("spider tgt_host=%s", share->tgt_host));
+  }
 
   if (share->tgt_port == -1)
   {
     share->tgt_port = server->port;
+    DBUG_PRINT("info",("spider tgt_port=%d", share->tgt_port));
   }
 
-  if (!share->tgt_socket)
+  if (!share->tgt_socket && server->socket)
   {
-    if ((share->tgt_socket = server->socket))
-      share->tgt_socket_length = strlen(share->tgt_socket);
-  } else if (server->socket)
-    my_free(server->socket, MYF(0));
+    share->tgt_socket_length = strlen(server->socket);
+    if (!(share->tgt_socket =
+      spider_create_string(server->socket, share->tgt_socket_length)))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error;
+    }
+    DBUG_PRINT("info",("spider tgt_socket=%s", share->tgt_socket));
+  }
 
-  if (!share->tgt_db)
+  if (!share->tgt_db && server->db)
   {
-    if ((share->tgt_db = server->db))
-      share->tgt_db_length = strlen(share->tgt_db);
-  } else if (server->db)
-    my_free(server->db, MYF(0));
+    share->tgt_db_length = strlen(server->db);
+    if (!(share->tgt_db =
+      spider_create_string(server->db, share->tgt_db_length)))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error;
+    }
+    DBUG_PRINT("info",("spider tgt_db=%s", share->tgt_db));
+  }
 
-  if (!share->tgt_username)
+  if (!share->tgt_username && server->username)
   {
-    if ((share->tgt_username = server->username))
-      share->tgt_username_length = strlen(share->tgt_username);
-  } else if (server->username)
-    my_free(server->username, MYF(0));
+    share->tgt_username_length = strlen(server->username);
+    if (!(share->tgt_username =
+      spider_create_string(server->username, share->tgt_username_length)))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error;
+    }
+    DBUG_PRINT("info",("spider tgt_username=%s", share->tgt_username));
+  }
 
-  if (!share->tgt_password)
+  if (!share->tgt_password && server->password)
   {
-    if ((share->tgt_password = server->password))
-      share->tgt_password_length = strlen(share->tgt_password);
-  } else if (server->password)
-    my_free(server->password, MYF(0));
+    share->tgt_password_length = strlen(server->password);
+    if (!(share->tgt_password =
+      spider_create_string(server->password, share->tgt_password_length)))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error;
+    }
+    DBUG_PRINT("info",("spider tgt_password=%s", share->tgt_password));
+  }
 
-  my_free(server, MYF(0));
   free_root(&mem_root, MYF(0));
   DBUG_RETURN(0);
 
@@ -229,8 +259,12 @@ char *spider_get_string_between_quote(
       if ((share->param_name = spider_get_string_between_quote( \
         start_ptr, TRUE))) \
         share->SPIDER_PARAM_STR_LEN(param_name) = strlen(share->param_name); \
-      else \
+      else { \
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+          MYF(0), tmp_ptr); \
         goto error; \
+      } \
       DBUG_PRINT("info",("spider "title_name"=%s", share->param_name)); \
     } \
     break; \
@@ -240,16 +274,20 @@ char *spider_get_string_between_quote(
   { \
     if (share->param_name == -1) \
     { \
-      if ((tmp_ptr = spider_get_string_between_quote( \
+      if ((tmp_ptr2 = spider_get_string_between_quote( \
         start_ptr, FALSE))) \
       { \
-        share->param_name = atoi(tmp_ptr); \
+        share->param_name = atoi(tmp_ptr2); \
         if (share->param_name < min_val) \
           share->param_name = min_val; \
         else if (share->param_name > max_val) \
           share->param_name = max_val; \
-      } else \
+      } else { \
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+          MYF(0), tmp_ptr); \
         goto error; \
+      } \
       DBUG_PRINT("info",("spider "title_name"=%d", share->param_name)); \
     } \
     break; \
@@ -259,14 +297,18 @@ char *spider_get_string_between_quote(
   { \
     if (share->param_name == -1) \
     { \
-      if ((tmp_ptr = spider_get_string_between_quote( \
+      if ((tmp_ptr2 = spider_get_string_between_quote( \
         start_ptr, FALSE))) \
       { \
-        share->param_name = atoi(tmp_ptr); \
+        share->param_name = atoi(tmp_ptr2); \
         if (share->param_name < min_val) \
           share->param_name = min_val; \
-      } else \
+      } else { \
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+          MYF(0), tmp_ptr); \
         goto error; \
+      } \
       DBUG_PRINT("info",("spider "title_name"=%d", share->param_name)); \
     } \
     break; \
@@ -276,14 +318,18 @@ char *spider_get_string_between_quote(
   { \
     if (share->param_name == -1) \
     { \
-      if ((tmp_ptr = spider_get_string_between_quote( \
+      if ((tmp_ptr2 = spider_get_string_between_quote( \
         start_ptr, FALSE))) \
       { \
-        share->param_name = my_atof(tmp_ptr); \
+        share->param_name = my_atof(tmp_ptr2); \
         if (share->param_name < min_val) \
           share->param_name = min_val; \
-      } else \
+      } else { \
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+          MYF(0), tmp_ptr); \
         goto error; \
+      } \
       DBUG_PRINT("info",("spider "title_name"=%f", share->param_name)); \
     } \
     break; \
@@ -293,14 +339,18 @@ char *spider_get_string_between_quote(
   { \
     if (share->param_name == -1) \
     { \
-      if ((tmp_ptr = spider_get_string_between_quote( \
+      if ((tmp_ptr2 = spider_get_string_between_quote( \
         start_ptr, FALSE))) \
       { \
-        share->param_name = my_strtoll10(tmp_ptr, (char**) NULL, &error_num); \
+        share->param_name = my_strtoll10(tmp_ptr2, (char**) NULL, &error_num); \
         if (share->param_name < min_val) \
           share->param_name = min_val; \
-      } else \
+      } else { \
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+          MYF(0), tmp_ptr); \
         goto error; \
+      } \
       DBUG_PRINT("info",("spider "title_name"=%lld", share->param_name)); \
     } \
     break; \
@@ -314,7 +364,7 @@ int spider_parse_connect_info(
   int error_num = 0;
   char *connect_string = NULL;
   char *sprit_ptr[2];
-  char *tmp_ptr, *start_ptr;
+  char *tmp_ptr, *tmp_ptr2, *start_ptr;
   int roop_count;
   int title_length;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -725,6 +775,7 @@ int spider_parse_connect_info(
 
   if (strcmp(share->tgt_wrapper, SPIDER_DB_WRAPPER_MYSQL))
   {
+    DBUG_PRINT("info",("spider err tgt_wrapper=%s", share->tgt_wrapper));
     error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
     my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
       MYF(0), share->tgt_wrapper);
@@ -839,6 +890,7 @@ int spider_create_conn_key(
     + 5 + 1
     + share->tgt_socket_length + 1
     + share->tgt_username_length + 1
+    + share->tgt_password_length + 1
     + share->csname_length;
   if (!(share->conn_key = (char *)
         my_malloc(share->conn_key_length + 1, MYF(MY_WME | MY_ZEROFILL)))
@@ -861,6 +913,12 @@ int spider_create_conn_key(
   {
     DBUG_PRINT("info",("spider tgt_username=%s", share->tgt_username));
     tmp_name = strmov(tmp_name + 1, share->tgt_username);
+  } else
+    tmp_name++;
+  if (share->tgt_password)
+  {
+    DBUG_PRINT("info",("spider tgt_password=%s", share->tgt_password));
+    tmp_name = strmov(tmp_name + 1, share->tgt_password);
   } else
     tmp_name++;
   DBUG_PRINT("info",("spider csname=%s", share->csname));
@@ -1097,10 +1155,13 @@ int spider_open_all_tables(
   SPIDER_SHARE tmp_share;
   SPIDER_CONN *conn;
   MEM_ROOT mem_root;
+  Open_tables_state open_tables_backup;
   DBUG_ENTER("spider_open_all_tables");
   if (
     !(table_tables = spider_open_sys_table(
-      trx->thd, SPIDER_SYS_TABLES_TABLE_NAME_STR, TRUE, &error_num))
+      trx->thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
+      SPIDER_SYS_TABLES_TABLE_NAME_LEN, TRUE, &open_tables_backup,
+      &error_num))
   )
     DBUG_RETURN(error_num);
   if (
@@ -1109,9 +1170,12 @@ int spider_open_all_tables(
     if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
     {
       table_tables->file->print_error(error_num, MYF(0));
+      spider_close_sys_table(trx->thd, &open_tables_backup);
       DBUG_RETURN(error_num);
-    } else
+    } else {
+      spider_close_sys_table(trx->thd, &open_tables_backup);
       DBUG_RETURN(0);
+    }
   }
 
   init_alloc_root(&mem_root, 4096, 0);
@@ -1129,6 +1193,7 @@ int spider_open_all_tables(
       my_free(db_name, MYF(0));
       my_free(table_name, MYF(0));
       free_root(&mem_root, MYF(0));
+      spider_close_sys_table(trx->thd, &open_tables_backup);
       DBUG_RETURN(error_num);
     }
     my_free(db_name, MYF(0));
@@ -1143,6 +1208,7 @@ int spider_open_all_tables(
         &tmp_share, trx, NULL, TRUE, FALSE, &error_num)))
       ) {
         free_root(&mem_root, MYF(0));
+        spider_close_sys_table(trx->thd, &open_tables_backup);
         DBUG_RETURN(error_num);
       }
 
@@ -1152,6 +1218,7 @@ int spider_open_all_tables(
         if (my_hash_insert(&conn->lock_table_hash, (uchar*) table->file))
         {
           free_root(&mem_root, MYF(0));
+          spider_close_sys_table(trx->thd, &open_tables_backup);
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
         }
       }
@@ -1160,6 +1227,7 @@ int spider_open_all_tables(
   } while (error_num == 0);
   free_root(&mem_root, MYF(0));
 
+  spider_close_sys_table(trx->thd, &open_tables_backup);
   DBUG_RETURN(0);
 }
 
@@ -1292,7 +1360,7 @@ int spider_db_init(
   spider_hton_ptr = spider_hton;
 
   spider_hton->state = SHOW_OPTION_YES;
-  spider_hton->flags = HTON_CAN_RECREATE;
+  spider_hton->flags = HTON_NO_FLAGS;
   /* spider_hton->db_type = DB_TYPE_SPIDER; */
   /*
   spider_hton->savepoint_offset;
@@ -1309,10 +1377,13 @@ int spider_db_init(
   spider_hton->flush_logs = spider_flush_logs;
   spider_hton->commit = spider_commit;
   spider_hton->rollback = spider_rollback;
-  spider_hton->prepare = spider_xa_prepare;
-  spider_hton->recover = spider_xa_recover;
-  spider_hton->commit_by_xid = spider_xa_commit_by_xid;
-  spider_hton->rollback_by_xid = spider_xa_rollback_by_xid;
+  if (spider_support_xa)
+  {
+    spider_hton->prepare = spider_xa_prepare;
+    spider_hton->recover = spider_xa_recover;
+    spider_hton->commit_by_xid = spider_xa_commit_by_xid;
+    spider_hton->rollback_by_xid = spider_xa_rollback_by_xid;
+  }
   spider_hton->create = spider_create_handler;
   spider_hton->drop_database = spider_drop_database;
   spider_hton->show_status = spider_show_status;

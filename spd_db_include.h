@@ -42,6 +42,8 @@ typedef struct st_spider_result_list
   int                  where_pos;
   int                  order_pos;
   int                  limit_pos;
+  String               insert_sql;
+  int                  insert_pos;
   bool                 sorted;
   bool                 desc_flg;
   longlong             current_row_num;
@@ -55,3 +57,9 @@ typedef struct st_spider_result_list
   bool                 keyread;
   int                  lock_type;
 } SPIDER_RESULT_LIST;
+
+typedef struct st_spider_position
+{
+  SPIDER_DB_ROW        row;
+  ulong                *lengths;
+} SPIDER_POSITION;

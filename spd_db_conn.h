@@ -42,7 +42,7 @@ void spider_db_disconnect(
 );
 
 int spider_db_query(
-  const SPIDER_CONN *conn,
+  SPIDER_CONN *conn,
   const char *query,
   uint length
 );
@@ -164,7 +164,7 @@ int spider_db_append_into(
 
 int spider_db_append_update_set(
   ha_spider *spider,
-  const TABLE *table
+  TABLE *table
 );
 
 int spider_db_append_update_where(
@@ -321,9 +321,13 @@ int spider_db_seek_first(
   TABLE *table
 );
 
+SPIDER_POSITION *spider_db_create_position(
+  ha_spider *spider
+);
+
 int spider_db_seek_tmp(
   uchar *buf,
-  SPIDER_DB_ROW_OFFSET row_offset,
+  SPIDER_POSITION *pos,
   ha_spider *spider,
   TABLE *table
 );
@@ -360,7 +364,7 @@ int spider_db_update_auto_increment(
 
 int spider_db_update(
   ha_spider *spider,
-  const TABLE *table,
+  TABLE *table,
   const uchar *old_data
 );
 

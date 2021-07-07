@@ -31,6 +31,7 @@ public:
   SPIDER_DB_CONN     *db_conn;
   SPIDER_RESULT_LIST result_list;
 
+  bool               quick_mode;
   bool               keyread;
   bool               ignore_dup_key;
   bool               write_can_replace;
@@ -44,6 +45,8 @@ public:
   int                selupd_lock_mode;
   bool               bulk_insert;
   int                bulk_size;
+  int                store_error_num;
+  uint               dup_key_idx;
 
   ha_spider();
   ha_spider(
@@ -234,5 +237,9 @@ public:
   int optimize(
     THD* thd,
     HA_CHECK_OPT* check_opt
+  );
+  bool is_fatal_error(
+    int error_num,
+    uint flags
   );
 };

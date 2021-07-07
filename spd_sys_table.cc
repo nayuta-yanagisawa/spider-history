@@ -25,7 +25,9 @@
 TABLE *spider_open_sys_table(
   THD *thd,
   char *table_name,
+  int table_name_length,
   bool write,
+  Open_tables_state *open_tables_backup,
   int *error_num
 ) {
   TABLE *table;
@@ -34,17 +36,31 @@ TABLE *spider_open_sys_table(
 
   memset(&tables, 0, sizeof(TABLE_LIST));
   tables.db = (char*)"mysql";
+  tables.db_length = sizeof("mysql") - 1;
   tables.alias = tables.table_name = table_name;
+  tables.table_name_length = table_name_length;
+  tables.lock_type = (write ? TL_WRITE : TL_READ);
 
-  if (!(table = open_ltable(thd, &tables, (write ? TL_WRITE : TL_READ), 0)))
+  if (!(table = open_performance_schema_table(thd, &tables,
+    open_tables_backup)))
   {
     *error_num = my_errno;
+    goto error;
   }
 
   DBUG_RETURN(table);
 
 error:
   DBUG_RETURN(NULL);
+}
+
+void spider_close_sys_table(
+  THD *thd,
+  Open_tables_state *open_tables_backup
+) {
+  DBUG_ENTER("spider_close_sys_table");
+  close_performance_schema_table(thd, open_tables_backup);
+  DBUG_VOID_RETURN;
 }
 
 int spider_sys_index_init(
@@ -473,7 +489,7 @@ int spider_delete_xa_member(
   table->use_all_columns();
   spider_store_xa_pk(table, xid);
 
-  if ((error_num = spider_check_sys_table(table, table_key)))
+  if ((error_num = spider_get_sys_table_by_idx(table, table_key, 0)))
   {
     if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
     {
@@ -492,6 +508,11 @@ int spider_delete_xa_member(
       }
       error_num = spider_sys_index_next_same(table, table_key);
     } while (error_num == 0);
+  }
+  if ((error_num = spider_sys_index_end(table)))
+  {
+    table->file->print_error(error_num, MYF(0));
+    DBUG_RETURN(error_num);
   }
 
   DBUG_RETURN(0);
@@ -533,28 +554,24 @@ int spider_get_sys_xid(
   if (ptr)
   {
     xid->formatID = atoi(ptr);
-    my_free(ptr, MYF(0));
   } else
     xid->formatID = 0;
   ptr = get_field(mem_root, table->field[1]);
   if (ptr)
   {
     xid->gtrid_length = atoi(ptr);
-    my_free(ptr, MYF(0));
   } else
     xid->gtrid_length = 0;
   ptr = get_field(mem_root, table->field[2]);
   if (ptr)
   {
     xid->bqual_length = atoi(ptr);
-    my_free(ptr, MYF(0));
   } else
     xid->bqual_length = 0;
   ptr = get_field(mem_root, table->field[3]);
   if (ptr)
   {
     strmov(xid->data, ptr);
-    my_free(ptr, MYF(0));
   }
   DBUG_RETURN(0);
 }
@@ -570,7 +587,6 @@ int spider_get_sys_server_info(
   {
     share->tgt_wrapper_length = strlen(ptr);
     share->tgt_wrapper = spider_create_string(ptr, share->tgt_wrapper_length);
-    my_free(ptr, MYF(0));
   } else {
     share->tgt_wrapper_length = 0;
     share->tgt_wrapper = NULL;
@@ -579,7 +595,6 @@ int spider_get_sys_server_info(
   {
     share->tgt_host_length = strlen(ptr);
     share->tgt_host = spider_create_string(ptr, share->tgt_host_length);
-    my_free(ptr, MYF(0));
   } else {
     share->tgt_host_length = 0;
     share->tgt_host = NULL;
@@ -587,14 +602,12 @@ int spider_get_sys_server_info(
   if ((ptr = get_field(mem_root, table->field[6])))
   {
     share->tgt_port = atol(ptr);
-    my_free(ptr, MYF(0));
   } else
     share->tgt_port = MYSQL_PORT;
   if ((ptr = get_field(mem_root, table->field[7])))
   {
     share->tgt_socket_length = strlen(ptr);
     share->tgt_socket = spider_create_string(ptr, share->tgt_socket_length);
-    my_free(ptr, MYF(0));
   } else {
     share->tgt_socket_length = 0;
     share->tgt_socket = NULL;
@@ -604,7 +617,6 @@ int spider_get_sys_server_info(
     share->tgt_username_length = strlen(ptr);
     share->tgt_username =
       spider_create_string(ptr, share->tgt_username_length);
-    my_free(ptr, MYF(0));
   } else {
     share->tgt_username_length = 0;
     share->tgt_username = NULL;
@@ -614,7 +626,6 @@ int spider_get_sys_server_info(
     share->tgt_password_length = strlen(ptr);
     share->tgt_password =
       spider_create_string(ptr, share->tgt_password_length);
-    my_free(ptr, MYF(0));
   } else {
     share->tgt_password_length = 0;
     share->tgt_password = NULL;
@@ -644,7 +655,6 @@ int spider_check_sys_xa_status(
       error_num = check_error_num;
     else
       error_num = 0;
-    my_free(ptr, MYF(0));
   } else
     error_num = check_error_num;
   DBUG_RETURN(error_num);
@@ -661,14 +671,12 @@ int spider_get_sys_tables(
   if ((ptr = get_field(mem_root, table->field[0])))
   {
     *db_name = spider_create_string(ptr, strlen(ptr));
-    my_free(ptr, MYF(0));
   } else {
     *db_name = NULL;
   }
   if ((ptr = get_field(mem_root, table->field[1])))
   {
     *table_name = spider_create_string(ptr, strlen(ptr));
-    my_free(ptr, MYF(0));
   } else {
     *table_name = NULL;
   }

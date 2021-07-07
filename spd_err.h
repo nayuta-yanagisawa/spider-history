@@ -35,6 +35,10 @@
 #define ER_SPIDER_XA_MEMBER_NOT_EXISTS_STR "This xid member is not exist"
 #define ER_SPIDER_RENAME_WITH_OTHER_NUM 12611
 #define ER_SPIDER_RENAME_WITH_OTHER_STR "Can't rename with other alter specifications"
+#define ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM 12701
+#define ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR "Remote MySQL server has gone away"
+#define ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM 12702
+#define ER_SPIDER_REMOTE_TABLE_NOT_FOUND_STR "Remote table '%s.%s' is not found"
 
 #define ER_SPIDER_UNKNOWN_STR "unknown"
 #define ER_SPIDER_UNKNOWN_LEN (sizeof(ER_SPIDER_UNKNOWN_STR) - 1)

@@ -21,6 +21,18 @@
 #include "ha_spider.h"
 #include "spd_table.h"
 
+my_bool spider_support_xa;
+
+static MYSQL_SYSVAR_BOOL(
+  support_xa,
+  spider_support_xa,
+  PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
+  "XA support",
+  NULL,
+  NULL,
+  TRUE
+);
+
 /*
   0: no recycle
   1: recycle in instance
@@ -473,6 +485,7 @@ struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
 struct st_mysql_sys_var* spider_system_variables[] = {
+  MYSQL_SYSVAR(support_xa),
   MYSQL_SYSVAR(conn_recycle_mode),
   MYSQL_SYSVAR(conn_recycle_strict),
   MYSQL_SYSVAR(sync_trx_isolation),
@@ -515,7 +528,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0001,
+  0x0002,
   NULL,
   spider_system_variables,
   NULL

@@ -14,8 +14,11 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #define SPIDER_SYS_XA_TABLE_NAME_STR "spider_xa"
+#define SPIDER_SYS_XA_TABLE_NAME_LEN (sizeof(SPIDER_SYS_XA_TABLE_NAME_STR) - 1)
 #define SPIDER_SYS_XA_MEMBER_TABLE_NAME_STR "spider_xa_member"
+#define SPIDER_SYS_XA_MEMBER_TABLE_NAME_LEN (sizeof(SPIDER_SYS_XA_MEMBER_TABLE_NAME_STR) - 1)
 #define SPIDER_SYS_TABLES_TABLE_NAME_STR "spider_tables"
+#define SPIDER_SYS_TABLES_TABLE_NAME_LEN (sizeof(SPIDER_SYS_TABLES_TABLE_NAME_STR) - 1)
 
 #define SPIDER_SYS_XA_PREPARED_STR "PREPARED"
 #define SPIDER_SYS_XA_NOT_YET_STR "NOT YET"
@@ -25,8 +28,15 @@
 TABLE *spider_open_sys_table(
   THD *thd,
   char *table_name,
+  int table_name_length,
   bool write,
+  Open_tables_state *open_tables_backup,
   int *error_num
+);
+
+void spider_close_sys_table(
+  THD *thd,
+  Open_tables_state *open_tables_backup
 );
 
 int spider_sys_index_init(

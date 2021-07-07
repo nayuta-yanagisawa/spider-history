@@ -53,6 +53,10 @@ typedef struct st_spider_conn
   st_spider_conn     *c_small;
   st_spider_conn     *c_big;
   longlong           priority;
+  bool               server_lost;
+  bool               ignore_dup_key;
+  char               *error_str;
+  int                error_length;
 } SPIDER_CONN;
 
 typedef struct st_spider_transaction
@@ -66,7 +70,6 @@ typedef struct st_spider_transaction
   uint               internal_xa_snapshot;
 
   ulong              query_id;
-  TABLE              *table_tables;
   bool               tmp_flg;
 
   THD                *thd;
