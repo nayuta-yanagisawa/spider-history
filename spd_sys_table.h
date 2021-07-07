@@ -57,7 +57,7 @@ public:
 #if MYSQL_VERSION_ID < 50500
 TABLE *spider_open_sys_table(
   THD *thd,
-  char *table_name,
+  const char *table_name,
   int table_name_length,
   bool write,
   Open_tables_state *open_tables_backup,
@@ -74,7 +74,7 @@ void spider_close_sys_table(
 #else
 TABLE *spider_open_sys_table(
   THD *thd,
-  char *table_name,
+  const char *table_name,
   int table_name_length,
   bool write,
   Open_tables_backup *open_tables_backup,

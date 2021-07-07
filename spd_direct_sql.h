@@ -46,7 +46,7 @@ int spider_udf_direct_sql_get_server(
 int spider_udf_parse_direct_sql_param(
   SPIDER_TRX *trx,
   SPIDER_DIRECT_SQL *direct_sql,
-  char *param,
+  const char *param,
   int param_length
 );
 

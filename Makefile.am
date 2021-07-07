@@ -1,10 +1,10 @@
 HAVE_HANDLERSOCKET = "-DHAVE_HANDLERSOCKET"
 
 pkgplugindir   = $(pkglibdir)/plugin
-INCLUDES       = -I$(MYSQL_INC)$(top_srcdir)/include \
-                 -I$(MYSQL_INC)$(top_srcdir)/regex \
-                 -I$(MYSQL_INC)$(top_srcdir)/sql \
-                 -I$(MYSQL_INC)$(top_srcdir)/extra/yassl/include \
+INCLUDES       = -I$(SPD_MYSQL_INC)$(top_srcdir)/include \
+                 -I$(SPD_MYSQL_INC)$(top_srcdir)/regex \
+                 -I$(SPD_MYSQL_INC)$(top_srcdir)/sql \
+                 -I$(SPD_MYSQL_INC)$(top_srcdir)/extra/yassl/include \
                  -I./hs_client \
                  $(MYSQL_INCLUDE_PATH) \
                  $(HANDLERSOCKET_INCLUDE_PATH)
@@ -27,7 +27,7 @@ lib_LTLIBRARIES       = $(PLUGIN_SPIDER_LTLIBRARIES_TARGET)
 EXTRA_LTLIBRARIES     = ha_spider.la
 pkgplugin_LTLIBRARIES = @plugin_spider_shared_target@
 ha_spider_la_LDFLAGS  = -shared -module -rpath $(pkgplugindir)
-ha_spider_la_CXXFLAGS = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN \
+ha_spider_la_CXXFLAGS = $(AM_CXXFLAGS) -DMYSQL_DYNAMIC_PLUGIN \
                         $(HAVE_HANDLERSOCKET)
 ha_spider_la_CFLAGS   = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN \
                         $(HAVE_HANDLERSOCKET)
@@ -53,7 +53,7 @@ ha_spider_la_SOURCES  = \
 lib_LIBRARIES        = $(PLUGIN_SPIDER_LIBRARIES_TARGET)
 EXTRA_LIBRARIES      = libspider.a
 noinst_LIBRARIES     = @plugin_spider_static_target@
-libspider_a_CXXFLAGS = $(AM_CFLAGS) $(HAVE_HANDLERSOCKET)
+libspider_a_CXXFLAGS = $(AM_CXXFLAGS) $(HAVE_HANDLERSOCKET)
 libspider_a_CFLAGS   = $(AM_CFLAGS) $(HAVE_HANDLERSOCKET)
 libspider_a_SOURCES  = \
                    spd_param.cc \

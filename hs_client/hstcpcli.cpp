@@ -33,6 +33,16 @@
 
 namespace dena {
 
+hstresult::hstresult()
+{
+  my_init_dynamic_array2(&flds, sizeof(string_ref), NULL, 16, 16);
+}
+
+hstresult::~hstresult()
+{
+  delete_dynamic(&flds);
+}
+
 struct hstcpcli : public hstcpcli_i, private noncopyable {
   hstcpcli(const socket_args& args);
   virtual ~hstcpcli();
@@ -56,12 +66,16 @@ struct hstcpcli : public hstcpcli_i, private noncopyable {
     const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip,
     const string_ref& mod_op, const string_ref *mvs, size_t mvslen,
     const hstcpcli_filter *fils, size_t filslen);
+  virtual void request_buf_append(const char *start, const char *finish);
   virtual int request_send();
   virtual int response_recv(size_t& num_flds_r);
+  virtual int get_result(hstresult& result);
   virtual const string_ref *get_next_row();
+  virtual const string_ref *get_next_row_from_result(hstresult& result);
   virtual void response_buf_remove();
   virtual int get_error_code();
   virtual String get_error();
+  virtual int set_timeout(int send_timeout, int recv_timeout);
  private:
   int read_more();
   void clear_error();
@@ -125,6 +139,18 @@ hstcpcli::reconnect()
   return error_code;
 }
 
+int
+hstcpcli::set_timeout(int send_timeout, int recv_timeout)
+{
+  String err;
+  sargs.send_timeout = send_timeout;
+  sargs.recv_timeout = recv_timeout;
+  if (socket_set_timeout(fd, sargs, err) != 0) {
+    set_error(-1, err);
+  }
+  return error_code;
+}
+
 bool
 hstcpcli::stable_point()
 {
@@ -150,9 +176,11 @@ hstcpcli::read_more()
 {
   const size_t block_size = 4096; // FIXME
   char *const wp = readbuf.make_space(block_size);
-  const ssize_t rlen = read(fd.get(), wp, block_size);
-  if (rlen <= 0) {
+  ssize_t rlen;
+  while ((rlen = read(fd.get(), wp, block_size)) <= 0) {
     if (rlen < 0) {
+      if (errno == EINTR)
+        continue;
       error_str = String("read: failed", &my_charset_bin);
     } else {
       error_str = String("read: eof", &my_charset_bin);
@@ -294,6 +322,29 @@ hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
   ++num_req_bufd;
 }
 
+void
+hstcpcli::request_buf_append(const char *start, const char *finish)
+{
+  if (num_req_sent > 0 || num_req_rcvd > 0) {
+    close();
+    set_error(-1, "request_buf_append: protocol out of sync");
+    return;
+  }
+  const char *nl = start;
+  size_t num_req = 0;
+  while ((nl = memchr_char(nl, '\n', finish - nl))) {
+    if (nl == finish)
+      break;
+    num_req++;
+    nl++;
+  }
+  num_req++;
+  writebuf.append(start, finish);
+  if (*finish != '\n')
+    writebuf.append_literal("\n");
+  num_req_bufd += num_req;
+}
+
 #if 0
 void
 hstcpcli::request_buf_find(size_t pst_id, const string_ref& op,
@@ -429,6 +480,22 @@ hstcpcli::response_recv(size_t& num_flds_r)
   return 0;
 }
 
+int
+hstcpcli::get_result(hstresult& result)
+{
+  readbuf.swap(result.readbuf);
+  result.response_end_offset = response_end_offset;
+  result.num_flds = num_flds;
+  result.cur_row_offset = cur_row_offset;
+  if (result.flds.max_element < num_flds)
+  {
+    if (allocate_dynamic(&result.flds, num_flds))
+      return set_error(-1, "out of memory");
+  }
+  result.flds.elements = num_flds;
+  return 0;
+}
+
 const string_ref *
 hstcpcli::get_next_row()
 {
@@ -458,6 +525,37 @@ hstcpcli::get_next_row()
   }
   cur_row_offset = start - readbuf.begin();
   return (string_ref *) flds.buffer;
+}
+
+const string_ref *
+hstcpcli::get_next_row_from_result(hstresult& result)
+{
+  if (result.num_flds == 0 || result.flds.elements < result.num_flds) {
+    DBG(fprintf(stderr, "GNR NF 0\n"));
+    return 0;
+  }
+  char *start = result.readbuf.begin() + result.cur_row_offset;
+  char *const finish = result.readbuf.begin() + result.response_end_offset - 1;
+  if (start >= finish) { /* start[0] == nl */
+    DBG(fprintf(stderr, "GNR FIN 0 %p %p\n", start, finish));
+    return 0;
+  }
+  for (size_t i = 0; i < result.num_flds; ++i) {
+    skip_one(start, finish);
+    char *const fld_begin = start;
+    read_token(start, finish);
+    char *const fld_end = start;
+    char *wp = fld_begin;
+    if (is_null_expression(fld_begin, fld_end)) {
+      /* null */
+      ((string_ref *) result.flds.buffer)[i] = string_ref();
+    } else {
+      unescape_string(wp, fld_begin, fld_end); /* in-place */
+      ((string_ref *) result.flds.buffer)[i] = string_ref(fld_begin, wp);
+    }
+  }
+  result.cur_row_offset = start - result.readbuf.begin();
+  return (string_ref *) result.flds.buffer;
 }
 
 void

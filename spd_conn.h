@@ -71,6 +71,12 @@ void spider_conn_queue_connect(
   int link_idx
 );
 
+void spider_conn_queue_connect_rewrite(
+  SPIDER_SHARE *share,
+  SPIDER_CONN *conn,
+  int link_idx
+);
+
 void spider_conn_queue_ping(
   ha_spider *spider,
   SPIDER_CONN *conn,
@@ -115,6 +121,25 @@ void spider_conn_clear_queue(
   SPIDER_CONN *conn
 );
 
+void spider_conn_set_timeout(
+  SPIDER_CONN *conn,
+  uint net_read_timeout,
+  uint net_write_timeout
+);
+
+void spider_conn_set_timeout_from_share(
+  SPIDER_CONN *conn,
+  int link_idx,
+  THD *thd,
+  SPIDER_SHARE *share
+);
+
+void spider_conn_set_timeout_from_direct_sql(
+  SPIDER_CONN *conn,
+  THD *thd,
+  SPIDER_DIRECT_SQL *direct_sql
+);
+
 void spider_tree_insert(
   SPIDER_CONN *top,
   SPIDER_CONN *conn
@@ -157,6 +182,10 @@ void spider_bg_conn_break(
 
 void spider_bg_all_conn_break(
   ha_spider *spider
+);
+
+bool spider_bg_conn_get_job(
+  SPIDER_CONN *conn
 );
 
 int spider_bg_conn_search(

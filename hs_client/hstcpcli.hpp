@@ -39,6 +39,16 @@ struct hstcpcli_filter {
 struct hstcpcli_i;
 typedef hstcpcli_i *hstcpcli_ptr;
 
+struct hstresult {
+  hstresult();
+  virtual ~hstresult();
+  string_buffer readbuf;
+  size_t response_end_offset;
+  size_t num_flds;
+  size_t cur_row_offset;
+  DYNAMIC_ARRAY flds;
+};
+
 struct hstcpcli_i {
   virtual ~hstcpcli_i() { }
   virtual void close() = 0;
@@ -51,12 +61,16 @@ struct hstcpcli_i {
     const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip,
     const string_ref& mod_op, const string_ref *mvs, size_t mvslen,
     const hstcpcli_filter *fils = 0, size_t filslen = 0) = 0;
+  virtual void request_buf_append(const char *start, const char *finish) = 0;
   virtual int request_send() = 0;
   virtual int response_recv(size_t& num_flds_r) = 0;
+  virtual int get_result(hstresult& result) = 0;
   virtual const string_ref *get_next_row() = 0;
+  virtual const string_ref *get_next_row_from_result(hstresult& result) = 0;
   virtual void response_buf_remove() = 0;
   virtual int get_error_code() = 0;
   virtual String get_error() = 0;
+  virtual int set_timeout(int send_timeout, int recv_timeout) = 0;
   static hstcpcli_ptr create(const socket_args& args);
 };
 

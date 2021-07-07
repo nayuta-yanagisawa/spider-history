@@ -46,8 +46,8 @@ ignore_sigpipe()
 void
 socket_args::set(const config& conf)
 {
-  timeout = conf.get_int("timeout", 600);
-  listen_backlog = conf.get_int("listen_backlog", 256);
+  timeout = (int) conf.get_int("timeout", 600);
+  listen_backlog = (int) conf.get_int("listen_backlog", 256);
   String node = conf.get_str("host", "");
   String port = conf.get_str("port", "");
   if (node.length() || port.length()) {
@@ -65,8 +65,8 @@ socket_args::set(const config& conf)
       }
     }
   }
-  sndbuf = conf.get_int("sndbuf", 0);
-  rcvbuf = conf.get_int("rcvbuf", 0);
+  sndbuf = (int) conf.get_int("sndbuf", 0);
+  rcvbuf = (int) conf.get_int("rcvbuf", 0);
 }
 
 void
@@ -99,19 +99,70 @@ socket_args::resolve(const char *node, const char *service)
 }
 
 int
+socket_set_timeout(auto_file& fd, const socket_args& args, String& err_r)
+{
+  if (!args.nonblocking) {
+#if defined(SO_SNDTIMEO) && defined(SO_RCVTIMEO)
+    if (args.recv_timeout != 0) {
+#ifndef __WIN__
+      struct timeval tv;
+      tv.tv_sec = args.recv_timeout;
+      tv.tv_usec = 0;
+#else
+      int tv = args.recv_timeout * 1000;
+#endif
+      if (setsockopt(fd.get(), SOL_SOCKET, SO_RCVTIMEO,
+#ifndef __WIN__
+          (const void *) &tv,
+#else
+          (const char *) &tv,
+#endif
+          sizeof(tv)) != 0) {
+        return errno_string("setsockopt SO_RCVTIMEO", errno, err_r);
+      }
+    }
+    if (args.send_timeout != 0) {
+#ifndef __WIN__
+      struct timeval tv;
+      tv.tv_sec = args.send_timeout;
+      tv.tv_usec = 0;
+#else
+      int tv = args.send_timeout * 1000;
+#endif
+      if (setsockopt(fd.get(), SOL_SOCKET, SO_SNDTIMEO,
+#ifndef __WIN__
+          (const void *) &tv,
+#else
+          (const char *) &tv,
+#endif
+          sizeof(tv)) != 0) {
+        return errno_string("setsockopt SO_SNDTIMEO", errno, err_r);
+      }
+    }
+#endif
+  }
+  return 0;
+}
+
+int
 socket_set_options(auto_file& fd, const socket_args& args, String& err_r)
 {
   if (args.timeout != 0 && !args.nonblocking) {
 #if defined(SO_SNDTIMEO) && defined(SO_RCVTIMEO)
 #ifndef __WIN__
-    struct timeval tv = { };
+    struct timeval tv;
     tv.tv_sec = args.timeout;
     tv.tv_usec = 0;
 #else
     int tv = args.timeout * 1000;
 #endif
     if (setsockopt(fd.get(), SOL_SOCKET, SO_RCVTIMEO,
-      IF_WIN((const char *), (const void *)) &tv, sizeof(tv)) != 0) {
+#ifndef __WIN__
+        (const void *) &tv,
+#else
+        (const char *) &tv,
+#endif
+        sizeof(tv)) != 0) {
       return errno_string("setsockopt SO_RCVTIMEO", errno, err_r);
     }
 #ifndef __WIN__
@@ -121,7 +172,12 @@ socket_set_options(auto_file& fd, const socket_args& args, String& err_r)
     tv = args.timeout * 1000;
 #endif
     if (setsockopt(fd.get(), SOL_SOCKET, SO_SNDTIMEO,
-      IF_WIN((const char *), (const void *)) &tv, sizeof(tv)) != 0) {
+#ifndef __WIN__
+        (const void *) &tv,
+#else
+        (const char *) &tv,
+#endif
+        sizeof(tv)) != 0) {
       return errno_string("setsockopt SO_RCVTIMEO", errno, err_r);
     }
 #endif
@@ -134,14 +190,24 @@ socket_set_options(auto_file& fd, const socket_args& args, String& err_r)
   if (args.sndbuf != 0) {
     const int v = args.sndbuf;
     if (setsockopt(fd.get(), SOL_SOCKET, SO_SNDBUF,
-       IF_WIN((const char *), (const void *)) &v, sizeof(v)) != 0) {
+#ifndef __WIN__
+        (const void *) &v,
+#else
+        (const char *) &v,
+#endif
+        sizeof(v)) != 0) {
       return errno_string("setsockopt SO_SNDBUF", errno, err_r);
     }
   }
   if (args.rcvbuf != 0) {
     const int v = args.rcvbuf;
     if (setsockopt(fd.get(), SOL_SOCKET, SO_RCVBUF,
-      IF_WIN((const char *), (const void *)) &v, sizeof(v)) != 0) {
+#ifndef __WIN__
+        (const void *) &v,
+#else
+        (const char *) &v,
+#endif
+        sizeof(v)) != 0) {
       return errno_string("setsockopt SO_RCVBUF", errno, err_r);
     }
   }
@@ -197,7 +263,12 @@ socket_bind(auto_file& fd, const socket_args& args, String& err_r)
 #endif
       int v = 1;
       if (setsockopt(fd.get(), SOL_SOCKET, SO_REUSEADDR,
-        IF_WIN((const char *), (const void *)) &v, sizeof(v)) != 0) {
+#ifndef __WIN__
+        (const void *) &v,
+#else
+        (const char *) &v,
+#endif
+        sizeof(v)) != 0) {
         return errno_string("setsockopt SO_REUSEADDR", errno, err_r);
       }
 #ifndef __WIN__

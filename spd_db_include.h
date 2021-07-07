@@ -16,6 +16,7 @@
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #define SPIDER_HS_CONN dena::hstcpcli_ptr
 #define SPIDER_HS_CONN_CREATE dena::hstcpcli_i::create
+#define SPIDER_HS_RESULT dena::hstresult
 #define SPIDER_HS_SOCKARGS dena::socket_args
 #define SPIDER_HS_UINT32_INFO dena::uint32_info
 #ifndef HANDLERSOCKET_MYSQL_UTIL
@@ -57,6 +58,7 @@ typedef struct st_spider_position
   ulong                  *lengths;
   bool                   use_position;
   bool                   mrr_with_cnt;
+  uint                   sql_kind;
   uchar                  *position_bitmap;
   st_spider_ft_info      *ft_first;
   st_spider_ft_info      *ft_current;
@@ -104,6 +106,7 @@ typedef struct st_spider_result_list
   int                    key_order;
   String                 sql;
   String                 sql_part;
+  String                 sql_part2;
   String                 ha_sql;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   String                 hs_sql;
@@ -121,6 +124,7 @@ typedef struct st_spider_result_list
   int                    hs_limit;
   int                    hs_skip;
   ulonglong              hs_upd_rows;
+  SPIDER_HS_RESULT       hs_result;
   bool                   hs_has_result;
   SPIDER_HS_CONN         *hs_conn;
 #endif

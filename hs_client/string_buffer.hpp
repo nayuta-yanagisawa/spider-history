@@ -24,7 +24,19 @@ namespace dena {
 struct string_buffer : private noncopyable {
   string_buffer() : buffer(0), begin_offset(0), end_offset(0), alloc_size(0) { }
   ~string_buffer() {
-    DENA_FREE(buffer);
+    real_free();
+  }
+  void real_free() {
+    if (alloc_size) {
+      DENA_FREE(buffer);
+      buffer = 0;
+      begin_offset = 0;
+      end_offset = 0;
+      alloc_size = 0;
+    }
+  }
+  size_t real_size() {
+    return alloc_size;
   }
   const char *begin() const {
     return buffer + begin_offset;
@@ -106,6 +118,20 @@ struct string_buffer : private noncopyable {
     memcpy(buffer + end_offset, s1, l1);
     memcpy(buffer + end_offset + l1, s2, l2);
     end_offset += l1 + l2;
+  }
+  void swap(string_buffer& sb) {
+    char *tmp_buffer = buffer;
+    size_t tmp_begin_offset = begin_offset;
+    size_t tmp_end_offset = end_offset;
+    size_t tmp_alloc_size = alloc_size;
+    buffer = sb.buffer;
+    begin_offset = sb.begin_offset;
+    end_offset = sb.end_offset;
+    alloc_size = sb.alloc_size;
+    sb.buffer = tmp_buffer;
+    sb.begin_offset = tmp_begin_offset;
+    sb.end_offset = tmp_end_offset;
+    sb.alloc_size = tmp_alloc_size;
   }
  private:
   char *buffer;

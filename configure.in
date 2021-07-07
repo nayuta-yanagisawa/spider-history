@@ -19,7 +19,7 @@ AC_DEFUN([MYSQL_PATH_TEST],[
         -f $withval/include/errmsg.h -a \
         \( -f $withval/sql/mysql_priv.h -o -f $withval/sql/sql_priv.h \) ;
       then
-        MYSQL_INC="$withval/"
+        SPD_MYSQL_INC="$withval/"
         AC_MSG_RESULT([yes])
         plugin_spider_shared_target=""
         AC_SUBST(plugin_spider_shared_target)
@@ -42,7 +42,7 @@ AC_DEFUN([MYSQL_PATH_TEST],[
         -f ../../include/errmsg.h -a \
         \( -f ../../sql/mysql_priv.h -o ../../sql/sql_priv.h \) ;
       then
-        MYSQL_INC="../../"
+        SPD_MYSQL_INC="../../"
         AC_MSG_RESULT([no])
       else
         AC_MSG_ERROR([Can't find header files. Please set --with-mysql=PATH option])
@@ -52,7 +52,7 @@ AC_DEFUN([MYSQL_PATH_TEST],[
 ])
 
 MYSQL_PATH_TEST
-AC_SUBST(MYSQL_INC)
+AC_SUBST(SPD_MYSQL_INC)
 
 AC_DEFUN([MYSQL_INCLUDE_PATH_TEST],[
   AC_MSG_CHECKING([mysql include path])

@@ -78,8 +78,19 @@
 
 #define SPIDER_TMP_SHARE_CHAR_PTR_COUNT     17
 #define SPIDER_TMP_SHARE_UINT_COUNT         17
-#define SPIDER_TMP_SHARE_LONG_COUNT         10
+#define SPIDER_TMP_SHARE_LONG_COUNT         14
 #define SPIDER_TMP_SHARE_LONGLONG_COUNT      3
+
+#define SPIDER_BACKUP_DASTATUS \
+  bool da_status; if (thd) da_status = thd->is_error(); else da_status = FALSE;
+#define SPIDER_RESTORE_DASTATUS \
+  if (!da_status && thd->is_error()) thd->clear_error();
+#define SPIDER_CONN_RESTORE_DASTATUS \
+  if (thd && conn->error_mode) {SPIDER_RESTORE_DASTATUS;}
+#define SPIDER_CONN_RESTORE_DASTATUS_AND_RESET_ERROR_NUM \
+  if (thd && conn->error_mode) {SPIDER_RESTORE_DASTATUS; error_num = 0;}
+#define SPIDER_CONN_RESTORE_DASTATUS_AND_RESET_TMP_ERROR_NUM \
+  if (thd && conn->error_mode) {SPIDER_RESTORE_DASTATUS; tmp_error_num = 0;}
 
 class ha_spider;
 typedef struct st_spider_share SPIDER_SHARE;
@@ -183,6 +194,9 @@ typedef struct st_spider_conn
   SPIDER_DB_CONN     *db_conn;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   SPIDER_HS_CONN     hs_conn;
+  query_id_t         hsc_query_id;
+  ulonglong          hs_pre_age;
+  ulonglong          hs_age;
 #endif
   uint               opened_handlers;
   pthread_mutex_t    mta_conn_mutex;
@@ -203,6 +217,7 @@ typedef struct st_spider_conn
   int                sql_log_off;
   THD                *thd;
   HASH               lock_table_hash;
+  DYNAMIC_ARRAY      handler_open_array;
   void               *another_ha_first;
   void               *another_ha_last;
   st_spider_conn     *p_small;
@@ -217,6 +232,10 @@ typedef struct st_spider_conn
   time_t             ping_time;
   CHARSET_INFO       *access_charset;
   Time_zone          *time_zone;
+  uint               connect_timeout;
+  uint               net_read_timeout;
+  uint               net_write_timeout;
+  int                error_mode;
 
   char               *tgt_host;
   char               *tgt_username;
@@ -267,6 +286,8 @@ typedef struct st_spider_conn
   volatile bool      bg_discard_result;
   volatile bool      bg_direct_sql;
   volatile bool      bg_exec_sql;
+  volatile bool      bg_get_job_stack;
+  volatile bool      bg_get_job_stack_off;
   THD                *bg_thd;
   pthread_t          bg_thread;
   pthread_cond_t     bg_conn_cond;
@@ -276,11 +297,15 @@ typedef struct st_spider_conn
   volatile void      *bg_target;
   volatile int       *bg_error_num;
   volatile String    *bg_sql;
+  pthread_mutex_t    bg_job_stack_mutex;
+  DYNAMIC_ARRAY      bg_job_stack;
+  uint               bg_job_stack_cur_pos;
 #endif
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   volatile
 #endif
     int              *need_mon;
+  int                *conn_need_mon;
 
   bool               use_for_active_standby;
 
@@ -293,6 +318,7 @@ typedef struct st_spider_conn
   bool               queued_time_zone;
   bool               queued_trx_start;
   bool               queued_xa_start;
+  bool               queued_net_timeout;
   SPIDER_SHARE       *queued_connect_share;
   int                queued_connect_link_idx;
   ha_spider          *queued_ping_spider;
@@ -374,6 +400,10 @@ typedef struct st_spider_transaction
   HASH               trx_hs_r_conn_hash;
   HASH               trx_hs_w_conn_hash;
 #endif
+#ifdef HAVE_HANDLERSOCKET
+  HASH               trx_direct_hs_r_conn_hash;
+  HASH               trx_direct_hs_w_conn_hash;
+#endif
   HASH               trx_alter_table_hash;
   HASH               trx_ha_hash;
   XID_STATE          internal_xid_state;
@@ -389,6 +419,10 @@ typedef struct st_spider_transaction
   ulonglong          direct_update_count;
   ulonglong          direct_delete_count;
   ulonglong          direct_order_limit_count;
+  ulonglong          direct_aggregate_count;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  ulonglong          hs_result_free_count;
+#endif
 
   pthread_mutex_t    *udf_table_mutexes;
   CHARSET_INFO       *udf_access_charset;
@@ -474,13 +508,14 @@ typedef struct st_spider_share
   int                *key_select_pos;
   String             *key_hint;
   String             *show_table_status;
+  String             *show_records;
   String             *show_index;
   String             *set_names;
   String             *table_names_str;
   String             *db_names_str;
   String             *db_table_str;
-  int                table_nm_max_length;
-  int                db_nm_max_length;
+  uint               table_nm_max_length;
+  uint               db_nm_max_length;
   bool               same_db_table_name;
   String             *column_name_str;
   CHARSET_INFO       *access_charset;
@@ -529,7 +564,6 @@ typedef struct st_spider_share
   double             scan_rate;
   double             read_rate;
   longlong           priority;
-  int                net_timeout;
   int                quick_mode;
   longlong           quick_page_size;
   int                low_mem_read;
@@ -549,7 +583,12 @@ typedef struct st_spider_share
   int                direct_dup_insert;
   longlong           direct_order_limit;
   int                read_only_mode;
+  int                error_read_mode;
+  int                error_write_mode;
   int                active_link_count;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  longlong           hs_result_free_size;
+#endif
 
   int                bka_mode;
   char               *bka_engine;
@@ -594,8 +633,12 @@ typedef struct st_spider_share
   long               *use_hs_writes;
   long               *hs_read_ports;
   long               *hs_write_ports;
+  long               *hs_write_to_reads;
 #endif
   long               *use_handlers;
+  long               *connect_timeouts;
+  long               *net_read_timeouts;
+  long               *net_write_timeouts;
 
   uint               *server_names_lengths;
   uint               *tgt_table_names_lengths;
@@ -682,8 +725,12 @@ typedef struct st_spider_share
   uint               use_hs_writes_length;
   uint               hs_read_ports_length;
   uint               hs_write_ports_length;
+  uint               hs_write_to_reads_length;
 #endif
   uint               use_handlers_length;
+  uint               connect_timeouts_length;
+  uint               net_read_timeouts_length;
+  uint               net_write_timeouts_length;
 
   SPIDER_ALTER_TABLE alter_table;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -725,9 +772,14 @@ typedef struct st_spider_direct_sql
 
   int                  table_loop_mode;
   longlong             priority;
-  int                  net_timeout;
+  int                  connect_timeout;
+  int                  net_read_timeout;
+  int                  net_write_timeout;
   longlong             bulk_insert_rows;
   int                  connection_channel;
+#ifdef HAVE_HANDLERSOCKET
+  int                  access_mode;
+#endif
 
   char                 *server_name;
   char                 *tgt_default_db_name;

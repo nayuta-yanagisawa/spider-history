@@ -338,9 +338,9 @@ int spider_db_append_from(
 
 int spider_db_append_from_with_alias(
   String *str,
-  char **table_names,
+  const char **table_names,
   uint *table_name_lengths,
-  char **table_aliases,
+  const char **table_aliases,
   uint *table_alias_lengths,
   uint table_count,
   int *table_name_pos,
@@ -370,6 +370,16 @@ int spider_db_append_update_set(
   ha_spider *spider,
   TABLE *table
 );
+
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+int spider_db_append_increment_update_set(
+  String *str,
+  ha_spider *spider,
+  TABLE *table
+);
+#endif
+#endif
 
 int spider_db_append_update_where(
   String *str,
@@ -485,7 +495,7 @@ int spider_db_append_key_join_columns_for_bka(
   const key_range *start_key,
   ha_spider *spider,
   String *str,
-  char **table_aliases,
+  const char **table_aliases,
   uint *table_alias_lengths
 );
 
@@ -582,6 +592,14 @@ int spider_db_append_show_table_status(
 );
 
 void spider_db_free_show_table_status(
+  SPIDER_SHARE *share
+);
+
+int spider_db_append_show_records(
+  SPIDER_SHARE *share
+);
+
+void spider_db_free_show_records(
   SPIDER_SHARE *share
 );
 
@@ -824,6 +842,11 @@ int spider_db_show_table_status(
   int sts_mode
 );
 
+int spider_db_show_records(
+  ha_spider *spider,
+  int link_idx
+);
+
 void spider_db_set_cardinarity(
   ha_spider *spider,
   TABLE *table
@@ -955,7 +978,7 @@ int spider_db_print_item_type(
   Item *item,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -963,7 +986,7 @@ int spider_db_open_item_cond(
   Item_cond *item_cond,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -971,7 +994,7 @@ int spider_db_open_item_func(
   Item_func *item_func,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -979,7 +1002,7 @@ int spider_db_open_item_ident(
   Item_ident *item_ident,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -987,7 +1010,7 @@ int spider_db_open_item_field(
   Item_field *item_field,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -995,7 +1018,7 @@ int spider_db_open_item_ref(
   Item_ref *item_ref,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -1003,7 +1026,7 @@ int spider_db_open_item_row(
   Item_row *item_row,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -1011,7 +1034,7 @@ int spider_db_open_item_string(
   Item *item,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -1019,7 +1042,7 @@ int spider_db_open_item_int(
   Item *item,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
@@ -1027,14 +1050,14 @@ int spider_db_open_item_cache(
   Item_cache *item_cache,
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length
 );
 
 int spider_db_append_condition_internal(
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
   uint alias_length,
   uint sql_kind
 );
@@ -1042,7 +1065,14 @@ int spider_db_append_condition_internal(
 int spider_db_append_condition(
   ha_spider *spider,
   String *str,
-  char *alias,
+  const char *alias,
+  uint alias_length
+);
+
+int spider_db_append_update_columns(
+  ha_spider *spider,
+  String *str,
+  const char *alias,
   uint alias_length
 );
 
@@ -1058,8 +1088,17 @@ int spider_db_udf_fetch_row(
   ulong *length
 );
 
+#ifdef HAVE_HANDLERSOCKET
+int spider_db_udf_fetch_hs_row(
+  SPIDER_TRX *trx,
+  Field *field,
+  const SPIDER_HS_STRING_REF &hs_row
+);
+#endif
+
 int spider_db_udf_fetch_table(
   SPIDER_TRX *trx,
+  SPIDER_CONN *conn,
   TABLE *table,
   SPIDER_DB_RESULT *result,
   uint set_on,
@@ -1190,6 +1229,10 @@ int spider_db_udf_copy_tables(
   longlong bulk_insert_rows
 );
 
+void spider_db_reset_handler_open(
+  SPIDER_CONN *conn
+);
+
 int spider_db_open_handler(
   ha_spider *spider,
   SPIDER_CONN *conn,
@@ -1199,7 +1242,8 @@ int spider_db_open_handler(
 int spider_db_close_handler(
   ha_spider *spider,
   SPIDER_CONN *conn,
-  int link_idx
+  int link_idx,
+  uint tgt_conn_kind
 );
 
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)

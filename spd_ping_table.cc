@@ -92,7 +92,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
   }
 
   mutex_hash = spider_udf_calc_hash(str->c_ptr(),
-    spider_udf_table_mon_mutex_count);
+    spider_param_udf_table_mon_mutex_count());
   DBUG_PRINT("info",("spider hash key=%s", str->c_ptr()));
   DBUG_PRINT("info",("spider hash key length=%u", str->length()));
   pthread_mutex_lock(&spider_udf_table_mon_mutexes[mutex_hash]);
@@ -201,7 +201,7 @@ void spider_release_ping_table_mon_list(
   conv_name_str.q_append(link_idx_str, link_idx_str_length);
 
   mutex_hash = spider_udf_calc_hash(conv_name_str.c_ptr_safe(),
-    spider_udf_table_mon_mutex_count);
+    spider_param_udf_table_mon_mutex_count());
   pthread_mutex_lock(&spider_udf_table_mon_mutexes[mutex_hash]);
   if ((table_mon_list = (SPIDER_TABLE_MON_LIST *) my_hash_search(
     &spider_udf_table_mon_list_hash[mutex_hash],
@@ -558,6 +558,7 @@ SPIDER_CONN *spider_get_ping_table_tgt_conn(
     *error_num = ER_CONNECT_TO_FOREIGN_DATA_SOURCE;
     goto error;
   }
+  conn->error_mode = 0;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   if (trx == spider_global_trx)
     pthread_mutex_unlock(&spider_global_trx_mutex);
@@ -736,7 +737,7 @@ long long spider_ping_table_body(
     (SPIDER_MON_TABLE_RESULT *) initid->ptr;
   SPIDER_TRX *trx = mon_table_result->trx;
   THD *thd = trx->thd;
-  SPIDER_CONN *ping_conn, *mon_conn;
+  SPIDER_CONN *ping_conn = NULL, *mon_conn;
   char *where_clause;
   SPIDER_TABLE_MON_LIST *table_mon_list;
   SPIDER_TABLE_MON *table_mon;
@@ -789,7 +790,7 @@ long long spider_ping_table_body(
   limit = args->args[3] ? *((longlong *) args->args[3]) : 0;
   where_clause = args->args[4] ? args->args[4] : (char *) "";
 
-  link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str, "%010ld",
+  link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str, "%010d",
     link_idx));
 
   if (conv_name.append(args->args[0], args->lengths[0],
@@ -1147,7 +1148,7 @@ int spider_ping_table_mon_from_table(
     DBUG_RETURN(ER_SPIDER_MON_AT_ALTER_TABLE_NUM);
   }
 
-  link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str, "%010ld",
+  link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str, "%010d",
     link_idx));
 #ifdef _MSC_VER
   String conv_name_str(conv_name_length + link_idx_str_length + 1);

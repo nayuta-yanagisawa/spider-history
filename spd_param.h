@@ -13,106 +13,342 @@
   along with this program); if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
-extern my_bool spider_support_xa;
-extern uint spider_table_init_error_interval;
-extern int spider_use_table_charset;
-extern uint spider_udf_table_lock_mutex_count;
-extern uint spider_udf_table_mon_mutex_count;
-extern char *spider_remote_access_charset;
-extern int spider_remote_autocommit;
-extern char *spider_remote_time_zone;
-extern int spider_remote_sql_log_off;
-extern int spider_remote_trx_isolation;
-extern my_bool spider_connect_mutex;
-extern int spider_udf_ct_bulk_insert_interval;
-extern long long spider_udf_ct_bulk_insert_rows;
-
-extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_mode, unsigned int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_strict, unsigned int);
-extern DECLARE_MYSQL_THDVAR_BASIC(sync_trx_isolation, char);
-extern DECLARE_MYSQL_THDVAR_BASIC(use_consistent_snapshot, char);
-extern DECLARE_MYSQL_THDVAR_BASIC(internal_xa, char);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_xa_snapshot, unsigned int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(force_commit, unsigned int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_offset, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_limit, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(split_read, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_split_read, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_split_read_limit, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(init_sql_alloc_size, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(reset_sql_alloc, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(multi_split_read, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(max_order, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_trx_isolation, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_table_lock, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_table_lock_connection, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(block_size, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(selupd_lock_mode, int);
-extern DECLARE_MYSQL_THDVAR_BASIC(sync_autocommit, char);
-extern DECLARE_MYSQL_THDVAR_BASIC(sync_time_zone, char);
-extern DECLARE_MYSQL_THDVAR_BASIC(internal_sql_log_off, char);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(bulk_size, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(bulk_update_mode, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(bulk_update_size, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_optimize, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_optimize_local, int);
-extern DECLARE_MYSQL_THDVAR_BASIC(use_flash_logs, char);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(use_snapshot_with_flush_tables, int);
-extern DECLARE_MYSQL_THDVAR_BASIC(use_all_conns_snapshot, char);
-extern DECLARE_MYSQL_THDVAR_BASIC(lock_exchange, char);
-extern DECLARE_MYSQL_THDVAR_BASIC(internal_unlock, char);
-extern DECLARE_MYSQL_THDVAR_BASIC(semi_trx, char);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(net_timeout, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(quick_mode, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(quick_page_size, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(low_mem_read, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(select_column_mode, int);
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_mode, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_first_read, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_second_read, long long);
-#endif
-extern DECLARE_MYSQL_THDVAR_SIMPLE(first_read, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(second_read, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_interval, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_mode, int);
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_sync, int);
-#endif
-extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_type, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_weight, int);
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_bg_mode, int);
-#endif
-extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_interval, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_mode, int);
-#ifdef WITH_PARTITION_STORAGE_ENGINE
-extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_sync, int);
-#endif
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_bg_mode, int);
-#endif
-extern DECLARE_MYSQL_THDVAR_SIMPLE(ping_interval_at_trx_start, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(auto_increment_mode, int);
-extern DECLARE_MYSQL_THDVAR_BASIC(same_server_link, char);
-extern DECLARE_MYSQL_THDVAR_BASIC(local_lock_table, char);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(use_pushdown_udf, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(direct_dup_insert, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(udf_ds_bulk_insert_rows, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(udf_ds_table_loop_mode, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(connect_retry_interval, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(connect_retry_count, int);
-extern DECLARE_MYSQL_THDVAR_BASIC(bka_engine, char *);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(bka_mode, int);
+my_bool spider_param_support_xa();
+my_bool spider_param_connect_mutex();
+uint spider_param_table_init_error_interval();
+int spider_param_use_table_charset(
+  int use_table_charset
+);
+uint spider_param_conn_recycle_mode(
+  THD *thd
+);
+uint spider_param_conn_recycle_strict(
+  THD *thd
+);
+bool spider_param_sync_trx_isolation(
+  THD *thd
+);
+bool spider_param_use_consistent_snapshot(
+  THD *thd
+);
+bool spider_param_internal_xa(
+  THD *thd
+);
+uint spider_param_internal_xa_snapshot(
+  THD *thd
+);
+uint spider_param_force_commit(
+  THD *thd
+);
+longlong spider_param_internal_offset(
+  THD *thd,
+  longlong internal_offset
+);
+longlong spider_param_internal_limit(
+  THD *thd,
+  longlong internal_limit
+);
+longlong spider_param_split_read(
+  THD *thd,
+  longlong split_read
+);
+double spider_param_semi_split_read(
+  THD *thd,
+  double semi_split_read
+);
+longlong spider_param_semi_split_read_limit(
+  THD *thd,
+  longlong semi_split_read_limit
+);
+int spider_param_init_sql_alloc_size(
+  THD *thd,
+  int init_sql_alloc_size
+);
+int spider_param_reset_sql_alloc(
+  THD *thd,
+  int reset_sql_alloc
+);
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
-extern DECLARE_MYSQL_THDVAR_SIMPLE(hs_r_conn_recycle_mode, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(hs_r_conn_recycle_strict, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(hs_w_conn_recycle_mode, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(hs_w_conn_recycle_strict, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(use_hs_read, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(use_hs_write, int);
+longlong spider_param_hs_result_free_size(
+  THD *thd,
+  longlong hs_result_free_size
+);
 #endif
-extern DECLARE_MYSQL_THDVAR_SIMPLE(use_handler, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(skip_default_condition, int);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(direct_order_limit, long long);
-extern DECLARE_MYSQL_THDVAR_SIMPLE(read_only_mode, int);
+int spider_param_multi_split_read(
+  THD *thd,
+  int multi_split_read
+);
+int spider_param_max_order(
+  THD *thd,
+  int max_order
+);
+int spider_param_semi_trx_isolation(
+  THD *thd
+);
+int spider_param_semi_table_lock(
+  THD *thd,
+  int semi_table_lock
+);
+int spider_param_semi_table_lock_connection(
+  THD *thd,
+  int semi_table_lock_connection
+);
+uint spider_param_block_size(
+  THD *thd
+);
+int spider_param_selupd_lock_mode(
+  THD *thd,
+  int selupd_lock_mode
+);
+bool spider_param_sync_autocommit(
+  THD *thd
+);
+bool spider_param_sync_time_zone(
+  THD *thd
+);
+bool spider_param_internal_sql_log_off(
+  THD *thd
+);
+int spider_param_bulk_size(
+  THD *thd,
+  int bulk_size
+);
+int spider_param_bulk_update_mode(
+  THD *thd,
+  int bulk_update_mode
+);
+int spider_param_bulk_update_size(
+  THD *thd,
+  int bulk_update_size
+);
+int spider_param_internal_optimize(
+  THD *thd,
+  int internal_optimize
+);
+int spider_param_internal_optimize_local(
+  THD *thd,
+  int internal_optimize_local
+);
+bool spider_param_use_flash_logs(
+  THD *thd
+);
+int spider_param_use_snapshot_with_flush_tables(
+  THD *thd
+);
+bool spider_param_use_all_conns_snapshot(
+  THD *thd
+);
+bool spider_param_lock_exchange(
+  THD *thd
+);
+bool spider_param_internal_unlock(
+  THD *thd
+);
+bool spider_param_semi_trx(
+  THD *thd
+);
+int spider_param_connect_timeout(
+  THD *thd,
+  int connect_timeout
+);
+int spider_param_net_read_timeout(
+  THD *thd,
+  int net_read_timeout
+);
+int spider_param_net_write_timeout(
+  THD *thd,
+  int net_write_timeout
+);
+int spider_param_quick_mode(
+  THD *thd,
+  int quick_mode
+);
+int spider_param_quick_page_size(
+  THD *thd,
+  int quick_page_size
+);
+int spider_param_low_mem_read(
+  THD *thd,
+  int low_mem_read
+);
+int spider_param_select_column_mode(
+  THD *thd,
+  int select_column_mode
+);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+int spider_param_bgs_mode(
+  THD *thd,
+  int bgs_mode
+);
+longlong spider_param_bgs_first_read(
+  THD *thd,
+  longlong bgs_first_read
+);
+longlong spider_param_bgs_second_read(
+  THD *thd,
+  longlong bgs_second_read
+);
+#endif
+longlong spider_param_first_read(
+  THD *thd,
+  longlong first_read
+);
+longlong spider_param_second_read(
+  THD *thd,
+  longlong second_read
+);
+double spider_param_crd_interval(
+  THD *thd,
+  double crd_interval
+);
+int spider_param_crd_mode(
+  THD *thd,
+  int crd_mode
+);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+int spider_param_crd_sync(
+  THD *thd,
+  int crd_sync
+);
+#endif
+int spider_param_crd_type(
+  THD *thd,
+  int crd_type
+);
+double spider_param_crd_weight(
+  THD *thd,
+  double crd_weight
+);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+int spider_param_crd_bg_mode(
+  THD *thd,
+  int crd_bg_mode
+);
+#endif
+double spider_param_sts_interval(
+  THD *thd,
+  double sts_interval
+);
+int spider_param_sts_mode(
+  THD *thd,
+  int sts_mode
+);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+int spider_param_sts_sync(
+  THD *thd,
+  int sts_sync
+);
+#endif
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+int spider_param_sts_bg_mode(
+  THD *thd,
+  int sts_bg_mode
+);
+#endif
+double spider_param_ping_interval_at_trx_start(
+  THD *thd
+);
+#ifdef HAVE_HANDLERSOCKET
+double spider_param_hs_ping_interval(
+  THD *thd
+);
+#endif
+int spider_param_auto_increment_mode(
+  THD *thd,
+  int auto_increment_mode
+);
+bool spider_param_same_server_link(
+  THD *thd
+);
+bool spider_param_local_lock_table(
+  THD *thd
+);
+int spider_param_use_pushdown_udf(
+  THD *thd,
+  int use_pushdown_udf
+);
+int spider_param_direct_dup_insert(
+  THD *thd,
+  int direct_dup_insert
+);
+uint spider_param_udf_table_lock_mutex_count();
+uint spider_param_udf_table_mon_mutex_count();
+longlong spider_param_udf_ds_bulk_insert_rows(
+  THD *thd,
+  longlong udf_ds_bulk_insert_rows
+);
+int spider_param_udf_ds_table_loop_mode(
+  THD *thd,
+  int udf_ds_table_loop_mode
+);
+char *spider_param_remote_access_charset();
+int spider_param_remote_autocommit();
+char *spider_param_remote_time_zone();
+int spider_param_remote_sql_log_off();
+int spider_param_remote_trx_isolation();
+longlong spider_param_connect_retry_interval(
+  THD *thd
+);
+int spider_param_connect_retry_count(
+  THD *thd
+);
+char *spider_param_bka_engine(
+  THD *thd,
+  char *bka_engine
+);
+int spider_param_bka_mode(
+  THD *thd,
+  int bka_mode
+);
+int spider_param_udf_ct_bulk_insert_interval(
+  int udf_ct_bulk_insert_interval
+);
+longlong spider_param_udf_ct_bulk_insert_rows(
+  longlong udf_ct_bulk_insert_rows
+);
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+uint spider_param_hs_r_conn_recycle_mode(
+  THD *thd
+);
+uint spider_param_hs_r_conn_recycle_strict(
+  THD *thd
+);
+uint spider_param_hs_w_conn_recycle_mode(
+  THD *thd
+);
+uint spider_param_hs_w_conn_recycle_strict(
+  THD *thd
+);
+int spider_param_use_hs_read(
+  THD *thd,
+  int use_hs_read
+);
+int spider_param_use_hs_write(
+  THD *thd,
+  int use_hs_write
+);
+#endif
+int spider_param_use_handler(
+  THD *thd,
+  int use_handler
+);
+int spider_param_error_read_mode(
+  THD *thd,
+  int error_read_mode
+);
+int spider_param_error_write_mode(
+  THD *thd,
+  int error_write_mode
+);
+int spider_param_skip_default_condition(
+  THD *thd,
+  int skip_default_condition
+);
+longlong spider_param_direct_order_limit(
+  THD *thd,
+  longlong direct_order_limit
+);
+int spider_param_read_only_mode(
+  THD *thd,
+  int read_only_mode
+);

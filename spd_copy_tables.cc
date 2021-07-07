@@ -592,6 +592,7 @@ int spider_udf_get_copy_tgt_conns(
         my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0), share->server_names[0]);
         DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
       }
+      table_conn->conn->error_mode = 0;
       table_conn = table_conn->next;
     }
   }
@@ -788,7 +789,7 @@ long long spider_copy_tables_body(
   char *is_null,
   char *error
 ) {
-  int error_num, roop_count, all_link_cnt, use_table_charset;
+  int error_num, roop_count, all_link_cnt = 0, use_table_charset;
   SPIDER_COPY_TABLES *copy_tables = NULL;
   THD *thd = current_thd;
   TABLE_LIST *table_list = NULL;
@@ -894,9 +895,9 @@ long long spider_copy_tables_body(
   table_list->lock_type = TL_READ;
 
   DBUG_PRINT("info",("spider db=%s", table_list->db));
-  DBUG_PRINT("info",("spider db_length=%d", table_list->db_length));
+  DBUG_PRINT("info",("spider db_length=%zd", table_list->db_length));
   DBUG_PRINT("info",("spider table_name=%s", table_list->table_name));
-  DBUG_PRINT("info",("spider table_name_length=%d",
+  DBUG_PRINT("info",("spider table_name_length=%zd",
     table_list->table_name_length));
 #if MYSQL_VERSION_ID < 50500
   if (open_and_lock_tables(thd, table_list))
@@ -928,8 +929,8 @@ long long spider_copy_tables_body(
   }
   key_info = &table->key_info[table_share->primary_key];
 
-  use_table_charset = spider_use_table_charset == -1 ?
-    copy_tables->use_table_charset : spider_use_table_charset;
+  use_table_charset = spider_param_use_table_charset(
+    copy_tables->use_table_charset);
   if (use_table_charset)
     copy_tables->access_charset = table_share->table_charset;
   else
@@ -958,8 +959,8 @@ long long spider_copy_tables_body(
 
   src_tbl_conn->where_pos = select_sql->length();
 
-  bulk_insert_rows = spider_udf_ct_bulk_insert_rows > 0 ?
-    spider_udf_ct_bulk_insert_rows : copy_tables->bulk_insert_rows;
+  bulk_insert_rows = spider_param_udf_ct_bulk_insert_rows(
+    copy_tables->bulk_insert_rows);
   if (
     spider_db_append_key_order_str(select_sql, key_info, 0, FALSE) ||
     spider_db_append_limit(NULL, select_sql, 0, bulk_insert_rows)

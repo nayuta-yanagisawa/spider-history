@@ -163,22 +163,36 @@ int spider_udf_direct_sql_create_conn_key(
   DBUG_ENTER("spider_udf_direct_sql_create_conn_key");
 
   /* tgt_db not use */
-  direct_sql->conn_key_length
-    = 1
-    + direct_sql->tgt_wrapper_length + 1
-    + direct_sql->tgt_host_length + 1
-    + 5 + 1
-    + direct_sql->tgt_socket_length + 1
-    + direct_sql->tgt_username_length + 1
-    + direct_sql->tgt_password_length + 1
-    + direct_sql->tgt_ssl_ca_length + 1
-    + direct_sql->tgt_ssl_capath_length + 1
-    + direct_sql->tgt_ssl_cert_length + 1
-    + direct_sql->tgt_ssl_cipher_length + 1
-    + direct_sql->tgt_ssl_key_length + 1
-    + 1 + 1
-    + direct_sql->tgt_default_file_length + 1
-    + direct_sql->tgt_default_group_length;
+#ifdef HAVE_HANDLERSOCKET
+  if (direct_sql->access_mode == 0)
+  {
+#endif
+    direct_sql->conn_key_length
+      = 1
+      + direct_sql->tgt_wrapper_length + 1
+      + direct_sql->tgt_host_length + 1
+      + 5 + 1
+      + direct_sql->tgt_socket_length + 1
+      + direct_sql->tgt_username_length + 1
+      + direct_sql->tgt_password_length + 1
+      + direct_sql->tgt_ssl_ca_length + 1
+      + direct_sql->tgt_ssl_capath_length + 1
+      + direct_sql->tgt_ssl_cert_length + 1
+      + direct_sql->tgt_ssl_cipher_length + 1
+      + direct_sql->tgt_ssl_key_length + 1
+      + 1 + 1
+      + direct_sql->tgt_default_file_length + 1
+      + direct_sql->tgt_default_group_length;
+#ifdef HAVE_HANDLERSOCKET
+  } else {
+    direct_sql->conn_key_length
+      = 1
+      + direct_sql->tgt_wrapper_length + 1
+      + direct_sql->tgt_host_length + 1
+      + 5 + 1
+      + direct_sql->tgt_socket_length;
+  }
+#endif
   if (!(direct_sql->conn_key = (char *)
         my_malloc(direct_sql->conn_key_length + 1, MYF(MY_WME | MY_ZEROFILL)))
   )
@@ -200,66 +214,73 @@ int spider_udf_direct_sql_create_conn_key(
     tmp_name = strmov(tmp_name + 1, direct_sql->tgt_socket);
   } else
     tmp_name++;
-  if (direct_sql->tgt_username)
+#ifdef HAVE_HANDLERSOCKET
+  if (direct_sql->access_mode == 0)
   {
-    DBUG_PRINT("info",("spider tgt_username=%s", direct_sql->tgt_username));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_username);
-  } else
+#endif
+    if (direct_sql->tgt_username)
+    {
+      DBUG_PRINT("info",("spider tgt_username=%s", direct_sql->tgt_username));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_username);
+    } else
+      tmp_name++;
+    if (direct_sql->tgt_password)
+    {
+      DBUG_PRINT("info",("spider tgt_password=%s", direct_sql->tgt_password));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_password);
+    } else
+      tmp_name++;
+    if (direct_sql->tgt_ssl_ca)
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_ca=%s", direct_sql->tgt_ssl_ca));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_ca);
+    } else
+      tmp_name++;
+    if (direct_sql->tgt_ssl_capath)
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_capath=%s",
+        direct_sql->tgt_ssl_capath));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_capath);
+    } else
+      tmp_name++;
+    if (direct_sql->tgt_ssl_cert)
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_cert=%s", direct_sql->tgt_ssl_cert));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_cert);
+    } else
+      tmp_name++;
+    if (direct_sql->tgt_ssl_cipher)
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_cipher=%s",
+        direct_sql->tgt_ssl_cipher));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_cipher);
+    } else
+      tmp_name++;
+    if (direct_sql->tgt_ssl_key)
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_key=%s", direct_sql->tgt_ssl_key));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_key);
+    } else
+      tmp_name++;
     tmp_name++;
-  if (direct_sql->tgt_password)
-  {
-    DBUG_PRINT("info",("spider tgt_password=%s", direct_sql->tgt_password));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_password);
-  } else
-    tmp_name++;
-  if (direct_sql->tgt_ssl_ca)
-  {
-    DBUG_PRINT("info",("spider tgt_ssl_ca=%s", direct_sql->tgt_ssl_ca));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_ca);
-  } else
-    tmp_name++;
-  if (direct_sql->tgt_ssl_capath)
-  {
-    DBUG_PRINT("info",("spider tgt_ssl_capath=%s",
-      direct_sql->tgt_ssl_capath));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_capath);
-  } else
-    tmp_name++;
-  if (direct_sql->tgt_ssl_cert)
-  {
-    DBUG_PRINT("info",("spider tgt_ssl_cert=%s", direct_sql->tgt_ssl_cert));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_cert);
-  } else
-    tmp_name++;
-  if (direct_sql->tgt_ssl_cipher)
-  {
-    DBUG_PRINT("info",("spider tgt_ssl_cipher=%s",
-      direct_sql->tgt_ssl_cipher));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_cipher);
-  } else
-    tmp_name++;
-  if (direct_sql->tgt_ssl_key)
-  {
-    DBUG_PRINT("info",("spider tgt_ssl_key=%s", direct_sql->tgt_ssl_key));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_ssl_key);
-  } else
-    tmp_name++;
-  tmp_name++;
-  *tmp_name = '0' + direct_sql->tgt_ssl_vsc;
-  if (direct_sql->tgt_default_file)
-  {
-    DBUG_PRINT("info",("spider tgt_default_file=%s",
-      direct_sql->tgt_default_file));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_default_file);
-  } else
-    tmp_name++;
-  if (direct_sql->tgt_default_group)
-  {
-    DBUG_PRINT("info",("spider tgt_default_group=%s",
-      direct_sql->tgt_default_group));
-    tmp_name = strmov(tmp_name + 1, direct_sql->tgt_default_group);
-  } else
-    tmp_name++;
+    *tmp_name = '0' + direct_sql->tgt_ssl_vsc;
+    if (direct_sql->tgt_default_file)
+    {
+      DBUG_PRINT("info",("spider tgt_default_file=%s",
+        direct_sql->tgt_default_file));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_default_file);
+    } else
+      tmp_name++;
+    if (direct_sql->tgt_default_group)
+    {
+      DBUG_PRINT("info",("spider tgt_default_group=%s",
+        direct_sql->tgt_default_group));
+      tmp_name = strmov(tmp_name + 1, direct_sql->tgt_default_group);
+    } else
+      tmp_name++;
+#ifdef HAVE_HANDLERSOCKET
+  }
+#endif
   DBUG_RETURN(0);
 }
 
@@ -271,112 +292,153 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
   char *tmp_name, *tmp_host, *tmp_username, *tmp_password, *tmp_socket;
   char *tmp_wrapper, *tmp_ssl_ca, *tmp_ssl_capath, *tmp_ssl_cert;
   char *tmp_ssl_cipher, *tmp_ssl_key, *tmp_default_file, *tmp_default_group;
+  int *need_mon;
   DBUG_ENTER("spider_udf_direct_sql_create_conn");
 
-  if (!(conn = (SPIDER_CONN *)
-       my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
-                        &conn, sizeof(*conn),
-                        &tmp_name, direct_sql->conn_key_length + 1,
-                        &tmp_host, direct_sql->tgt_host_length + 1,
-                        &tmp_username, direct_sql->tgt_username_length + 1,
-                        &tmp_password, direct_sql->tgt_password_length + 1,
-                        &tmp_socket, direct_sql->tgt_socket_length + 1,
-                        &tmp_wrapper, direct_sql->tgt_wrapper_length + 1,
-                        &tmp_ssl_ca, direct_sql->tgt_ssl_ca_length + 1,
-                        &tmp_ssl_capath, direct_sql->tgt_ssl_capath_length + 1,
-                        &tmp_ssl_cert, direct_sql->tgt_ssl_cert_length + 1,
-                        &tmp_ssl_cipher, direct_sql->tgt_ssl_cipher_length + 1,
-                        &tmp_ssl_key, direct_sql->tgt_ssl_key_length + 1,
-                        &tmp_default_file,
-                          direct_sql->tgt_default_file_length + 1,
-                        &tmp_default_group,
-                          direct_sql->tgt_default_group_length + 1,
-                        NullS))
-  ) {
-    *error_num = HA_ERR_OUT_OF_MEM;
-    goto error_alloc_conn;
+#ifdef HAVE_HANDLERSOCKET
+  if (direct_sql->access_mode == 0)
+  {
+#endif
+    if (!(conn = (SPIDER_CONN *)
+      my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
+        &conn, sizeof(*conn),
+        &tmp_name, direct_sql->conn_key_length + 1,
+        &tmp_host, direct_sql->tgt_host_length + 1,
+        &tmp_username, direct_sql->tgt_username_length + 1,
+        &tmp_password, direct_sql->tgt_password_length + 1,
+        &tmp_socket, direct_sql->tgt_socket_length + 1,
+        &tmp_wrapper, direct_sql->tgt_wrapper_length + 1,
+        &tmp_ssl_ca, direct_sql->tgt_ssl_ca_length + 1,
+        &tmp_ssl_capath, direct_sql->tgt_ssl_capath_length + 1,
+        &tmp_ssl_cert, direct_sql->tgt_ssl_cert_length + 1,
+        &tmp_ssl_cipher, direct_sql->tgt_ssl_cipher_length + 1,
+        &tmp_ssl_key, direct_sql->tgt_ssl_key_length + 1,
+        &tmp_default_file,
+          direct_sql->tgt_default_file_length + 1,
+        &tmp_default_group,
+          direct_sql->tgt_default_group_length + 1,
+        &need_mon, sizeof(int),
+        NullS))
+    ) {
+      *error_num = HA_ERR_OUT_OF_MEM;
+      goto error_alloc_conn;
+    }
+#ifdef HAVE_HANDLERSOCKET
+  } else {
+    if (!(conn = (SPIDER_CONN *)
+      my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
+        &conn, sizeof(*conn),
+        &tmp_name, direct_sql->conn_key_length + 1,
+        &tmp_host, direct_sql->tgt_host_length + 1,
+        &tmp_socket, direct_sql->tgt_socket_length + 1,
+        &tmp_wrapper, direct_sql->tgt_wrapper_length + 1,
+        &need_mon, sizeof(int),
+        NullS))
+    ) {
+      *error_num = HA_ERR_OUT_OF_MEM;
+      goto error_alloc_conn;
+    }
   }
+#endif
 
   conn->conn_key_length = direct_sql->conn_key_length;
   conn->conn_key = tmp_name;
   memcpy(conn->conn_key, direct_sql->conn_key, direct_sql->conn_key_length);
-  conn->tgt_host_length = direct_sql->tgt_host_length;
-  conn->tgt_host = tmp_host;
-  memcpy(conn->tgt_host, direct_sql->tgt_host, direct_sql->tgt_host_length);
-  conn->tgt_username_length = direct_sql->tgt_username_length;
-  conn->tgt_username = tmp_username;
-  memcpy(conn->tgt_username, direct_sql->tgt_username,
-    direct_sql->tgt_username_length);
-  conn->tgt_password_length = direct_sql->tgt_password_length;
-  conn->tgt_password = tmp_password;
-  memcpy(conn->tgt_password, direct_sql->tgt_password,
-    direct_sql->tgt_password_length);
-  conn->tgt_socket_length = direct_sql->tgt_socket_length;
-  conn->tgt_socket = tmp_socket;
-  memcpy(conn->tgt_socket, direct_sql->tgt_socket,
-    direct_sql->tgt_socket_length);
   conn->tgt_wrapper_length = direct_sql->tgt_wrapper_length;
   conn->tgt_wrapper = tmp_wrapper;
   memcpy(conn->tgt_wrapper, direct_sql->tgt_wrapper,
     direct_sql->tgt_wrapper_length);
-  conn->tgt_ssl_ca_length = direct_sql->tgt_ssl_ca_length;
-  if (conn->tgt_ssl_ca_length)
+  conn->tgt_host_length = direct_sql->tgt_host_length;
+  conn->tgt_host = tmp_host;
+  memcpy(conn->tgt_host, direct_sql->tgt_host, direct_sql->tgt_host_length);
+#ifdef HAVE_HANDLERSOCKET
+  if (direct_sql->access_mode == 0)
   {
-    conn->tgt_ssl_ca = tmp_ssl_ca;
-    memcpy(conn->tgt_ssl_ca, direct_sql->tgt_ssl_ca,
-      direct_sql->tgt_ssl_ca_length);
-  } else
-    conn->tgt_ssl_ca = NULL;
-  conn->tgt_ssl_capath_length = direct_sql->tgt_ssl_capath_length;
-  if (conn->tgt_ssl_capath_length)
-  {
-    conn->tgt_ssl_capath = tmp_ssl_capath;
-    memcpy(conn->tgt_ssl_capath, direct_sql->tgt_ssl_capath,
-      direct_sql->tgt_ssl_capath_length);
-  } else
-    conn->tgt_ssl_capath = NULL;
-  conn->tgt_ssl_cert_length = direct_sql->tgt_ssl_cert_length;
-  if (conn->tgt_ssl_cert_length)
-  {
-    conn->tgt_ssl_cert = tmp_ssl_cert;
-    memcpy(conn->tgt_ssl_cert, direct_sql->tgt_ssl_cert,
-      direct_sql->tgt_ssl_cert_length);
-  } else
-    conn->tgt_ssl_cert = NULL;
-  conn->tgt_ssl_cipher_length = direct_sql->tgt_ssl_cipher_length;
-  if (conn->tgt_ssl_cipher_length)
-  {
-    conn->tgt_ssl_cipher = tmp_ssl_cipher;
-    memcpy(conn->tgt_ssl_cipher, direct_sql->tgt_ssl_cipher,
-      direct_sql->tgt_ssl_cipher_length);
-  } else
-    conn->tgt_ssl_cipher = NULL;
-  conn->tgt_ssl_key_length = direct_sql->tgt_ssl_key_length;
-  if (conn->tgt_ssl_key_length)
-  {
-    conn->tgt_ssl_key = tmp_ssl_key;
-    memcpy(conn->tgt_ssl_key, direct_sql->tgt_ssl_key,
-      direct_sql->tgt_ssl_key_length);
-  } else
-    conn->tgt_ssl_key = NULL;
-  conn->tgt_default_file_length = direct_sql->tgt_default_file_length;
-  if (conn->tgt_default_file_length)
-  {
-    conn->tgt_default_file = tmp_default_file;
-    memcpy(conn->tgt_default_file, direct_sql->tgt_default_file,
-      direct_sql->tgt_default_file_length);
-  } else
-    conn->tgt_default_file = NULL;
-  conn->tgt_default_group_length = direct_sql->tgt_default_group_length;
-  if (conn->tgt_default_group_length)
-  {
-    conn->tgt_default_group = tmp_default_group;
-    memcpy(conn->tgt_default_group, direct_sql->tgt_default_group,
-      direct_sql->tgt_default_group_length);
-  } else
-    conn->tgt_default_group = NULL;
-  conn->tgt_port = direct_sql->tgt_port;
-  conn->tgt_ssl_vsc = direct_sql->tgt_ssl_vsc;
+#endif
+    conn->tgt_port = direct_sql->tgt_port;
+    conn->tgt_socket_length = direct_sql->tgt_socket_length;
+    conn->tgt_socket = tmp_socket;
+    memcpy(conn->tgt_socket, direct_sql->tgt_socket,
+      direct_sql->tgt_socket_length);
+    conn->tgt_username_length = direct_sql->tgt_username_length;
+    conn->tgt_username = tmp_username;
+    memcpy(conn->tgt_username, direct_sql->tgt_username,
+      direct_sql->tgt_username_length);
+    conn->tgt_password_length = direct_sql->tgt_password_length;
+    conn->tgt_password = tmp_password;
+    memcpy(conn->tgt_password, direct_sql->tgt_password,
+      direct_sql->tgt_password_length);
+    conn->tgt_ssl_ca_length = direct_sql->tgt_ssl_ca_length;
+    if (conn->tgt_ssl_ca_length)
+    {
+      conn->tgt_ssl_ca = tmp_ssl_ca;
+      memcpy(conn->tgt_ssl_ca, direct_sql->tgt_ssl_ca,
+        direct_sql->tgt_ssl_ca_length);
+    } else
+      conn->tgt_ssl_ca = NULL;
+    conn->tgt_ssl_capath_length = direct_sql->tgt_ssl_capath_length;
+    if (conn->tgt_ssl_capath_length)
+    {
+      conn->tgt_ssl_capath = tmp_ssl_capath;
+      memcpy(conn->tgt_ssl_capath, direct_sql->tgt_ssl_capath,
+        direct_sql->tgt_ssl_capath_length);
+    } else
+      conn->tgt_ssl_capath = NULL;
+    conn->tgt_ssl_cert_length = direct_sql->tgt_ssl_cert_length;
+    if (conn->tgt_ssl_cert_length)
+    {
+      conn->tgt_ssl_cert = tmp_ssl_cert;
+      memcpy(conn->tgt_ssl_cert, direct_sql->tgt_ssl_cert,
+        direct_sql->tgt_ssl_cert_length);
+    } else
+      conn->tgt_ssl_cert = NULL;
+    conn->tgt_ssl_cipher_length = direct_sql->tgt_ssl_cipher_length;
+    if (conn->tgt_ssl_cipher_length)
+    {
+      conn->tgt_ssl_cipher = tmp_ssl_cipher;
+      memcpy(conn->tgt_ssl_cipher, direct_sql->tgt_ssl_cipher,
+        direct_sql->tgt_ssl_cipher_length);
+    } else
+      conn->tgt_ssl_cipher = NULL;
+    conn->tgt_ssl_key_length = direct_sql->tgt_ssl_key_length;
+    if (conn->tgt_ssl_key_length)
+    {
+      conn->tgt_ssl_key = tmp_ssl_key;
+      memcpy(conn->tgt_ssl_key, direct_sql->tgt_ssl_key,
+        direct_sql->tgt_ssl_key_length);
+    } else
+      conn->tgt_ssl_key = NULL;
+    conn->tgt_default_file_length = direct_sql->tgt_default_file_length;
+    if (conn->tgt_default_file_length)
+    {
+      conn->tgt_default_file = tmp_default_file;
+      memcpy(conn->tgt_default_file, direct_sql->tgt_default_file,
+        direct_sql->tgt_default_file_length);
+    } else
+      conn->tgt_default_file = NULL;
+    conn->tgt_default_group_length = direct_sql->tgt_default_group_length;
+    if (conn->tgt_default_group_length)
+    {
+      conn->tgt_default_group = tmp_default_group;
+      memcpy(conn->tgt_default_group, direct_sql->tgt_default_group,
+        direct_sql->tgt_default_group_length);
+    } else
+      conn->tgt_default_group = NULL;
+    conn->tgt_ssl_vsc = direct_sql->tgt_ssl_vsc;
+#ifdef HAVE_HANDLERSOCKET
+  } else {
+    conn->hs_port = direct_sql->tgt_port;
+    if (direct_sql->tgt_socket)
+    {
+      conn->hs_sock_length = direct_sql->tgt_socket_length;
+      conn->hs_sock = tmp_socket;
+      memcpy(conn->hs_sock, direct_sql->tgt_socket,
+        direct_sql->tgt_socket_length);
+    }
+  }
+#endif
+  conn->conn_need_mon = need_mon;
+  conn->need_mon = need_mon;
   conn->db_conn = NULL;
   conn->join_trx = 0;
   conn->thd = NULL;
@@ -384,7 +446,19 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
   conn->semi_trx_isolation = -2;
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
-  conn->conn_kind = SPIDER_CONN_KIND_MYSQL;
+#ifdef HAVE_HANDLERSOCKET
+  if (direct_sql->access_mode == 0)
+  {
+#endif
+    conn->conn_kind = SPIDER_CONN_KIND_MYSQL;
+#ifdef HAVE_HANDLERSOCKET
+  } else if (direct_sql->access_mode == 1)
+  {
+    conn->conn_kind = SPIDER_CONN_KIND_HS_READ;
+  } else {
+    conn->conn_kind = SPIDER_CONN_KIND_HS_WRITE;
+  }
+#endif
 
 #if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&conn->mta_conn_mutex, MY_MUTEX_INIT_FAST))
@@ -404,6 +478,13 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_init_lock_table_hash;
   }
+  if (
+    my_init_dynamic_array2(&conn->handler_open_array,
+      sizeof(SPIDER_LINK_FOR_HASH *), NULL, 16, 16)
+  ) {
+    *error_num = HA_ERR_OUT_OF_MEM;
+    goto error_init_handler_open_array;
+  }
 
   if ((*error_num = spider_db_udf_direct_sql_connect(direct_sql, conn)))
     goto error;
@@ -412,6 +493,8 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
   DBUG_RETURN(conn);
 
 error:
+  delete_dynamic(&conn->handler_open_array);
+error_init_handler_open_array:
   my_hash_free(&conn->lock_table_hash);
 error_init_lock_table_hash:
   pthread_mutex_destroy(&conn->mta_conn_mutex);
@@ -426,31 +509,73 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
   SPIDER_TRX *trx,
   int *error_num
 ) {
-  SPIDER_CONN *conn;
+  SPIDER_CONN *conn = NULL;
   DBUG_ENTER("spider_udf_direct_sql_get_conn");
 
   if (
-    !(conn = (SPIDER_CONN*) my_hash_search(&trx->trx_conn_hash,
-        (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
+#ifdef HAVE_HANDLERSOCKET
+    (direct_sql->access_mode == 0 &&
+#endif
+      !(conn = (SPIDER_CONN*) my_hash_search(&trx->trx_conn_hash,
+          (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
+#ifdef HAVE_HANDLERSOCKET
+    ) ||
+    (direct_sql->access_mode == 1 &&
+      !(conn = (SPIDER_CONN*) my_hash_search(&trx->trx_direct_hs_r_conn_hash,
+          (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
+    ) ||
+    (direct_sql->access_mode == 2 &&
+      !(conn = (SPIDER_CONN*) my_hash_search(&trx->trx_direct_hs_w_conn_hash,
+          (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
+    )
+#endif
   ) {
     if (
-      (THDVAR(trx->thd, conn_recycle_mode) & 1) ||
-      THDVAR(trx->thd, conn_recycle_strict)
+#ifdef HAVE_HANDLERSOCKET
+      (direct_sql->access_mode == 0 &&
+#endif
+        (
+          (spider_param_conn_recycle_mode(trx->thd) & 1) ||
+          spider_param_conn_recycle_strict(trx->thd)
+        )
+#ifdef HAVE_HANDLERSOCKET
+      ) ||
+      (direct_sql->access_mode == 1 &&
+        (
+          (spider_param_hs_r_conn_recycle_mode(trx->thd) & 1) ||
+          spider_param_hs_r_conn_recycle_strict(trx->thd)
+        )
+      ) ||
+      (direct_sql->access_mode == 2 &&
+        (
+          (spider_param_hs_w_conn_recycle_mode(trx->thd) & 1) ||
+          spider_param_hs_w_conn_recycle_strict(trx->thd)
+        )
+      )
+#endif
     ) {
-      pthread_mutex_lock(&spider_conn_mutex);
-      if (!(conn = (SPIDER_CONN*) my_hash_search(&spider_open_connections,
-                                             (uchar*) direct_sql->conn_key,
-                                             direct_sql->conn_key_length)))
+#ifdef HAVE_HANDLERSOCKET
+      if (direct_sql->access_mode == 0)
       {
-        pthread_mutex_unlock(&spider_conn_mutex);
-        DBUG_PRINT("info",("spider create new conn"));
-        if(!(conn = spider_udf_direct_sql_create_conn(direct_sql, error_num)))
-          goto error;
-      } else {
-        my_hash_delete(&spider_open_connections, (uchar*) conn);
-        pthread_mutex_unlock(&spider_conn_mutex);
-        DBUG_PRINT("info",("spider get global conn"));
+#endif
+        pthread_mutex_lock(&spider_conn_mutex);
+        if (!(conn = (SPIDER_CONN*) my_hash_search(&spider_open_connections,
+                                               (uchar*) direct_sql->conn_key,
+                                               direct_sql->conn_key_length)))
+        {
+          pthread_mutex_unlock(&spider_conn_mutex);
+          DBUG_PRINT("info",("spider create new conn"));
+          if(!(conn = spider_udf_direct_sql_create_conn(direct_sql,
+            error_num)))
+            goto error;
+        } else {
+          my_hash_delete(&spider_open_connections, (uchar*) conn);
+          pthread_mutex_unlock(&spider_conn_mutex);
+          DBUG_PRINT("info",("spider get global conn"));
+        }
+#ifdef HAVE_HANDLERSOCKET
       }
+#endif
     } else {
       DBUG_PRINT("info",("spider create new conn"));
       /* conn_recycle_strict = 0 and conn_recycle_mode = 0 or 2 */
@@ -460,15 +585,37 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
     conn->thd = trx->thd;
     conn->priority = direct_sql->priority;
 
-    if (my_hash_insert(&trx->trx_conn_hash, (uchar*) conn))
+#ifdef HAVE_HANDLERSOCKET
+    if (direct_sql->access_mode == 0)
     {
-      spider_free_conn(conn);
-      *error_num = HA_ERR_OUT_OF_MEM;
-      goto error;
+#endif
+      if (my_hash_insert(&trx->trx_conn_hash, (uchar*) conn))
+      {
+        spider_free_conn(conn);
+        *error_num = HA_ERR_OUT_OF_MEM;
+        goto error;
+      }
+#ifdef HAVE_HANDLERSOCKET
+    } else if (direct_sql->access_mode == 1)
+    {
+      if (my_hash_insert(&trx->trx_direct_hs_r_conn_hash, (uchar*) conn))
+      {
+        spider_free_conn(conn);
+        *error_num = HA_ERR_OUT_OF_MEM;
+        goto error;
+      }
+    } else {
+      if (my_hash_insert(&trx->trx_direct_hs_w_conn_hash, (uchar*) conn))
+      {
+        spider_free_conn(conn);
+        *error_num = HA_ERR_OUT_OF_MEM;
+        goto error;
+      }
     }
+#endif
   }
 
-  DBUG_PRINT("info",("spider conn=%x", conn));
+  DBUG_PRINT("info",("spider conn=%p", conn));
   DBUG_RETURN(conn);
 
 error:
@@ -520,7 +667,7 @@ int spider_udf_direct_sql_get_server(
   if (direct_sql->tgt_port == -1)
   {
     direct_sql->tgt_port = server->port;
-    DBUG_PRINT("info",("spider tgt_port=%d", direct_sql->tgt_port));
+    DBUG_PRINT("info",("spider tgt_port=%ld", direct_sql->tgt_port));
   }
 
   if (!direct_sql->tgt_socket && server->socket)
@@ -615,7 +762,7 @@ error:
     DBUG_PRINT("info",("spider max_size=%d", max_size)); \
     int hint_num = atoi(tmp_ptr + check_length) - 1; \
     DBUG_PRINT("info",("spider hint_num=%d", hint_num)); \
-    DBUG_PRINT("info",("spider direct_sql->param_name=%x", \
+    DBUG_PRINT("info",("spider direct_sql->param_name=%p", \
       direct_sql->param_name)); \
     if (direct_sql->param_name) \
     { \
@@ -671,7 +818,8 @@ error:
           MYF(0), tmp_ptr); \
         goto error; \
       } \
-      DBUG_PRINT("info",("spider "title_name"=%d", direct_sql->param_name)); \
+      DBUG_PRINT("info",("spider "title_name"=%d", \
+        (int) direct_sql->param_name)); \
     } \
     break; \
   }
@@ -725,7 +873,7 @@ error:
 int spider_udf_parse_direct_sql_param(
   SPIDER_TRX *trx,
   SPIDER_DIRECT_SQL *direct_sql,
-  char *param,
+  const char *param,
   int param_length
 ) {
   int error_num = 0, roop_count;
@@ -738,9 +886,14 @@ int spider_udf_parse_direct_sql_param(
   direct_sql->tgt_ssl_vsc = -1;
   direct_sql->table_loop_mode = -1;
   direct_sql->priority = -1;
-  direct_sql->net_timeout = -1;
+  direct_sql->connect_timeout = -1;
+  direct_sql->net_read_timeout = -1;
+  direct_sql->net_write_timeout = -1;
   direct_sql->bulk_insert_rows = -1;
   direct_sql->connection_channel = -1;
+#ifdef HAVE_HANDLERSOCKET
+  direct_sql->access_mode = -1;
+#endif
   for (roop_count = 0; roop_count < direct_sql->table_count; roop_count++)
     direct_sql->iop[roop_count] = -1;
 
@@ -791,11 +944,16 @@ int spider_udf_parse_direct_sql_param(
       case 0:
         continue;
       case 3:
+#ifdef HAVE_HANDLERSOCKET
+        SPIDER_PARAM_INT_WITH_MAX("acm", access_mode, 0, 2);
+#endif
         SPIDER_PARAM_LONGLONG("bir", bulk_insert_rows, 0);
         SPIDER_PARAM_INT_WITH_MAX("cch", connection_channel, 0, 63);
+        SPIDER_PARAM_INT("cto", connect_timeout, 0);
         SPIDER_PARAM_STR("dff", tgt_default_file);
         SPIDER_PARAM_STR("dfg", tgt_default_group);
-        SPIDER_PARAM_INT("nto", net_timeout, 0);
+        SPIDER_PARAM_LONGLONG("prt", priority, 0);
+        SPIDER_PARAM_INT("rto", net_read_timeout, 0);
         SPIDER_PARAM_STR("sca", tgt_ssl_ca);
         SPIDER_PARAM_STR("sch", tgt_ssl_cipher);
         SPIDER_PARAM_STR("scp", tgt_ssl_capath);
@@ -804,7 +962,7 @@ int spider_udf_parse_direct_sql_param(
         SPIDER_PARAM_STR("srv", server_name);
         SPIDER_PARAM_INT_WITH_MAX("svc", tgt_ssl_vsc, 0, 1);
         SPIDER_PARAM_INT_WITH_MAX("tlm", table_loop_mode, 0, 2);
-        SPIDER_PARAM_LONGLONG("prt", priority, 0);
+        SPIDER_PARAM_INT("wto", net_write_timeout, 0);
         error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
         my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,
           MYF(0), tmp_ptr);
@@ -850,7 +1008,9 @@ int spider_udf_parse_direct_sql_param(
           MYF(0), tmp_ptr);
         goto error;
       case 11:
-        SPIDER_PARAM_INT("net_timeout", net_timeout, 0);
+#ifdef HAVE_HANDLERSOCKET
+        SPIDER_PARAM_INT_WITH_MAX("access_mode", access_mode, 0, 2);
+#endif
         error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
         my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,
           MYF(0), tmp_ptr);
@@ -869,12 +1029,20 @@ int spider_udf_parse_direct_sql_param(
         goto error;
       case 15:
         SPIDER_PARAM_INT_WITH_MAX("table_loop_mode", table_loop_mode, 0, 2);
+        SPIDER_PARAM_INT("connect_timeout", connect_timeout, 0);
         error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
         my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,
           MYF(0), tmp_ptr);
         goto error;
       case 16:
         SPIDER_PARAM_LONGLONG("bulk_insert_rows", bulk_insert_rows, 1);
+        SPIDER_PARAM_INT("net_read_timeout", net_read_timeout, 0);
+        error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,
+          MYF(0), tmp_ptr);
+        goto error;
+      case 17:
+        SPIDER_PARAM_INT("net_write_timeout", net_write_timeout, 0);
         error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
         my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,
           MYF(0), tmp_ptr);
@@ -1006,8 +1174,22 @@ int spider_udf_set_direct_sql_param_default(
     }
   }
 
+#ifdef HAVE_HANDLERSOCKET
+  if (direct_sql->access_mode == -1)
+    direct_sql->access_mode = 0;
+#endif
+
   if (direct_sql->tgt_port == -1)
-    direct_sql->tgt_port = MYSQL_PORT;
+  {
+#ifdef HAVE_HANDLERSOCKET
+    if (direct_sql->access_mode == 1)
+      direct_sql->tgt_port = 9998;
+    else if (direct_sql->access_mode == 2)
+      direct_sql->tgt_port = 9999;
+    else
+#endif
+      direct_sql->tgt_port = MYSQL_PORT;
+  }
   else if (direct_sql->tgt_port < 0)
     direct_sql->tgt_port = 0;
   else if (direct_sql->tgt_port > 65535)
@@ -1017,6 +1199,9 @@ int spider_udf_set_direct_sql_param_default(
     direct_sql->tgt_ssl_vsc = 0;
 
   if (
+#ifdef HAVE_HANDLERSOCKET
+    direct_sql->access_mode == 0 &&
+#endif
     !direct_sql->tgt_socket &&
     !strcmp(direct_sql->tgt_host, my_localhost)
   ) {
@@ -1036,8 +1221,12 @@ int spider_udf_set_direct_sql_param_default(
     direct_sql->table_loop_mode = 0;
   if (direct_sql->priority == -1)
     direct_sql->priority = 1000000;
-  if (direct_sql->net_timeout == -1)
-    direct_sql->net_timeout = 600;
+  if (direct_sql->connect_timeout == -1)
+    direct_sql->connect_timeout = 6;
+  if (direct_sql->net_read_timeout == -1)
+    direct_sql->net_read_timeout = 600;
+  if (direct_sql->net_write_timeout == -1)
+    direct_sql->net_write_timeout = 600;
   if (direct_sql->bulk_insert_rows == -1)
     direct_sql->bulk_insert_rows = 3000;
   if (direct_sql->connection_channel == -1)
@@ -1203,7 +1392,7 @@ long long spider_direct_sql_body(
   } else {
     if (spider_udf_direct_sql_create_table_list(
       direct_sql,
-      "",
+      (char *) "",
       0
     )) {
       my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
@@ -1252,6 +1441,7 @@ long long spider_direct_sql_body(
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
   }
+  conn->error_mode = 0;
   direct_sql->conn = conn;
   if (spider_db_udf_check_and_set_set_names(trx))
   {
@@ -1422,16 +1612,46 @@ int spider_udf_bg_direct_sql(
   DBUG_ENTER("spider_udf_bg_direct_sql");
   if ((error_num = spider_create_conn_thread(conn)))
     DBUG_RETURN(error_num);
-  pthread_mutex_lock(&conn->bg_conn_mutex);
-  conn->bg_target = direct_sql;
-  conn->bg_direct_sql = TRUE;
-  conn->bg_caller_sync_wait = TRUE;
-  pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-  pthread_cond_signal(&conn->bg_conn_cond);
-  pthread_mutex_unlock(&conn->bg_conn_mutex);
-  pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
-  pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
-  conn->bg_caller_sync_wait = FALSE;
+  if (!pthread_mutex_trylock(&conn->bg_conn_mutex))
+  {
+    DBUG_PRINT("info",("spider get bg_conn_mutex"));
+    conn->bg_target = direct_sql;
+    conn->bg_direct_sql = TRUE;
+    conn->bg_caller_sync_wait = TRUE;
+    pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+    pthread_cond_signal(&conn->bg_conn_cond);
+    pthread_mutex_unlock(&conn->bg_conn_mutex);
+    pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
+    pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+    conn->bg_caller_sync_wait = FALSE;
+  } else {
+    DBUG_PRINT("info",("spider get put job stack"));
+    bool bg_get_job_stack = FALSE;
+    pthread_mutex_lock(&conn->bg_job_stack_mutex);
+    if (insert_dynamic(&conn->bg_job_stack, (uchar *) &direct_sql))
+    {
+      pthread_mutex_unlock(&conn->bg_job_stack_mutex);
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+    if (!conn->bg_get_job_stack_off)
+      bg_get_job_stack = TRUE;
+    pthread_mutex_unlock(&conn->bg_job_stack_mutex);
+    if (bg_get_job_stack)
+    {
+      DBUG_PRINT("info",("spider get bg_conn_mutex"));
+      pthread_mutex_lock(&conn->bg_conn_mutex);
+      conn->bg_target = NULL;
+      conn->bg_get_job_stack = TRUE;
+      conn->bg_direct_sql = TRUE;
+      conn->bg_caller_sync_wait = TRUE;
+      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+      pthread_cond_signal(&conn->bg_conn_cond);
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
+      pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
+      pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+      conn->bg_caller_sync_wait = FALSE;
+    }
+  }
   DBUG_RETURN(0);
 }
 #endif

@@ -97,7 +97,7 @@
 #define ER_SPIDER_UDF_CANT_OPEN_TABLE_STR "Can't open table %s.%s"
 #define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_NUM 12709
 #define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_STR "Table %s.%s needs PK for copying"
-#define ER_SPIDER_HS_STR "Error from HS %s"
+#define ER_SPIDER_HS_STR "Error from HS %d %s"
 #define ER_SPIDER_HS_NUM 12711
 #define ER_SPIDER_COND_SKIP_NUM 12801
 

@@ -69,8 +69,10 @@ public:
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   char               **hs_r_conn_keys;
   SPIDER_CONN        **hs_r_conns;
+  ulonglong          *hs_r_conn_ages;
   char               **hs_w_conn_keys;
   SPIDER_CONN        **hs_w_conns;
+  ulonglong          *hs_w_conn_ages;
 #endif
   /* for active-standby mode */
   uint               *conn_link_idx;
@@ -98,12 +100,15 @@ public:
   bool               init_index_handler;
   bool               init_rnd_handler;
 
+  bool               da_status;
+  bool               use_spatial_index;
+
   /* for mrr */
   bool               mrr_with_cnt;
   uint               multi_range_cnt;
   uint               multi_range_hit_point;
 #ifdef HA_MRR_USE_DEFAULT_IMPL
-  uint               multi_range_num;
+  int                multi_range_num;
   char               **multi_range_keys;
 #else
   KEY_MULTI_RANGE    *multi_range_ranges;
@@ -139,6 +144,7 @@ public:
   int                bka_mode;
   bool               cond_check;
   int                cond_check_error;
+  int                error_mode;
 
   uchar              *m_handler_opened;
   uint               *m_handler_id;
@@ -159,11 +165,19 @@ public:
   uint32             *hs_pushed_ret_fields;
   size_t             hs_pushed_ret_fields_num;
   uchar              *tmp_column_bitmap;
+  bool               hs_increment;
+  bool               hs_decrement;
+  uint32             hs_pushed_strref_num;
 #endif
 #endif
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
   bool               do_direct_update;
   uint               direct_update_kinds;
+  List<Item>         *direct_update_fields;
+  List<Item>         *direct_update_values;
+#endif
+#ifdef INFO_KIND_FORCE_LIMIT_BEGIN
+  longlong           info_limit;
 #endif
 
   /* for fulltext search */
@@ -257,6 +271,7 @@ public:
     uint keyno,
     uint n_ranges,
     uint keys,
+    uint key_parts,
     uint *bufsz,
     uint *flags,
     COST_VECT *cost
@@ -321,6 +336,7 @@ public:
     key_range *start_key,
     key_range *end_key
   );
+  ha_rows records();
   const char *table_type() const;
   ulonglong table_flags() const;
   const char *index_type(
@@ -352,12 +368,7 @@ public:
   void start_bulk_insert(
     ha_rows rows
   );
-  /* call from MySQL */
   int end_bulk_insert();
-  /* call from MariaDB */
-  int end_bulk_insert(
-    bool abort
-  );
   int write_row(
     uchar *buf
   );
@@ -470,6 +481,12 @@ public:
     int error_num,
     uint flags
   );
+  Field *get_top_table_field(
+    uint16 field_index
+  );
+  Field *field_exchange(
+    Field *field
+  );
   const COND *cond_push(
     const COND* cond
   );
@@ -501,10 +518,22 @@ public:
   void set_handler_opened(
     int link_idx
   );
+  void clear_handler_opened(
+    int link_idx,
+    uint tgt_conn_kind
+  );
   int close_opened_handler(
     int link_idx,
     bool release_conn
   );
   int index_handler_init();
   int rnd_handler_init();
+  void set_error_mode();
+  void backup_error_status();
+  int check_error_mode(
+    int error_num
+  );
+  int check_error_mode_eof(
+    int error_num
+  );
 };
