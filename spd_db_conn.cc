@@ -1087,11 +1087,24 @@ int spider_db_append_column_value(
 ) {
   char buf[MAX_FIELD_WIDTH];
   String tmp_str(buf, MAX_FIELD_WIDTH, &my_charset_bin), *ptr;
+  uint length;
   DBUG_ENTER("spider_db_append_column_value");
 
   if (new_ptr)
-    ptr = field->val_str(&tmp_str, new_ptr);
-  else
+  {
+    if (
+      field->type() == MYSQL_TYPE_BLOB ||
+      field->real_type() == MYSQL_TYPE_VARCHAR ||
+      field->type() == MYSQL_TYPE_GEOMETRY
+    ) {
+      length = uint2korr(new_ptr);
+      tmp_str.set_quick((char *) new_ptr + HA_KEY_BLOB_LENGTH, length,
+        &my_charset_bin);
+      ptr = &tmp_str;
+    } else {
+      ptr = field->val_str(&tmp_str, new_ptr);
+    }
+  } else
     ptr = field->val_str(&tmp_str);
   DBUG_PRINT("info", ("spider field->type() is %d", field->type()));
   DBUG_PRINT("info", ("spider ptr->length() is %d", ptr->length()));
@@ -4684,7 +4697,7 @@ int spider_db_open_item_func(
 ) {
   int error_num;
   Item *item, **item_list = item_func->arguments();
-  uint roop_count, item_count = item_func->argument_count() - 1;
+  uint roop_count, item_count = item_func->argument_count();
   char *func_name = SPIDER_SQL_NULL_CHAR_STR,
     *separete_str = SPIDER_SQL_NULL_CHAR_STR,
     *last_str = SPIDER_SQL_NULL_CHAR_STR;
@@ -4708,6 +4721,7 @@ int spider_db_open_item_func(
       last_str_length = SPIDER_SQL_IS_NOT_NULL_LEN;
       break;
     case Item_func::UNKNOWN_FUNC:
+    case Item_func::NOW_FUNC:
       func_name = (char*) item_func->func_name();
       func_name_length = strlen(func_name);
       DBUG_PRINT("info",("spider func_name = %s", func_name));
@@ -4857,25 +4871,29 @@ int spider_db_open_item_func(
   DBUG_PRINT("info",("spider separete_str_length = %d", separete_str_length));
   DBUG_PRINT("info",("spider last_str = %s", last_str));
   DBUG_PRINT("info",("spider last_str_length = %d", last_str_length));
-  for (roop_count = 0; roop_count < item_count; roop_count++)
+  if (item_count)
   {
+    item_count--;
+    for (roop_count = 0; roop_count < item_count; roop_count++)
+    {
+      item = item_list[roop_count];
+      if ((error_num = spider_db_print_item_type(item, spider, str)))
+        DBUG_RETURN(error_num);
+      if (roop_count == 1)
+      {
+        func_name = separete_str;
+        func_name_length = separete_str_length;
+      }
+      if (str->reserve(func_name_length + SPIDER_SQL_SPACE_LEN * 2))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      str->q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
+      str->q_append(func_name, func_name_length);
+      str->q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
+    }
     item = item_list[roop_count];
     if ((error_num = spider_db_print_item_type(item, spider, str)))
       DBUG_RETURN(error_num);
-    if (roop_count == 1)
-    {
-      func_name = separete_str;
-      func_name_length = separete_str_length;
-    }
-    if (str->reserve(func_name_length + SPIDER_SQL_SPACE_LEN * 2))
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    str->q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
-    str->q_append(func_name, func_name_length);
-    str->q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
   }
-  item = item_list[roop_count];
-  if ((error_num = spider_db_print_item_type(item, spider, str)))
-    DBUG_RETURN(error_num);
   if (str->reserve(last_str_length + SPIDER_SQL_CLOSE_PAREN_LEN))
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   str->q_append(last_str, last_str_length);
@@ -4937,8 +4955,20 @@ int spider_db_open_item_field(
   DBUG_ENTER("spider_db_open_item_field");
   if (field)
   {
-    if (field->table != spider->get_table())
-      DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
+#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
+    if (spider->set_top_table_fields)
+    {
+      if (field->table != spider->top_table)
+        DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
+      if (!(field = spider->top_table_field[field->field_index]))
+        DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
+    } else {
+#endif
+      if (field->table != spider->get_table())
+        DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
+#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
+    }
+#endif
     if (field->table->const_table)
     {
       share = spider->share;
