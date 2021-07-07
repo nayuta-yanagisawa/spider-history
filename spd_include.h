@@ -18,6 +18,11 @@
 #define spider_bit_is_set(BITMAP, BIT) \
   (uint) ((BITMAP)[(BIT) / 8] & (1 << ((BIT) & 7)))
 
+#define SPIDER_LINK_STATUS_NO_CHANGE         0
+#define SPIDER_LINK_STATUS_OK                1
+#define SPIDER_LINK_STATUS_RECOVERY          2
+#define SPIDER_LINK_STATUS_NG                3
+
 /* alter table */
 typedef struct st_spider_alter_table
 {
@@ -37,6 +42,7 @@ typedef struct st_spider_alter_table
   char               **tmp_tgt_sockets;
   char               **tmp_tgt_wrappers;
   long               *tmp_tgt_ports;
+  long               *tmp_link_statuses;
 
   uint               *tmp_server_names_lengths;
   uint               *tmp_tgt_table_names_lengths;
@@ -65,6 +71,7 @@ typedef struct st_spider_alter_table
   uint               tmp_tgt_sockets_length;
   uint               tmp_tgt_wrappers_length;
   uint               tmp_tgt_ports_length;
+  uint               tmp_link_statuses_length;
 } SPIDER_ALTER_TABLE;
 
 /* database connection */
@@ -276,6 +283,7 @@ typedef struct st_spider_share
   longlong           *cardinality;
   uchar              *cardinality_upd;
   longlong           additional_table_flags;
+  bool               have_recovery_link;
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   int                sts_bg_mode;
@@ -339,6 +347,7 @@ typedef struct st_spider_share
   char               **tgt_wrappers;
   char               **conn_keys;
   long               *tgt_ports;
+  long               *link_statuses;
 
   uint               *server_names_lengths;
   uint               *tgt_table_names_lengths;
@@ -370,6 +379,7 @@ typedef struct st_spider_share
   uint               tgt_wrappers_length;
   uint               conn_keys_length;
   uint               tgt_ports_length;
+  uint               link_statuses_length;
 
   SPIDER_ALTER_TABLE alter_table;
 #ifdef WITH_PARTITION_STORAGE_ENGINE

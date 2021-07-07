@@ -450,6 +450,17 @@ void spider_store_tables_connect_info(
   DBUG_VOID_RETURN;
 }
 
+void spider_store_tables_link_status(
+  TABLE *table,
+  long link_status
+) {
+  DBUG_ENTER("spider_store_tables_link_status");
+  DBUG_PRINT("info",("spider link_status = %d", link_status));
+  if (link_status > SPIDER_LINK_STATUS_NO_CHANGE)
+    table->field[13]->store(link_status, FALSE);
+  DBUG_VOID_RETURN;
+}
+
 int spider_insert_xa(
   TABLE *table,
   XID *xid,
@@ -535,6 +546,11 @@ int spider_insert_tables(
   {
     spider_store_tables_link_idx(table, roop_count);
     spider_store_tables_connect_info(table, &share->alter_table, roop_count);
+    spider_store_tables_link_status(table,
+      share->alter_table.tmp_link_statuses[roop_count] >
+      SPIDER_LINK_STATUS_NO_CHANGE ?
+      share->alter_table.tmp_link_statuses[roop_count] :
+      SPIDER_LINK_STATUS_OK);
     if ((error_num = table->file->ha_write_row(table->record[0])))
     {
       table->file->print_error(error_num, MYF(0));
@@ -631,7 +647,7 @@ int spider_update_tables_priority(
 ) {
   int error_num, roop_count;
   char table_key[MAX_KEY_LENGTH];
-  DBUG_ENTER("spider_update_tables_name");
+  DBUG_ENTER("spider_update_tables_priority");
   table->use_all_columns();
   for (roop_count = 0; roop_count < alter_table->link_count; roop_count++)
   {
@@ -650,6 +666,11 @@ int spider_update_tables_priority(
         do {
           spider_store_tables_link_idx(table, roop_count);
           spider_store_tables_connect_info(table, alter_table, roop_count);
+          spider_store_tables_link_status(table,
+            alter_table->tmp_link_statuses[roop_count] !=
+            SPIDER_LINK_STATUS_NO_CHANGE ?
+            alter_table->tmp_link_statuses[roop_count] :
+            SPIDER_LINK_STATUS_OK);
           if ((error_num = table->file->ha_write_row(table->record[0])))
           {
             table->file->print_error(error_num, MYF(0));
@@ -668,6 +689,8 @@ int spider_update_tables_priority(
       spider_store_tables_name(table, name, strlen(name));
       spider_store_tables_priority(table, alter_table->tmp_priority);
       spider_store_tables_connect_info(table, alter_table, roop_count);
+      spider_store_tables_link_status(table,
+        alter_table->tmp_link_statuses[roop_count]);
       if (
         (error_num = table->file->ha_update_row(
           table->record[1], table->record[0])) &&
@@ -1058,6 +1081,58 @@ int spider_get_sys_tables_connect_info(
     share->tgt_table_names[link_idx] = NULL;
   }
   DBUG_RETURN(error_num);
+}
+
+int spider_get_sys_tables_link_status(
+  TABLE *table,
+  SPIDER_SHARE *share,
+  int link_idx,
+  MEM_ROOT *mem_root
+) {
+  char *ptr;
+  int error_num = 0;
+  DBUG_ENTER("spider_get_sys_tables_link_status");
+  if ((ptr = get_field(mem_root, table->field[13])))
+  {
+    share->link_statuses[link_idx] =
+      my_strtoll10(ptr, (char**) NULL, &error_num);
+  } else
+    share->link_statuses[link_idx] = 1;
+  DBUG_PRINT("info",("spider link_statuses[%d]=%d",
+    link_idx, share->link_statuses[link_idx]));
+  DBUG_RETURN(error_num);
+}
+
+int spider_get_link_statuses(
+  TABLE *table,
+  SPIDER_SHARE *share,
+  MEM_ROOT *mem_root
+) {
+  int error_num, roop_count;
+  char table_key[MAX_KEY_LENGTH];
+  DBUG_ENTER("spider_get_link_statuses");
+  table->use_all_columns();
+  spider_store_tables_name(table, share->table_name,
+    share->table_name_length);
+  for (roop_count = 0; roop_count < share->link_count; roop_count++)
+  {
+    spider_store_tables_link_idx(table, roop_count);
+    if ((error_num = spider_check_sys_table(table, table_key)))
+    {
+      if (
+        (error_num == HA_ERR_KEY_NOT_FOUND || error_num == HA_ERR_END_OF_FILE)
+      ) {
+        table->file->print_error(error_num, MYF(0));
+        DBUG_RETURN(error_num);
+      }
+    } else if ((error_num =
+      spider_get_sys_tables_link_status(table, share, roop_count, mem_root)))
+    {
+      table->file->print_error(error_num, MYF(0));
+      DBUG_RETURN(error_num);
+    }
+  }
+  DBUG_RETURN(0);
 }
 
 int spider_sys_replace(

@@ -133,6 +133,11 @@ void spider_store_tables_connect_info(
   int link_idx
 );
 
+void spider_store_tables_link_status(
+  TABLE *table,
+  long link_status
+);
+
 int spider_insert_xa(
   TABLE *table,
   XID *xid,
@@ -216,6 +221,19 @@ int spider_get_sys_tables_connect_info(
   TABLE *table,
   SPIDER_SHARE *share,
   int link_idx,
+  MEM_ROOT *mem_root
+);
+
+int spider_get_sys_tables_link_status(
+  TABLE *table,
+  SPIDER_SHARE *share,
+  int link_idx,
+  MEM_ROOT *mem_root
+);
+
+int spider_get_link_statuses(
+  TABLE *table,
+  SPIDER_SHARE *share,
   MEM_ROOT *mem_root
 );
 

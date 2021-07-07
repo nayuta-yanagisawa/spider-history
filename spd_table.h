@@ -242,3 +242,7 @@ SPIDER_INIT_ERROR_TABLE *spider_get_init_error_table(
   SPIDER_SHARE *share,
   bool create
 );
+
+bool spider_check_pk_update(
+  TABLE *table
+);

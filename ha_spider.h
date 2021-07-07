@@ -21,9 +21,14 @@
 #define SPIDER_LONGLONG_LEN 20
 #define SPIDER_MAX_KEY_LENGTH 16384
 
-#define SPIDER_SET_CONNS_PARAM(param_name, param_val, conns, link_count) \
-  for (roop_count = 0; roop_count < link_count; roop_count++) \
-  { \
+#define SPIDER_SET_CONNS_PARAM(param_name, param_val, conns, link_statuses, link_count, link_status) \
+  for ( \
+    roop_count = spider_conn_link_idx_next(link_statuses, \
+      -1, link_count, link_status); \
+    roop_count < link_count; \
+    roop_count = spider_conn_link_idx_next(link_statuses, \
+      roop_count, link_count, link_status) \
+  ) { \
     conns[roop_count]->param_name = param_val; \
   }
 
@@ -62,6 +67,8 @@ public:
   int                store_error_num;
   uint               dup_key_idx;
   int                select_column_mode;
+  bool               update_request;
+  bool               pk_update;
 
   ha_spider();
   ha_spider(

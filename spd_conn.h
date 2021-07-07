@@ -13,6 +13,10 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+#define SPIDER_LOCK_MODE_NO_LOCK             0
+#define SPIDER_LOCK_MODE_SHARED              1
+#define SPIDER_LOCK_MODE_EXCLUSIVE           2
+
 uchar *spider_conn_get_key(
   SPIDER_CONN *conn,
   size_t *length,
@@ -134,10 +138,30 @@ void *spider_bg_crd_action(
 
 int spider_conn_first_link_idx(
   THD *thd,
-  int link_count
+  long *tmp_link_statuses,
+  int link_count,
+  int link_status
 );
 
 int spider_conn_next_link_idx(
+  THD *thd,
+  long *tmp_link_statuses,
   int link_idx,
-  int link_count
+  int link_count,
+  int link_status
+);
+
+int spider_conn_link_idx_next(
+  long *tmp_link_statuses,
+  int link_idx,
+  int link_count,
+  int link_status
+);
+
+int spider_conn_lock_mode(
+  ha_spider *spider
+);
+
+bool spider_conn_check_recovery_link(
+  SPIDER_SHARE *share
 );

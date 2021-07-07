@@ -1116,35 +1116,6 @@ int spider_db_create_table_names_str(
         share->db_nm_max_length = str->length();
     }
   }
-/*
-  if (!share->same_db_table_name)
-  {
-*/
-    /* adjust table_name and db_name length */
-/*
-    for (roop_count = 0; roop_count < share->link_count; roop_count++)
-    {
-      str = share->table_names_str[roop_count];
-      roop_count2 = str->length();
-      if (str->reserve(table_nm_maxlen - roop_count2))
-      {
-        error_num = HA_ERR_OUT_OF_MEM;
-        goto error;
-      }
-      if (; roop_count2 < table_nm_maxlen; roop_count2++)
-        str->q_append(SPIDER_SQL_BLANK_STR, SPIDER_SQL_BLANK_LEN);
-      str = share->db_names_str[roop_count];
-      roop_count2 = str->length();
-      if (str->reserve(db_nm_maxlen - roop_count2))
-      {
-        error_num = HA_ERR_OUT_OF_MEM;
-        goto error;
-      }
-      if (; roop_count2 < db_nm_maxlen; roop_count2++)
-        str->q_append(SPIDER_SQL_BLANK_STR, SPIDER_SQL_BLANK_LEN);
-    }
-  }
-*/
   DBUG_RETURN(0);
 
 error:
@@ -1465,6 +1436,70 @@ int spider_db_append_insert(
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     str->q_append(SPIDER_SQL_SQL_IGNORE_STR, SPIDER_SQL_SQL_IGNORE_LEN);
   }
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_insert_for_recovery(
+  ha_spider *spider,
+  const TABLE *table,
+  int link_idx
+) {
+  String *insert_sql = &spider->result_list.insert_sqls[link_idx];
+  SPIDER_SHARE *share = spider->share;
+  Field **field;
+  uint field_name_length = 0;
+  bool add_value = FALSE;
+  DBUG_ENTER("spider_db_append_insert_for_recovery");
+  insert_sql->length(0);
+  if (insert_sql->reserve(
+    SPIDER_SQL_INSERT_LEN + SPIDER_SQL_SQL_IGNORE_LEN +
+    SPIDER_SQL_INTO_LEN + share->db_nm_max_length +
+    SPIDER_SQL_DOT_LEN + share->table_nm_max_length +
+    (SPIDER_SQL_NAME_QUOTE_LEN) * 4 + SPIDER_SQL_OPEN_PAREN_LEN))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  insert_sql->q_append(SPIDER_SQL_INSERT_STR, SPIDER_SQL_INSERT_LEN);
+  insert_sql->q_append(SPIDER_SQL_SQL_IGNORE_STR, SPIDER_SQL_SQL_IGNORE_LEN);
+  insert_sql->q_append(SPIDER_SQL_INTO_STR, SPIDER_SQL_INTO_LEN);
+  spider_db_append_table_name(insert_sql, share, link_idx);
+  insert_sql->q_append(SPIDER_SQL_OPEN_PAREN_STR, SPIDER_SQL_OPEN_PAREN_LEN);
+  for (field = table->field; *field; field++)
+  {
+    field_name_length =
+      share->column_name_str[(*field)->field_index].length();
+    if (insert_sql->reserve(field_name_length +
+      (SPIDER_SQL_NAME_QUOTE_LEN) * 2 + SPIDER_SQL_COMMA_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    spider_db_append_column_name(share, insert_sql, (*field)->field_index);
+    insert_sql->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+  if (field_name_length)
+    insert_sql->length(insert_sql->length() - SPIDER_SQL_COMMA_LEN);
+  if (insert_sql->reserve(SPIDER_SQL_VALUES_LEN + SPIDER_SQL_OPEN_PAREN_LEN))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  insert_sql->q_append(SPIDER_SQL_VALUES_STR, SPIDER_SQL_VALUES_LEN);
+  insert_sql->q_append(SPIDER_SQL_OPEN_PAREN_STR, SPIDER_SQL_OPEN_PAREN_LEN);
+  for (field = table->field; *field; field++)
+  {
+    add_value = TRUE;
+    if ((*field)->is_null())
+    {
+      if (insert_sql->reserve(SPIDER_SQL_NULL_LEN + SPIDER_SQL_COMMA_LEN))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      insert_sql->q_append(SPIDER_SQL_NULL_STR, SPIDER_SQL_NULL_LEN);
+    } else {
+      if (
+        spider_db_append_column_value(share, insert_sql, *field, NULL) ||
+        insert_sql->reserve(SPIDER_SQL_COMMA_LEN)
+      )
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+    insert_sql->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+  }
+  if (add_value)
+    insert_sql->length(insert_sql->length() - SPIDER_SQL_COMMA_LEN);
+  if (insert_sql->reserve(SPIDER_SQL_CLOSE_PAREN_LEN, SPIDER_SQL_COMMA_LEN))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  insert_sql->q_append(SPIDER_SQL_CLOSE_PAREN_STR, SPIDER_SQL_CLOSE_PAREN_LEN);
   DBUG_RETURN(0);
 }
 
@@ -2314,15 +2349,16 @@ int spider_db_append_limit(
 int spider_db_append_select_lock(
   ha_spider *spider
 ) {
+  int lock_mode = spider_conn_lock_mode(spider);
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str = &result_list->sql;
   DBUG_ENTER("spider_db_append_lock");
-  if (result_list->lock_type == F_WRLCK || spider->lock_mode == 2)
+  if (lock_mode == SPIDER_LOCK_MODE_EXCLUSIVE)
   {
     if (str->reserve(SPIDER_SQL_FOR_UPDATE_LEN))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     str->q_append(SPIDER_SQL_FOR_UPDATE_STR, SPIDER_SQL_FOR_UPDATE_LEN);
-  } else if (spider->lock_mode == 1)
+  } else if (lock_mode == SPIDER_LOCK_MODE_SHARED)
   {
     if (str->reserve(SPIDER_SQL_SHARED_LOCK_LEN))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -2963,8 +2999,13 @@ int spider_db_free_result(
   SPIDER_CONN *conn;
   int roop_count;
   DBUG_ENTER("spider_db_free_result");
-  for (roop_count = 0; roop_count < share->link_count; roop_count++)
-  {
+  for (
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+    roop_count < share->link_count;
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+  ) {
     conn = spider->conns[roop_count];
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (conn && result_list->bgs_working)
@@ -3444,6 +3485,7 @@ int spider_db_seek_next(
 ) {
   int error_num, tmp_pos;
   String *sql;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn = spider->conns[link_idx];
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   DBUG_ENTER("spider_db_seek_next");
@@ -3453,14 +3495,18 @@ int spider_db_seek_next(
       spider_db_free_one_result(result_list,
         (SPIDER_RESULT*) result_list->current);
 
-    int roop_start, roop_end, roop_count;
-    if (result_list->lock_type == F_WRLCK || spider->lock_mode == 1 ||
-      spider->lock_mode == 2)
+    int roop_start, roop_end, roop_count, lock_mode, link_ok;
+    lock_mode = spider_conn_lock_mode(spider);
+    if (lock_mode)
     {
       /* "for update" or "lock in share mode" */
-      roop_start = 0;
+      link_ok = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_OK);
+      roop_start = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
       roop_end = spider->share->link_count;
     } else {
+      link_ok = link_idx;
       roop_start = link_idx;
       roop_end = link_idx + 1;
     }
@@ -3468,10 +3514,12 @@ int spider_db_seek_next(
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (result_list->bgs_phase > 0)
     {
-      for (roop_count = roop_start; roop_count < roop_end; roop_count++)
-      {
+      for (roop_count = roop_start; roop_count < roop_end;
+        roop_count = spider_conn_link_idx_next(share->link_statuses,
+          roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+      ) {
         if ((error_num = spider_bg_conn_search(spider, roop_count, FALSE,
-          (roop_count != roop_start))))
+          (roop_count != link_ok))))
           DBUG_RETURN(error_num);
       }
     } else {
@@ -3500,10 +3548,12 @@ int spider_db_seek_next(
           )
             DBUG_RETURN(error_num);
 
-          for (roop_count = roop_start; roop_count < roop_end; roop_count++)
-          {
+          for (roop_count = roop_start; roop_count < roop_end;
+            roop_count = spider_conn_link_idx_next(share->link_statuses,
+              roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+          ) {
             conn = spider->conns[roop_count];
-            if (spider->share->same_db_table_name || roop_count == roop_start)
+            if (spider->share->same_db_table_name)
               sql = &result_list->sql;
             else {
               sql = &result_list->sqls[roop_count];
@@ -3536,7 +3586,7 @@ int spider_db_seek_next(
             }
             conn->mta_conn_mutex_lock_already = FALSE;
             conn->mta_conn_mutex_unlock_later = FALSE;
-            if (roop_count == roop_start)
+            if (roop_count == link_ok)
             {
               if ((error_num = spider_db_store_result(spider, roop_count,
                 table)))
@@ -3582,6 +3632,7 @@ int spider_db_seek_last(
 ) {
   int error_num, tmp_pos;
   String *sql;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   DBUG_ENTER("spider_db_seek_last");
@@ -3617,21 +3668,27 @@ int spider_db_seek_last(
     )
       DBUG_RETURN(error_num);
 
-    int roop_start, roop_end, roop_count;
-    if (result_list->lock_type == F_WRLCK || spider->lock_mode == 1 ||
-      spider->lock_mode == 2)
+    int roop_start, roop_end, roop_count, lock_mode, link_ok;
+    lock_mode = spider_conn_lock_mode(spider);
+    if (lock_mode)
     {
       /* "for update" or "lock in share mode" */
-      roop_start = 0;
+      link_ok = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_OK);
+      roop_start = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
       roop_end = spider->share->link_count;
     } else {
+      link_ok = link_idx;
       roop_start = link_idx;
       roop_end = link_idx + 1;
     }
-    for (roop_count = roop_start; roop_count < roop_end; roop_count++)
-    {
+    for (roop_count = roop_start; roop_count < roop_end;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       conn = spider->conns[roop_count];
-      if (spider->share->same_db_table_name || roop_count == roop_start)
+      if (spider->share->same_db_table_name)
         sql = &result_list->sql;
       else {
         sql = &result_list->sqls[roop_count];
@@ -3664,7 +3721,7 @@ int spider_db_seek_last(
       }
       conn->mta_conn_mutex_lock_already = FALSE;
       conn->mta_conn_mutex_unlock_later = FALSE;
-      if (roop_count == roop_start)
+      if (roop_count == link_ok)
       {
         if ((error_num = spider_db_store_result(spider, roop_count, table)))
           DBUG_RETURN(error_num);
@@ -3695,21 +3752,27 @@ int spider_db_seek_last(
     )
       DBUG_RETURN(error_num);
 
-    int roop_start, roop_end, roop_count;
-    if (result_list->lock_type == F_WRLCK || spider->lock_mode == 1 ||
-      spider->lock_mode == 2)
+    int roop_start, roop_end, roop_count, lock_mode, link_ok;
+    lock_mode = spider_conn_lock_mode(spider);
+    if (lock_mode)
     {
       /* "for update" or "lock in share mode" */
-      roop_start = 0;
+      link_ok = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_OK);
+      roop_start = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
       roop_end = spider->share->link_count;
     } else {
+      link_ok = link_idx;
       roop_start = link_idx;
       roop_end = link_idx + 1;
     }
-    for (roop_count = roop_start; roop_count < roop_end; roop_count++)
-    {
+    for (roop_count = roop_start; roop_count < roop_end;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       conn = spider->conns[roop_count];
-      if (spider->share->same_db_table_name || roop_count == roop_start)
+      if (spider->share->same_db_table_name)
         sql = &result_list->sql;
       else {
         sql = &result_list->sqls[roop_count];
@@ -3742,7 +3805,7 @@ int spider_db_seek_last(
       }
       conn->mta_conn_mutex_lock_already = FALSE;
       conn->mta_conn_mutex_unlock_later = FALSE;
-      if (roop_count == roop_start)
+      if (roop_count == link_ok)
       {
         if ((error_num = spider_db_store_result(spider, roop_count, table)))
           DBUG_RETURN(error_num);
@@ -4677,9 +4740,16 @@ int spider_db_bulk_insert_init(
   const TABLE *table
 ) {
   int error_num, roop_count;
+  SPIDER_SHARE *share = spider->share;
   String *str = &spider->result_list.insert_sql;
   DBUG_ENTER("spider_db_bulk_insert_init");
-  for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
+  for (
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+    roop_count < share->link_count;
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+  )
     spider->conns[roop_count]->ignore_dup_key = spider->ignore_dup_key;
   str->length(0);
   spider->result_list.insert_pos = 0;
@@ -4770,10 +4840,15 @@ int spider_db_bulk_insert(
   ) {
     int roop_count2;
     SPIDER_CONN *conn;
-    for (roop_count2 = 0; roop_count2 < share->link_count; roop_count2++)
-    {
+    for (
+      roop_count2 = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count2 < share->link_count;
+      roop_count2 = spider_conn_link_idx_next(share->link_statuses,
+        roop_count2, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       conn = spider->conns[roop_count2];
-      if (share->same_db_table_name || roop_count2 == 0)
+      if (share->same_db_table_name)
         sql = str;
       else {
         sql = &result_list->insert_sqls[roop_count2];
@@ -4891,9 +4966,10 @@ int spider_db_update(
   const uchar *old_data
 ) {
   int error_num, roop_count, tmp_pos;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
-  String *str = &result_list->sql, *sql;
+  String *str = &result_list->sql, *sql, *insert_sql;
   Field **field;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(old_data, table->record[0]);
   DBUG_ENTER("spider_db_update");
@@ -4906,8 +4982,13 @@ int spider_db_update(
   )
     DBUG_RETURN(error_num);
 
-  for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-  {
+  for (
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+    roop_count < share->link_count;
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+  ) {
     conn = spider->conns[roop_count];
     if (spider->share->same_db_table_name || roop_count == 0)
       sql = str;
@@ -4917,14 +4998,14 @@ int spider_db_update(
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
       tmp_pos = sql->length();
       sql->length(result_list->table_name_pos);
-      spider_db_append_table_name_with_adjusting(sql, spider->share,
+      spider_db_append_table_name_with_adjusting(sql, share,
         roop_count);
       sql->length(tmp_pos);
     }
     pthread_mutex_lock(&conn->mta_conn_mutex);
     conn->mta_conn_mutex_lock_already = TRUE;
     conn->mta_conn_mutex_unlock_later = TRUE;
-    if ((error_num = spider_db_set_names(spider->share, conn)))
+    if ((error_num = spider_db_set_names(share, conn)))
     {
       conn->mta_conn_mutex_lock_already = FALSE;
       conn->mta_conn_mutex_unlock_later = FALSE;
@@ -4940,6 +5021,32 @@ int spider_db_update(
       conn->mta_conn_mutex_unlock_later = FALSE;
       DBUG_RETURN(spider_db_errorno(conn));
     }
+
+    if (
+      !conn->db_conn->last_used_con->affected_rows &&
+      spider->pk_update &&
+      share->link_statuses[roop_count] == SPIDER_LINK_STATUS_RECOVERY
+    ) {
+      /* insert */
+      if ((error_num = spider_db_append_insert_for_recovery(spider, table,
+        roop_count)))
+      {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
+        pthread_mutex_unlock(&conn->mta_conn_mutex);
+        DBUG_RETURN(error_num);
+      }
+      insert_sql = &spider->result_list.insert_sqls[roop_count];
+      if (spider_db_query(
+        conn,
+        insert_sql->ptr(),
+        insert_sql->length())
+      ) {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
+        DBUG_RETURN(spider_db_errorno(conn));
+      }
+    }
     conn->mta_conn_mutex_lock_already = FALSE;
     conn->mta_conn_mutex_unlock_later = FALSE;
     pthread_mutex_unlock(&conn->mta_conn_mutex);
@@ -4953,6 +5060,7 @@ int spider_db_delete(
   const uchar *buf
 ) {
   int error_num, roop_count, tmp_pos;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str = &result_list->sql, *sql;
@@ -4967,8 +5075,13 @@ int spider_db_delete(
   )
     DBUG_RETURN(error_num);
 
-  for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-  {
+  for (
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+    roop_count < share->link_count;
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+  ) {
     conn = spider->conns[roop_count];
     if (spider->share->same_db_table_name || roop_count == 0)
       sql = str;
@@ -4978,14 +5091,14 @@ int spider_db_delete(
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
       tmp_pos = sql->length();
       sql->length(result_list->table_name_pos);
-      spider_db_append_table_name_with_adjusting(sql, spider->share,
+      spider_db_append_table_name_with_adjusting(sql, share,
         roop_count);
       sql->length(tmp_pos);
     }
     pthread_mutex_lock(&conn->mta_conn_mutex);
     conn->mta_conn_mutex_lock_already = TRUE;
     conn->mta_conn_mutex_unlock_later = TRUE;
-    if ((error_num = spider_db_set_names(spider->share, conn)))
+    if ((error_num = spider_db_set_names(share, conn)))
     {
       conn->mta_conn_mutex_lock_already = FALSE;
       conn->mta_conn_mutex_unlock_later = FALSE;
@@ -5012,6 +5125,7 @@ int spider_db_delete_all_rows(
   ha_spider *spider
 ) {
   int error_num, roop_count, tmp_pos;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str = &result_list->sql, *sql;
@@ -5029,8 +5143,13 @@ int spider_db_delete_all_rows(
       DBUG_RETURN(error_num);
   }
 
-  for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-  {
+  for (
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+    roop_count < share->link_count;
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+  ) {
     conn = spider->conns[roop_count];
     if (spider->share->same_db_table_name || roop_count == 0)
       sql = str;
@@ -5040,7 +5159,7 @@ int spider_db_delete_all_rows(
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
       tmp_pos = sql->length();
       sql->length(result_list->table_name_pos);
-      spider_db_append_table_name_with_adjusting(sql, spider->share,
+      spider_db_append_table_name_with_adjusting(sql, share,
         roop_count);
       sql->length(tmp_pos);
     }
@@ -5048,7 +5167,7 @@ int spider_db_delete_all_rows(
     conn->mta_conn_mutex_lock_already = TRUE;
     conn->mta_conn_mutex_unlock_later = TRUE;
     if (
-      (error_num = spider_db_set_names(spider->share, conn)) ||
+      (error_num = spider_db_set_names(share, conn)) ||
       (
         spider_db_query(
           conn,
@@ -5069,7 +5188,7 @@ int spider_db_delete_all_rows(
           pthread_mutex_unlock(&conn->mta_conn_mutex);
           DBUG_RETURN(error_num);
         }
-        if ((error_num = spider_db_set_names(spider->share, conn)))
+        if ((error_num = spider_db_set_names(share, conn)))
         {
           conn->mta_conn_mutex_lock_already = FALSE;
           conn->mta_conn_mutex_unlock_later = FALSE;
@@ -5103,6 +5222,7 @@ int spider_db_disable_keys(
   ha_spider *spider
 ) {
   int error_num, roop_count;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str;
@@ -5112,8 +5232,13 @@ int spider_db_disable_keys(
     (THDVAR(spider->trx->thd, internal_optimize) == -1 &&
       spider->share->internal_optimize == 1)
   ) {
-    for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-    {
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       str = &result_list->sqls[roop_count];
       str->length(0);
       if ((error_num = spider_db_append_disable_keys(spider, roop_count)))
@@ -5151,6 +5276,7 @@ int spider_db_enable_keys(
   ha_spider *spider
 ) {
   int error_num, roop_count;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str;
@@ -5160,8 +5286,13 @@ int spider_db_enable_keys(
     (THDVAR(spider->trx->thd, internal_optimize) == -1 &&
       spider->share->internal_optimize == 1)
   ) {
-    for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-    {
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       str = &result_list->sqls[roop_count];
       str->length(0);
       if ((error_num = spider_db_append_enable_keys(spider, roop_count)))
@@ -5200,6 +5331,7 @@ int spider_db_check_table(
   HA_CHECK_OPT* check_opt
 ) {
   int error_num, roop_count;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str;
@@ -5209,8 +5341,13 @@ int spider_db_check_table(
     (THDVAR(spider->trx->thd, internal_optimize) == -1 &&
       spider->share->internal_optimize == 1)
   ) {
-    for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-    {
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       str = &result_list->sqls[roop_count];
       str->length(0);
       if ((error_num = spider_db_append_check_table(spider, roop_count,
@@ -5250,6 +5387,7 @@ int spider_db_repair_table(
   HA_CHECK_OPT* check_opt
 ) {
   int error_num, roop_count;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str;
@@ -5259,8 +5397,13 @@ int spider_db_repair_table(
     (THDVAR(spider->trx->thd, internal_optimize) == -1 &&
       spider->share->internal_optimize == 1)
   ) {
-    for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-    {
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       str = &result_list->sqls[roop_count];
       str->length(0);
       if ((error_num = spider_db_append_repair_table(spider, roop_count,
@@ -5299,6 +5442,7 @@ int spider_db_analyze_table(
   ha_spider *spider
 ) {
   int error_num, roop_count;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str;
@@ -5308,8 +5452,13 @@ int spider_db_analyze_table(
     (THDVAR(spider->trx->thd, internal_optimize) == -1 &&
       spider->share->internal_optimize == 1)
   ) {
-    for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-    {
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       str = &result_list->sqls[roop_count];
       str->length(0);
       if ((error_num = spider_db_append_analyze_table(spider, roop_count)))
@@ -5347,6 +5496,7 @@ int spider_db_optimize_table(
   ha_spider *spider
 ) {
   int error_num, roop_count;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str;
@@ -5356,8 +5506,13 @@ int spider_db_optimize_table(
     (THDVAR(spider->trx->thd, internal_optimize) == -1 &&
       spider->share->internal_optimize == 1)
   ) {
-    for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-    {
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       str = &result_list->sqls[roop_count];
       str->length(0);
       if ((error_num = spider_db_append_optimize_table(spider, roop_count)))
@@ -5396,6 +5551,7 @@ int spider_db_flush_tables(
   bool lock
 ) {
   int error_num, roop_count;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str = &result_list->sql;
@@ -5404,8 +5560,13 @@ int spider_db_flush_tables(
   if ((error_num = spider_db_append_flush_tables(spider, lock)))
     DBUG_RETURN(error_num);
 
-  for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-  {
+  for (
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+    roop_count < share->link_count;
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+  ) {
     conn = spider->conns[roop_count];
     if (spider_db_query(
       conn,
@@ -5422,10 +5583,16 @@ int spider_db_flush_logs(
   ha_spider *spider
 ) {
   int roop_count;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn;
   DBUG_ENTER("spider_db_flush_logs");
-  for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-  {
+  for (
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+    roop_count < share->link_count;
+    roop_count = spider_conn_link_idx_next(share->link_statuses,
+      roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+  ) {
     conn = spider->conns[roop_count];
     if (spider_db_query(
       conn,

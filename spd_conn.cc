@@ -810,7 +810,7 @@ void *spider_bg_conn_action(
         result_list->bgs_phase == 1 ||
         !result_list->bgs_current->result
       ) {
-        if (spider->share->same_db_table_name || !conn->bg_discard_result)
+        if (spider->share->same_db_table_name)
           sql = &result_list->sql;
         else {
           sql = &result_list->sqls[conn->link_idx];
@@ -984,7 +984,8 @@ void *spider_bg_sts_action(
   spider.share = share;
   spider.conns = conns;
   memset(&conns, 0, sizeof(SPIDER_CONN *) * share->link_count);
-  spider.search_link_idx = spider_conn_first_link_idx(thd, share->link_count);
+  spider.search_link_idx = spider_conn_first_link_idx(thd,
+    share->link_statuses, share->link_count, SPIDER_LINK_STATUS_OK);
   /* init end */
 
   while (TRUE)
@@ -1026,7 +1027,8 @@ void *spider_bg_sts_action(
 #endif
         {
           spider.search_link_idx = spider_conn_next_link_idx(
-            spider.search_link_idx, share->link_count);
+            thd, share->link_statuses, spider.search_link_idx,
+            share->link_count, SPIDER_LINK_STATUS_OK);
         }
       }
     }
@@ -1115,7 +1117,8 @@ void *spider_bg_crd_action(
   spider.share = share;
   spider.conns = conns;
   memset(&conns, 0, sizeof(SPIDER_CONN *) * share->link_count);
-  spider.search_link_idx = spider_conn_first_link_idx(thd, share->link_count);
+  spider.search_link_idx = spider_conn_first_link_idx(thd,
+    share->link_statuses, share->link_count, SPIDER_LINK_STATUS_OK);
   /* init end */
 
   while (TRUE)
@@ -1158,7 +1161,8 @@ void *spider_bg_crd_action(
 #endif
         {
           spider.search_link_idx = spider_conn_next_link_idx(
-            spider.search_link_idx, share->link_count);
+            thd, share->link_statuses, spider.search_link_idx,
+            share->link_count, SPIDER_LINK_STATUS_OK);
         }
       }
     }
@@ -1170,23 +1174,87 @@ void *spider_bg_crd_action(
 
 int spider_conn_first_link_idx(
   THD *thd,
-  int link_count
+  long *link_statuses,
+  int link_count,
+  int link_status
 ) {
+  int roop_count, active_links = 0, link_idxs[link_count];
   DBUG_ENTER("spider_conn_first_link_idx");
+  for (roop_count = 0; roop_count < link_count; roop_count++)
+  {
+    if (link_statuses[roop_count] <= link_status)
+    {
+      link_idxs[active_links] = roop_count;
+      active_links++;
+    }
+  }
+
   DBUG_PRINT("info",("spider first link_idx=%d",
-    (thd->server_id + thd_get_thread_id(thd)) % link_count));
-  DBUG_RETURN((thd->server_id + thd_get_thread_id(thd)) %
-    link_count);
+    link_idxs[(thd->server_id + thd_get_thread_id(thd)) % active_links]));
+  DBUG_RETURN(link_idxs[(thd->server_id + thd_get_thread_id(thd)) %
+    active_links]);
 }
 
 int spider_conn_next_link_idx(
+  THD *thd,
+  long *link_statuses,
   int link_idx,
-  int link_count
+  int link_count,
+  int link_status
 ) {
+  int tmp_link_idx;
   DBUG_ENTER("spider_conn_next_link_idx");
-  link_idx++;
-  if (link_idx >= link_count)
-    link_idx = 0;
-  DBUG_PRINT("info",("spider next link_idx=%d", link_idx));
+  tmp_link_idx = spider_conn_first_link_idx(thd, link_statuses, link_count,
+    link_status);
+  if (tmp_link_idx == link_idx)
+  {
+    link_idx++;
+    if (link_idx >= link_count)
+      link_idx = 0;
+    DBUG_PRINT("info",("spider next link_idx=%d", link_idx));
+    DBUG_RETURN(link_idx);
+  }
+  DBUG_PRINT("info",("spider next link_idx=%d", tmp_link_idx));
+  DBUG_RETURN(tmp_link_idx);
+}
+
+int spider_conn_link_idx_next(
+  long *link_statuses,
+  int link_idx,
+  int link_count,
+  int link_status
+) {
+  DBUG_ENTER("spider_conn_link_idx_next");
+  do {
+    link_idx++;
+    if (link_idx >= link_count)
+      break;
+  } while (link_statuses[link_idx] > link_status);
+  DBUG_PRINT("info",("spider link_idx=%d", link_idx));
   DBUG_RETURN(link_idx);
+}
+
+int spider_conn_lock_mode(
+  ha_spider *spider
+) {
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  DBUG_ENTER("spider_conn_lock_mode");
+  if (result_list->lock_type == F_WRLCK || spider->lock_mode == 2)
+    DBUG_RETURN(SPIDER_LOCK_MODE_EXCLUSIVE);
+  else if (spider->lock_mode == 1)
+    DBUG_RETURN(SPIDER_LOCK_MODE_SHARED);
+  DBUG_RETURN(SPIDER_LOCK_MODE_NO_LOCK);
+}
+
+bool spider_conn_check_recovery_link(
+  SPIDER_SHARE *share
+) {
+  int roop_count;
+  DBUG_ENTER("spider_check_recovery_link");
+  for (roop_count = 0; roop_count < share->link_count; roop_count++)
+  {
+    if (share->link_statuses[roop_count] == SPIDER_LINK_STATUS_RECOVERY)
+      DBUG_RETURN(TRUE);
+  }
+  DBUG_RETURN(FALSE);
 }

@@ -131,9 +131,12 @@ int spider_trx_another_flush_tables(
   SPIDER_CONN *conn;
   ha_spider tmp_spider;
   SPIDER_SHARE tmp_share;
+  long tmp_link_statuses = SPIDER_LINK_STATUS_OK;
   DBUG_ENTER("spider_trx_another_flush_tables");
   memset(&tmp_spider, 0, sizeof(ha_spider));
   tmp_share.link_count = 1;
+  tmp_share.link_statuses = &tmp_link_statuses;
+  tmp_share.link_statuses_length = 1;
   tmp_spider.share = &tmp_share;
   tmp_spider.conns = &conn;
   while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_another_conn_hash,
@@ -154,9 +157,12 @@ int spider_trx_all_flush_tables(
   SPIDER_CONN *conn;
   ha_spider tmp_spider;
   SPIDER_SHARE tmp_share;
+  long tmp_link_statuses = SPIDER_LINK_STATUS_OK;
   DBUG_ENTER("spider_trx_all_flush_tables");
   memset(&tmp_spider, 0, sizeof(ha_spider));
   tmp_share.link_count = 1;
+  tmp_share.link_statuses = &tmp_link_statuses;
+  tmp_share.link_statuses_length = 1;
   tmp_spider.share = &tmp_share;
   tmp_spider.conns = &conn;
   while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash,
@@ -222,9 +228,12 @@ int spider_trx_all_flush_logs(
   SPIDER_CONN *conn;
   ha_spider tmp_spider;
   SPIDER_SHARE tmp_share;
+  long tmp_link_statuses = SPIDER_LINK_STATUS_OK;
   DBUG_ENTER("spider_trx_all_flush_logs");
   memset(&tmp_spider, 0, sizeof(ha_spider));
   tmp_share.link_count = 1;
+  tmp_share.link_statuses = &tmp_link_statuses;
+  tmp_share.link_statuses_length = 1;
   tmp_spider.share = &tmp_share;
   tmp_spider.conns = &conn;
   while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash,
@@ -287,6 +296,7 @@ int spider_create_trx_alter_table(
   uint *tmp_tgt_sockets_lengths;
   uint *tmp_tgt_wrappers_lengths;
   long *tmp_tgt_ports;
+  long *tmp_link_statuses;
   char *tmp_server_names_char;
   char *tmp_tgt_table_names_char;
   char *tmp_tgt_dbs_char;
@@ -295,16 +305,6 @@ int spider_create_trx_alter_table(
   char *tmp_tgt_passwords_char;
   char *tmp_tgt_sockets_char;
   char *tmp_tgt_wrappers_char;
-/*
-  my_ptrdiff_t ptr_diff_server_names;
-  my_ptrdiff_t ptr_diff_tgt_table_names;
-  my_ptrdiff_t ptr_diff_tgt_dbs;
-  my_ptrdiff_t ptr_diff_tgt_hosts;
-  my_ptrdiff_t ptr_diff_tgt_usernames;
-  my_ptrdiff_t ptr_diff_tgt_passwords;
-  my_ptrdiff_t ptr_diff_tgt_sockets;
-  my_ptrdiff_t ptr_diff_tgt_wrappers;
-*/
 
   DBUG_ENTER("spider_create_trx_alter_table");
   share_alter = &share->alter_table;
@@ -333,6 +333,7 @@ int spider_create_trx_alter_table(
       &tmp_tgt_wrappers_lengths, sizeof(uint) * share->link_count,
 
       &tmp_tgt_ports, sizeof(long) * share->link_count,
+      &tmp_link_statuses, sizeof(long) * share->link_count,
 
       &tmp_server_names_char, sizeof(char) *
         (share_alter->tmp_server_names_charlen + 1),
@@ -372,6 +373,7 @@ int spider_create_trx_alter_table(
   alter_table->tmp_tgt_wrappers = tmp_tgt_wrappers;
 
   alter_table->tmp_tgt_ports = tmp_tgt_ports;
+  alter_table->tmp_link_statuses = tmp_link_statuses;
 
   alter_table->tmp_server_names_lengths = tmp_server_names_lengths;
   alter_table->tmp_tgt_table_names_lengths = tmp_tgt_table_names_lengths;
@@ -381,90 +383,6 @@ int spider_create_trx_alter_table(
   alter_table->tmp_tgt_passwords_lengths = tmp_tgt_passwords_lengths;
   alter_table->tmp_tgt_sockets_lengths = tmp_tgt_sockets_lengths;
   alter_table->tmp_tgt_wrappers_lengths = tmp_tgt_wrappers_lengths;
-
-/*
-  memcpy(tmp_server_names_char, share_alter->tmp_server_names[0],
-    share_alter->tmp_server_names_charlen);
-  memcpy(tmp_tgt_table_names_char, share_alter->tmp_tgt_table_names[0],
-    share_alter->tmp_tgt_table_names_charlen);
-  memcpy(tmp_tgt_dbs_char, share_alter->tmp_tgt_dbs[0],
-    share_alter->tmp_tgt_dbs_charlen);
-  memcpy(tmp_tgt_hosts_char, share_alter->tmp_tgt_hosts[0],
-    share_alter->tmp_tgt_hosts_charlen);
-  memcpy(tmp_tgt_usernames_char, share_alter->tmp_tgt_usernames[0],
-    share_alter->tmp_tgt_usernames_charlen);
-  memcpy(tmp_tgt_passwords_char, share_alter->tmp_tgt_passwords[0],
-    share_alter->tmp_tgt_passwords_charlen);
-  memcpy(tmp_tgt_sockets_char, share_alter->tmp_tgt_sockets[0],
-    share_alter->tmp_tgt_sockets_charlen);
-  memcpy(tmp_tgt_wrappers_char, share_alter->tmp_tgt_wrappers[0],
-    share_alter->tmp_tgt_wrappers_charlen);
-
-  memcpy(tmp_tgt_ports, share_alter->tmp_tgt_ports,
-    sizeof(long) * share->link_count);
-
-  memcpy(tmp_server_names_lengths, share_alter->tmp_server_names_lengths,
-    sizeof(uint) * share->link_count);
-  memcpy(tmp_tgt_table_names_lengths, share_alter->tmp_tgt_table_names_lengths,
-    sizeof(uint) * share->link_count);
-  memcpy(tmp_tgt_dbs_lengths, share_alter->tmp_tgt_dbs_lengths,
-    sizeof(uint) * share->link_count);
-  memcpy(tmp_tgt_hosts_lengths, share_alter->tmp_tgt_hosts_lengths,
-    sizeof(uint) * share->link_count);
-  memcpy(tmp_tgt_usernames_lengths, share_alter->tmp_tgt_usernames_lengths,
-    sizeof(uint) * share->link_count);
-  memcpy(tmp_tgt_passwords_lengths, share_alter->tmp_tgt_passwords_lengths,
-    sizeof(uint) * share->link_count);
-  memcpy(tmp_tgt_sockets_lengths, share_alter->tmp_tgt_sockets_lengths,
-    sizeof(uint) * share->link_count);
-  memcpy(tmp_tgt_wrappers_lengths, share_alter->tmp_tgt_wrappers_lengths,
-    sizeof(uint) * share->link_count);
-
-  ptr_diff_server_names = PTR_BYTE_DIFF(
-    tmp_server_names_char, share_alter->tmp_server_names[0]);
-  ptr_diff_tgt_table_names = PTR_BYTE_DIFF(
-    tmp_tgt_table_names_char, share_alter->tmp_tgt_table_names[0]);
-  ptr_diff_tgt_dbs = PTR_BYTE_DIFF(
-    tmp_tgt_dbs_char, share_alter->tmp_tgt_dbs[0]);
-  ptr_diff_tgt_hosts = PTR_BYTE_DIFF(
-    tmp_tgt_hosts_char, share_alter->tmp_tgt_hosts[0]);
-  ptr_diff_tgt_usernames = PTR_BYTE_DIFF(
-    tmp_tgt_usernames_char, share_alter->tmp_tgt_usernames[0]);
-  ptr_diff_tgt_passwords = PTR_BYTE_DIFF(
-    tmp_tgt_passwords_char, share_alter->tmp_tgt_passwords[0]);
-  ptr_diff_tgt_sockets = PTR_BYTE_DIFF(
-    tmp_tgt_sockets_char, share_alter->tmp_tgt_sockets[0]);
-  ptr_diff_tgt_wrappers = PTR_BYTE_DIFF(
-    tmp_tgt_wrappers_char, share_alter->tmp_tgt_wrappers[0]);
-
-  for(roop_count = 0; roop_count < share->link_count; roop_count++)
-  {
-    tmp_server_names[roop_count] = ADD_TO_PTR(
-      share_alter->tmp_server_names[roop_count],
-      ptr_diff_server_names, char*);
-    tmp_tgt_table_names[roop_count] = ADD_TO_PTR(
-      share_alter->tmp_tgt_table_names[roop_count],
-      ptr_diff_tgt_table_names, char*);
-    tmp_tgt_dbs[roop_count] = ADD_TO_PTR(
-      share_alter->tmp_tgt_dbs[roop_count],
-      ptr_diff_tgt_dbs, char*);
-    tmp_tgt_hosts[roop_count] = ADD_TO_PTR(
-      share_alter->tmp_tgt_hosts[roop_count],
-      ptr_diff_tgt_hosts, char*);
-    tmp_tgt_usernames[roop_count] = ADD_TO_PTR(
-      share_alter->tmp_tgt_usernames[roop_count],
-      ptr_diff_tgt_usernames, char*);
-    tmp_tgt_passwords[roop_count] = ADD_TO_PTR(
-      share_alter->tmp_tgt_passwords[roop_count],
-      ptr_diff_tgt_passwords, char*);
-    tmp_tgt_sockets[roop_count] = ADD_TO_PTR(
-      share_alter->tmp_tgt_sockets[roop_count],
-      ptr_diff_tgt_sockets, char*);
-    tmp_tgt_wrappers[roop_count] = ADD_TO_PTR(
-      share_alter->tmp_tgt_wrappers[roop_count],
-      ptr_diff_tgt_wrappers, char*);
-  }
-*/
 
   for(roop_count = 0; roop_count < share->link_count; roop_count++)
   {
@@ -521,6 +439,8 @@ int spider_create_trx_alter_table(
 
   memcpy(tmp_tgt_ports, share_alter->tmp_tgt_ports,
     sizeof(long) * share->link_count);
+  memcpy(tmp_link_statuses, share_alter->tmp_link_statuses,
+    sizeof(long) * share->link_count);
 
   memcpy(tmp_server_names_lengths, share_alter->tmp_server_names_lengths,
     sizeof(uint) * share->link_count);
@@ -557,6 +477,8 @@ int spider_create_trx_alter_table(
     share_alter->tmp_tgt_wrappers_length;
   alter_table->tmp_tgt_ports_length =
     share_alter->tmp_tgt_ports_length;
+  alter_table->tmp_link_statuses_length =
+    share_alter->tmp_link_statuses_length;
 
   if (my_hash_insert(&trx->trx_alter_table_hash, (uchar*) alter_table))
   {
@@ -1723,7 +1645,7 @@ int spider_internal_xa_commit_by_xid(
   SPIDER_SHARE tmp_share;
   char *tmp_connect_info[8];
   uint tmp_connect_info_length[8];
-  long tmp_tgt_port;
+  long tmp_tgt_port, tmp_link_statuses;
   SPIDER_CONN *conn;
   uint force_commit = THDVAR(thd, force_commit);
   MEM_ROOT mem_root;
@@ -1853,6 +1775,7 @@ int spider_internal_xa_commit_by_xid(
   tmp_share.tgt_sockets = &tmp_connect_info[6];
   tmp_share.tgt_wrappers = &tmp_connect_info[7];
   tmp_share.tgt_ports = &tmp_tgt_port;
+  tmp_share.link_statuses = &tmp_link_statuses;
   tmp_share.server_names_lengths = &tmp_connect_info_length[0];
   tmp_share.tgt_table_names_lengths = &tmp_connect_info_length[1];
   tmp_share.tgt_dbs_lengths = &tmp_connect_info_length[2];
@@ -1870,6 +1793,7 @@ int spider_internal_xa_commit_by_xid(
   tmp_share.tgt_sockets_length = 1;
   tmp_share.tgt_wrappers_length = 1;
   tmp_share.tgt_ports_length = 1;
+  tmp_share.link_statuses_length = 1;
   do {
     spider_get_sys_server_info(table_xa_member, &tmp_share, 0, &mem_root);
     if ((error_num = spider_create_conn_keys(&tmp_share)))
@@ -1959,7 +1883,7 @@ int spider_internal_xa_rollback_by_xid(
   SPIDER_SHARE tmp_share;
   char *tmp_connect_info[8];
   uint tmp_connect_info_length[8];
-  long tmp_tgt_port;
+  long tmp_tgt_port, tmp_link_statuses;
   SPIDER_CONN *conn;
   uint force_commit = THDVAR(thd, force_commit);
   MEM_ROOT mem_root;
@@ -2087,6 +2011,7 @@ int spider_internal_xa_rollback_by_xid(
   tmp_share.tgt_sockets = &tmp_connect_info[6];
   tmp_share.tgt_wrappers = &tmp_connect_info[7];
   tmp_share.tgt_ports = &tmp_tgt_port;
+  tmp_share.link_statuses = &tmp_link_statuses;
   tmp_share.server_names_lengths = &tmp_connect_info_length[0];
   tmp_share.tgt_table_names_lengths = &tmp_connect_info_length[1];
   tmp_share.tgt_dbs_lengths = &tmp_connect_info_length[2];
@@ -2104,6 +2029,7 @@ int spider_internal_xa_rollback_by_xid(
   tmp_share.tgt_sockets_length = 1;
   tmp_share.tgt_wrappers_length = 1;
   tmp_share.tgt_ports_length = 1;
+  tmp_share.link_statuses_length = 1;
   do {
     spider_get_sys_server_info(table_xa_member, &tmp_share, 0, &mem_root);
     if ((error_num = spider_create_conn_keys(&tmp_share)))
@@ -2517,10 +2443,11 @@ int spider_check_trx_and_get_conn(
 ) {
   int error_num, roop_count;
   SPIDER_TRX *trx;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_CONN *conn = spider->conns[0];
   char first_byte, first_byte_bak;
   int semi_table_lock_conn = THDVAR(thd, semi_table_lock_connection) == -1 ?
-    spider->share->semi_table_lock_conn :
+    share->semi_table_lock_conn :
     THDVAR(thd, semi_table_lock_connection);
   DBUG_ENTER("spider_check_trx_and_get_conn");
   if (!(trx = spider_get_trx(thd, &error_num)))
@@ -2530,13 +2457,13 @@ int spider_check_trx_and_get_conn(
   }
   if (semi_table_lock_conn)
     first_byte = '0' +
-      (spider->share->semi_table_lock & THDVAR(thd, semi_table_lock));
+      (share->semi_table_lock & THDVAR(thd, semi_table_lock));
   else
     first_byte = '0';
   DBUG_PRINT("info",("spider semi_table_lock_conn = %d",
     semi_table_lock_conn));
   DBUG_PRINT("info",("spider semi_table_lock = %d",
-    (spider->share->semi_table_lock & THDVAR(thd, semi_table_lock))));
+    (share->semi_table_lock & THDVAR(thd, semi_table_lock))));
   DBUG_PRINT("info",("spider first_byte = %d", first_byte));
   if (trx->spider_thread_id != spider->spider_thread_id ||
     trx->trx_conn_adjustment != spider->trx_conn_adjustment ||
@@ -2549,14 +2476,21 @@ int spider_check_trx_and_get_conn(
     spider->spider_thread_id = trx->spider_thread_id;
     spider->trx_conn_adjustment = trx->trx_conn_adjustment;
     spider->search_link_idx = spider_conn_first_link_idx(thd,
-      spider->share->link_count);
+      share->link_statuses, share->link_count,
+      SPIDER_LINK_STATUS_OK);
     first_byte_bak = *spider->conn_keys[0];
-    for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-    {
+    *spider->conn_keys[0] = first_byte;
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       *spider->conn_keys[roop_count] = first_byte;
       if (
         !(conn =
-          spider_get_conn(spider->share, roop_count,
+          spider_get_conn(share, roop_count,
             spider->conn_keys[roop_count], trx,
             spider, FALSE, TRUE, &error_num))
       ) {
@@ -2569,11 +2503,16 @@ int spider_check_trx_and_get_conn(
   } else if (!conn)
   {
     DBUG_PRINT("info",("spider get conn"));
-    for (roop_count = 0; roop_count < spider->share->link_count; roop_count++)
-    {
+    for (
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        -1, share->link_count, SPIDER_LINK_STATUS_RECOVERY);
+      roop_count < share->link_count;
+      roop_count = spider_conn_link_idx_next(share->link_statuses,
+        roop_count, share->link_count, SPIDER_LINK_STATUS_RECOVERY)
+    ) {
       if (
         !(conn =
-          spider_get_conn(spider->share, roop_count,
+          spider_get_conn(share, roop_count,
             spider->conn_keys[roop_count], trx,
             spider, FALSE, TRUE, &error_num))
       ) {

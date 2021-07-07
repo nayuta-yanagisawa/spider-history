@@ -205,6 +205,12 @@ int spider_db_append_insert(
   ha_spider *spider
 );
 
+int spider_db_append_insert_for_recovery(
+  ha_spider *spider,
+  const TABLE *table,
+  int link_idx
+);
+
 int spider_db_append_update(
   ha_spider *spider,
   int link_idx
