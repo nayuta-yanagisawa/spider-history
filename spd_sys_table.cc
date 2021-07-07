@@ -245,7 +245,7 @@ void spider_store_tables_name(
   const char *name,
   const uint name_length
 ) {
-  char *ptr_db, *ptr_table;
+  const char *ptr_db, *ptr_table;
   my_ptrdiff_t ptr_diff_db, ptr_diff_table;
   DBUG_ENTER("spider_store_tables_name");
   ptr_db = strchr(name, '/');

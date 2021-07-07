@@ -41,6 +41,7 @@ ha_spider::ha_spider(
   share = NULL;
   trx = NULL;
   conn = NULL;
+  condition = NULL;
   DBUG_VOID_RETURN;
 }
 
@@ -54,6 +55,7 @@ ha_spider::ha_spider(
   share = NULL;
   trx = NULL;
   conn = NULL;
+  condition = NULL;
   ref_length = sizeof(my_off_t);
   DBUG_VOID_RETURN;
 }
@@ -374,6 +376,7 @@ int ha_spider::reset()
   int error_num;
   THD *thd = ha_thd();
   SPIDER_TRX *tmp_trx;
+  SPIDER_CONDITION *tmp_cond;
   DBUG_ENTER("ha_spider::reset");
   DBUG_PRINT("info",("spider this=%x", this));
   store_error_num = 0;
@@ -407,6 +410,12 @@ int ha_spider::reset()
   low_priority = FALSE;
   high_priority = FALSE;
   insert_delayed = FALSE;
+  while (condition)
+  {
+    tmp_cond = condition->next;
+    my_free(condition, MYF(0));
+    condition = tmp_cond;
+  }
   DBUG_RETURN(spider_db_free_result(this, FALSE));
 }
 
@@ -1216,8 +1225,13 @@ int ha_spider::rnd_init(
       if (result_list.sql.append(*(share->table_select)))
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
       result_list.where_pos = result_list.sql.length();
-      result_list.order_pos = result_list.where_pos;
-      result_list.limit_pos = result_list.where_pos;
+
+      /* append condition pushdown */
+      if (spider_db_append_condition(this, &result_list.sql))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+
+      result_list.order_pos = result_list.sql.length();
+      result_list.limit_pos = result_list.order_pos;
       result_list.desc_flg = FALSE;
       result_list.sorted = FALSE;
       result_list.key_info = NULL;
@@ -2054,4 +2068,40 @@ bool ha_spider::is_fatal_error(
   }
   DBUG_PRINT("info",("spider TRUE"));
   DBUG_RETURN(TRUE);
+}
+
+const COND *ha_spider::cond_push(
+  const COND *cond
+) {
+  DBUG_ENTER("ha_spider::cond_push");
+  if (cond)
+  {
+    SPIDER_CONDITION *tmp_cond;
+    if (!(tmp_cond = (SPIDER_CONDITION *)
+      my_malloc(sizeof(*tmp_cond), MYF(MY_WME | MY_ZEROFILL)))
+    )
+      DBUG_RETURN(cond);
+    tmp_cond->cond = (COND *) cond;
+    tmp_cond->next = condition;
+    condition = tmp_cond;
+  }
+  DBUG_RETURN(NULL);
+}
+
+void ha_spider::cond_pop()
+{
+  DBUG_ENTER("ha_spider::cond_pop");
+  if (condition)
+  {
+    SPIDER_CONDITION *tmp_cond = condition->next;
+    my_free(condition, MYF(0));
+    condition = tmp_cond;
+  }
+  DBUG_VOID_RETURN;
+}
+
+st_table *ha_spider::get_table()
+{
+  DBUG_ENTER("ha_spider::get_table");
+  DBUG_RETURN(table);
 }

@@ -28,6 +28,12 @@ typedef struct st_spider_position
   bool                   use_position;
 } SPIDER_POSITION;
 
+typedef struct st_spider_condition
+{
+  COND                   *cond;
+  st_spider_condition    *next;
+} SPIDER_CONDITION;
+
 typedef struct st_spider_result
 {
   SPIDER_DB_RESULT     *result;

@@ -446,3 +446,44 @@ int spider_db_flush_tables(
 int spider_db_flush_logs(
   ha_spider *spider
 );
+
+int spider_db_print_item_type(
+  Item *item,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_open_item_cond(
+  Item_cond *item_cond,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_open_item_func(
+  Item_func *item_func,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_open_item_ident(
+  Item_ident *item_ident,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_open_item_field(
+  Item_field *item_field,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_open_item_ref(
+  Item_ref *item_ref,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_append_condition(
+  ha_spider *spider,
+  String *str
+);

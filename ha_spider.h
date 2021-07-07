@@ -31,6 +31,7 @@ public:
   ulonglong          trx_conn_adjustment;
   SPIDER_CONN        *conn;
   SPIDER_RESULT_LIST result_list;
+  SPIDER_CONDITION   *condition;
   ha_spider          *next;
 
   bool               quick_mode;
@@ -244,4 +245,9 @@ public:
     int error_num,
     uint flags
   );
+  const COND *cond_push(
+    const COND* cond
+  );
+  void cond_pop();
+  st_table *get_table();
 };
