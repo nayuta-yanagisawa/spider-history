@@ -94,8 +94,10 @@ uchar *spider_udf_tbl_mon_list_key(
   my_bool not_used __attribute__ ((unused))
 ) {
   DBUG_ENTER("spider_udf_tbl_mon_list_key");
-  *length = table_mon_list->table_name_length;
-  DBUG_RETURN((uchar*) table_mon_list->table_name);
+  DBUG_PRINT("info",("spider hash key=%s", table_mon_list->key));
+  DBUG_PRINT("info",("spider hash key length=%ld", table_mon_list->key_length));
+  *length = table_mon_list->key_length;
+  DBUG_RETURN((uchar*) table_mon_list->key);
 }
 
 int spider_get_server(
@@ -366,8 +368,16 @@ int spider_free_share_alloc(
     my_free(share->tgt_ssl_vscs, MYF(0));
   if (share->link_statuses)
     my_free(share->link_statuses, MYF(0));
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if (share->monitoring_bg_kind)
+    my_free(share->monitoring_bg_kind, MYF(0));
+#endif
   if (share->monitoring_kind)
     my_free(share->monitoring_kind, MYF(0));
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if (share->monitoring_bg_interval)
+    my_free(share->monitoring_bg_interval, MYF(0));
+#endif
   if (share->monitoring_limit)
     my_free(share->monitoring_limit, MYF(0));
   if (share->monitoring_sid)
@@ -375,7 +385,7 @@ int spider_free_share_alloc(
   if (share->alter_table.tmp_server_names)
     my_free(share->alter_table.tmp_server_names, MYF(0));
   if (share->table_select)
-    delete share->table_select;
+    delete [] share->table_select;
   if (share->key_select)
     delete [] share->key_select;
   if (share->key_hint)
@@ -1485,6 +1495,11 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT_WITH_MAX("iol", internal_optimize_local, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX("lmr", low_mem_read, 0, 1);
           SPIDER_PARAM_LONG_LIST_WITH_MAX("lst", link_statuses, 0, 3);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+          SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
+            "mbi", monitoring_bg_interval, 0, 4294967295);
+          SPIDER_PARAM_LONG_LIST_WITH_MAX("mbk", monitoring_bg_kind, 0, 3);
+#endif
           SPIDER_PARAM_LONG_LIST_WITH_MAX("mkd", monitoring_kind, 0, 3);
           SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
             "mlt", monitoring_limit, 0, 9223372036854775807LL);
@@ -1679,6 +1694,10 @@ int spider_parse_connect_info(
         case 18:
           SPIDER_PARAM_INT_WITH_MAX(
             "select_column_mode", select_column_mode, 0, 1);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+          SPIDER_PARAM_LONG_LIST_WITH_MAX(
+            "monitoring_bg_kind", monitoring_bg_kind, 0, 3);
+#endif
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1701,6 +1720,10 @@ int spider_parse_connect_info(
         case 22:
           SPIDER_PARAM_LONG_LIST_WITH_MAX(
             "ssl_verify_server_cert", tgt_ssl_vscs, 0, 1);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+          SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
+            "monitoring_bg_interval", monitoring_bg_interval, 0, 4294967295);
+#endif
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1770,6 +1793,12 @@ int spider_parse_connect_info(
     share->link_count = share->monitoring_limit_length;
   if (share->link_count < share->monitoring_sid_length)
     share->link_count = share->monitoring_sid_length;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if (share->link_count < share->monitoring_bg_kind_length)
+    share->link_count = share->monitoring_bg_kind_length;
+  if (share->link_count < share->monitoring_bg_interval_length)
+    share->link_count = share->monitoring_bg_interval_length;
+#endif
   if ((error_num = spider_increase_string_list(
     &share->server_names,
     &share->server_names_lengths,
@@ -1890,11 +1919,25 @@ int spider_parse_connect_info(
     &share->link_statuses_length,
     share->link_count)))
     goto error;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if ((error_num = spider_increase_long_list(
+    &share->monitoring_bg_kind,
+    &share->monitoring_bg_kind_length,
+    share->link_count)))
+    goto error;
+#endif
   if ((error_num = spider_increase_long_list(
     &share->monitoring_kind,
     &share->monitoring_kind_length,
     share->link_count)))
     goto error;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if ((error_num = spider_increase_longlong_list(
+    &share->monitoring_bg_interval,
+    &share->monitoring_bg_interval_length,
+    share->link_count)))
+    goto error;
+#endif
   if ((error_num = spider_increase_longlong_list(
     &share->monitoring_limit,
     &share->monitoring_limit_length,
@@ -2459,8 +2502,16 @@ int spider_set_connect_info_default(
     if (share->link_statuses[roop_count] == -1)
       share->link_statuses[roop_count] = SPIDER_LINK_STATUS_NO_CHANGE;
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if (share->monitoring_bg_kind[roop_count] == -1)
+      share->monitoring_bg_kind[roop_count] = 0;
+#endif
     if (share->monitoring_kind[roop_count] == -1)
       share->monitoring_kind[roop_count] = 0;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if (share->monitoring_bg_interval[roop_count] == -1)
+      share->monitoring_bg_interval[roop_count] = 10000000;
+#endif
     if (share->monitoring_limit[roop_count] == -1)
       share->monitoring_limit[roop_count] = 1;
     if (share->monitoring_sid[roop_count] == -1)
@@ -2898,12 +2949,24 @@ SPIDER_SHARE *spider_get_share(
       goto error_but_no_delete;
     }
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if ((*error_num = spider_create_mon_threads(spider->trx, share)))
+    {
+      share->init_error = TRUE;
+      share->init_error_time = (time_t) time((time_t*) 0);
+      share->init = TRUE;
+      spider_free_share(share);
+      goto error_but_no_delete;
+    }
+#endif
+
     if (!(spider->conn_keys = (char **)
       my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
         &spider->conn_keys, sizeof(char *) * share->link_count,
         &tmp_name, sizeof(char) * share->conn_keys_charlen,
         &spider->conns, sizeof(SPIDER_CONN *) * share->link_count,
         &spider->need_mons, sizeof(int) * share->link_count,
+        &spider->quick_targets, sizeof(void *) * share->link_count,
         NullS))
     ) {
       share->init_error = TRUE;
@@ -2939,6 +3002,7 @@ SPIDER_SHARE *spider_get_share(
         ) {
           *error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -3042,6 +3106,7 @@ SPIDER_SHARE *spider_get_share(
         ) {
           *error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[spider->search_link_idx],
               share->table_name,
@@ -3099,12 +3164,21 @@ SPIDER_SHARE *spider_get_share(
       goto error_but_no_delete;
     }
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if ((*error_num = spider_create_mon_threads(spider->trx, share)))
+    {
+      spider_free_share(share);
+      goto error_but_no_delete;
+    }
+#endif
+
     if (!(spider->conn_keys = (char **)
       my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
         &spider->conn_keys, sizeof(char *) * share->link_count,
         &tmp_name, sizeof(char) * share->conn_keys_charlen,
         &spider->conns, sizeof(SPIDER_CONN *) * share->link_count,
         &spider->need_mons, sizeof(int) * share->link_count,
+        &spider->quick_targets, sizeof(void *) * share->link_count,
         NullS))
     ) {
       spider_free_share(share);
@@ -3137,6 +3211,7 @@ SPIDER_SHARE *spider_get_share(
         ) {
           *error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -3240,6 +3315,7 @@ SPIDER_SHARE *spider_get_share(
             ) {
               *error_num = spider_ping_table_mon_from_table(
                   spider->trx,
+                  spider->trx->thd,
                   share,
                   share->monitoring_sid[spider->search_link_idx],
                   share->table_name,
@@ -3282,10 +3358,10 @@ SPIDER_SHARE *spider_get_share(
   DBUG_RETURN(share);
 
 error_hash_insert:
-  thr_lock_delete(&share->lock);
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 error_get_pt_share:
 #endif
+  thr_lock_delete(&share->lock);
   VOID(pthread_mutex_destroy(&share->auto_increment_mutex));
 error_init_auto_increment_mutex:
   VOID(pthread_mutex_destroy(&share->crd_mutex));
@@ -3318,6 +3394,7 @@ int spider_free_share(
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     spider_free_sts_thread(share);
     spider_free_crd_thread(share);
+    spider_free_mon_threads(share);
 #endif
     spider_free_share_alloc(share);
     hash_delete(&spider_open_tables, (uchar*) share);
@@ -3476,8 +3553,8 @@ int spider_open_all_tables(
   SPIDER_SHARE tmp_share;
   char *tmp_connect_info[15];
   uint tmp_connect_info_length[15];
-  long tmp_long[4];
-  longlong tmp_longlong[2];
+  long tmp_long[5];
+  longlong tmp_longlong[3];
   SPIDER_CONN *conn, **conns;
   ha_spider *spider;
   SPIDER_SHARE *share;
@@ -3515,6 +3592,7 @@ int spider_open_all_tables(
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
   spider_set_tmp_share_pointer(&tmp_share, (char **) &tmp_connect_info,
     tmp_connect_info_length, tmp_long, tmp_longlong);
+  tmp_share.link_statuses[0] = -1;
 
   do {
     if (
@@ -3570,8 +3648,8 @@ int spider_open_all_tables(
           &share, sizeof(*share),
           &connect_info, sizeof(char *) * 15,
           &connect_info_length, sizeof(uint) * 15,
-          &long_info, sizeof(long) * 4,
-          &longlong_info, sizeof(longlong) * 2,
+          &long_info, sizeof(long) * 5,
+          &longlong_info, sizeof(longlong) * 3,
           &conns, sizeof(SPIDER_CONN *),
           &need_mon, sizeof(int),
           NullS))
@@ -3587,10 +3665,10 @@ int spider_open_all_tables(
       memcpy(share, &tmp_share, sizeof(*share));
       spider_set_tmp_share_pointer(share, connect_info,
         connect_info_length, long_info, longlong_info);
-      memcpy(connect_info, &tmp_connect_info, sizeof(char *) * 8);
-      memcpy(connect_info_length, &tmp_connect_info_length, sizeof(uint) * 8);
-      memcpy(long_info, &tmp_long, sizeof(long) * 3);
-      memcpy(longlong_info, &tmp_longlong, sizeof(longlong) * 2);
+      memcpy(connect_info, &tmp_connect_info, sizeof(char *) * 15);
+      memcpy(connect_info_length, &tmp_connect_info_length, sizeof(uint) * 15);
+      memcpy(long_info, &tmp_long, sizeof(long) * 5);
+      memcpy(longlong_info, &tmp_longlong, sizeof(longlong) * 3);
       spider->share = share;
       spider->trx = trx;
       spider->conns = conns;
@@ -4442,8 +4520,14 @@ void spider_set_tmp_share_pointer(
   tmp_share->tgt_ssl_vscs = &tmp_long[1];
   tmp_share->link_statuses = &tmp_long[2];
   tmp_share->monitoring_kind = &tmp_long[3];
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  tmp_share->monitoring_bg_kind = &tmp_long[4];
+#endif
   tmp_share->monitoring_limit = &tmp_longlong[0];
   tmp_share->monitoring_sid = &tmp_longlong[1];
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  tmp_share->monitoring_bg_interval = &tmp_longlong[2];
+#endif
   tmp_share->server_names_lengths = &tmp_connect_info_length[0];
   tmp_share->tgt_table_names_lengths = &tmp_connect_info_length[1];
   tmp_share->tgt_dbs_lengths = &tmp_connect_info_length[2];
@@ -4478,8 +4562,24 @@ void spider_set_tmp_share_pointer(
   tmp_share->tgt_ssl_vscs_length = 1;
   tmp_share->link_statuses_length = 1;
   tmp_share->monitoring_kind_length = 1;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  tmp_share->monitoring_bg_kind_length = 1;
+#endif
   tmp_share->monitoring_limit_length = 1;
   tmp_share->monitoring_sid_length = 1;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  tmp_share->monitoring_bg_interval_length = 1;
+#endif
   tmp_share->net_timeout = -1;
+
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  tmp_share->monitoring_bg_kind[0] = -1;
+#endif
+  tmp_share->monitoring_kind[0] = -1;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  tmp_share->monitoring_bg_interval[0] = -1;
+#endif
+  tmp_share->monitoring_limit[0] = -1;
+  tmp_share->monitoring_sid[0] = -1;
   DBUG_VOID_RETURN;
 }

@@ -472,6 +472,7 @@ int ha_spider::external_lock(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -506,6 +507,7 @@ int ha_spider::external_lock(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -536,6 +538,7 @@ int ha_spider::external_lock(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -566,6 +569,7 @@ int ha_spider::external_lock(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -599,6 +603,7 @@ int ha_spider::external_lock(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -682,6 +687,7 @@ int ha_spider::reset()
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -924,6 +930,7 @@ int ha_spider::index_read_map(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -967,6 +974,7 @@ int ha_spider::index_read_map(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -996,6 +1004,7 @@ int ha_spider::index_read_map(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -1022,6 +1031,7 @@ int ha_spider::index_read_map(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -1131,6 +1141,7 @@ int ha_spider::index_read_last_map(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -1174,6 +1185,7 @@ int ha_spider::index_read_last_map(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -1203,6 +1215,7 @@ int ha_spider::index_read_last_map(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -1229,6 +1242,7 @@ int ha_spider::index_read_last_map(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -1354,6 +1368,7 @@ int ha_spider::index_first(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -1397,6 +1412,7 @@ int ha_spider::index_first(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -1426,6 +1442,7 @@ int ha_spider::index_first(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -1452,6 +1469,7 @@ int ha_spider::index_first(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -1558,6 +1576,7 @@ int ha_spider::index_last(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -1601,6 +1620,7 @@ int ha_spider::index_last(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -1630,6 +1650,7 @@ int ha_spider::index_last(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -1656,6 +1677,7 @@ int ha_spider::index_last(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -1784,6 +1806,7 @@ int ha_spider::read_range_first(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -1827,6 +1850,7 @@ int ha_spider::read_range_first(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -1856,6 +1880,7 @@ int ha_spider::read_range_first(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -1882,6 +1907,7 @@ int ha_spider::read_range_first(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2017,6 +2043,7 @@ int ha_spider::read_multi_range_first(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2058,6 +2085,7 @@ int ha_spider::read_multi_range_first(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -2087,6 +2115,7 @@ int ha_spider::read_multi_range_first(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -2113,6 +2142,7 @@ int ha_spider::read_multi_range_first(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -2238,6 +2268,7 @@ int ha_spider::read_multi_range_first(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2281,6 +2312,7 @@ int ha_spider::read_multi_range_first(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2310,6 +2342,7 @@ int ha_spider::read_multi_range_first(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2336,6 +2369,7 @@ int ha_spider::read_multi_range_first(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -2438,6 +2472,7 @@ int ha_spider::read_multi_range_next(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2479,6 +2514,7 @@ int ha_spider::read_multi_range_next(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -2508,6 +2544,7 @@ int ha_spider::read_multi_range_next(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -2534,6 +2571,7 @@ int ha_spider::read_multi_range_next(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -2611,9 +2649,13 @@ int ha_spider::rnd_init(
         if (conns[roop_count] && result_list.bgs_working)
           spider_bg_conn_break(conns[roop_count], this);
 #endif
-        if (conns[roop_count] &&
-          conns[roop_count]->quick_target == this)
+        if (quick_targets[roop_count])
+        {
+          DBUG_ASSERT(quick_targets[roop_count] ==
+            conns[roop_count]->quick_target);
           conns[roop_count]->quick_target = NULL;
+          quick_targets[roop_count] = NULL;
+        }
       }
       result_list.record_num = 0;
       result_list.finish_flg = FALSE;
@@ -2746,6 +2788,7 @@ int ha_spider::rnd_next(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2789,6 +2832,7 @@ int ha_spider::rnd_next(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2818,6 +2862,7 @@ int ha_spider::rnd_next(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -2844,6 +2889,7 @@ int ha_spider::rnd_next(
             ) {
               error_num = spider_ping_table_mon_from_table(
                   trx,
+                  trx->thd,
                   share,
                   share->monitoring_sid[roop_count],
                   share->table_name,
@@ -2979,6 +3025,7 @@ int ha_spider::info(
               ) {
                 error_num = spider_ping_table_mon_from_table(
                     trx,
+                    trx->thd,
                     share,
                     share->monitoring_sid[search_link_idx],
                     share->table_name,
@@ -3150,6 +3197,7 @@ ha_rows ha_spider::records_in_range(
               ) {
                 error_num = spider_ping_table_mon_from_table(
                     trx,
+                    trx->thd,
                     share,
                     share->monitoring_sid[search_link_idx],
                     share->table_name,
@@ -4002,7 +4050,7 @@ int ha_spider::delete_table(
     sql_command == SQLCOM_ALTER_TABLE ||
     sql_command == SQLCOM_CREATE_TABLE)
   {
-    int roop_count, old_link_count, name_len = strlen(name);
+    int roop_count, old_link_count = 0, name_len = strlen(name);
     if (
       sql_command == SQLCOM_ALTER_TABLE &&
       (alter_table =

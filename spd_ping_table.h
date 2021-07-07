@@ -15,6 +15,7 @@
 
 SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
   SPIDER_TRX *trx,
+  THD *thd,
   String *str,
   uint conv_name_length,
   int link_idx,
@@ -34,7 +35,7 @@ void spider_release_ping_table_mon_list(
 );
 
 int spider_get_ping_table_mon(
-  SPIDER_TRX *trx,
+  THD *thd,
   SPIDER_TABLE_MON_LIST *table_mon_list,
   char *name,
   uint name_length,
@@ -45,7 +46,7 @@ int spider_get_ping_table_mon(
 );
 
 SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
-  SPIDER_TRX *trx,
+  THD *thd,
   char *name,
   uint name_length,
   int link_idx,
@@ -71,6 +72,7 @@ void spider_ping_table_free_mon(
 
 int spider_ping_table_mon_from_table(
   SPIDER_TRX *trx,
+  THD *thd,
   SPIDER_SHARE *share,
   uint32 server_id,
   char *conv_name,

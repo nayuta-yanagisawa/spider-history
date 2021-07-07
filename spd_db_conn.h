@@ -735,7 +735,7 @@ int spider_db_udf_ping_table_append_select(
 );
 
 int spider_db_udf_ping_table_mon_next(
-  SPIDER_TRX *trx,
+  THD *thd,
   SPIDER_TABLE_MON *table_mon,
   SPIDER_CONN *conn,
   SPIDER_MON_TABLE_RESULT *mon_table_result,

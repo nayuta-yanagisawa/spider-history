@@ -256,7 +256,7 @@ int spider_get_sys_tables_link_status(
 );
 
 int spider_sys_update_tables_link_status(
-  SPIDER_TRX *trx,
+  THD *thd,
   char *name,
   uint name_length,
   int link_idx,

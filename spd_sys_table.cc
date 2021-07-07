@@ -1520,7 +1520,7 @@ int spider_get_sys_tables_link_status(
 }
 
 int spider_sys_update_tables_link_status(
-  SPIDER_TRX *trx,
+  THD *thd,
   char *name,
   uint name_length,
   int link_idx,
@@ -1533,7 +1533,7 @@ int spider_sys_update_tables_link_status(
   DBUG_ENTER("spider_get_ping_table_tgt");
   if (
     !(table_tables = spider_open_sys_table(
-      trx->thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
+      thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
       SPIDER_SYS_TABLES_TABLE_NAME_LEN, TRUE, &open_tables_backup, need_lock,
       &error_num))
   ) {
@@ -1543,14 +1543,14 @@ int spider_sys_update_tables_link_status(
   if ((error_num = spider_update_tables_link_status(table_tables,
     name, name_length, link_idx, link_status)))
     goto error;
-  spider_close_sys_table(trx->thd, table_tables,
+  spider_close_sys_table(thd, table_tables,
     &open_tables_backup, need_lock);
   table_tables = NULL;
   DBUG_RETURN(0);
 
 error:
   if (table_tables)
-    spider_close_sys_table(trx->thd, table_tables,
+    spider_close_sys_table(thd, table_tables,
       &open_tables_backup, need_lock);
   DBUG_RETURN(error_num);
 }

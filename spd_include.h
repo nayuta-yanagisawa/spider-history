@@ -306,6 +306,14 @@ typedef struct st_spider_share
   pthread_t          bg_crd_thread;
   pthread_cond_t     bg_crd_cond;
 #endif
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile bool      bg_mon_init;
+  volatile bool      bg_mon_kill;
+  THD                **bg_mon_thds;
+  pthread_t          *bg_mon_threads;
+  pthread_mutex_t    *bg_mon_mutexes;
+  pthread_cond_t     *bg_mon_conds;
+#endif
   ulonglong          data_file_length;
   ulonglong          max_data_file_length;
   ulonglong          index_file_length;
@@ -410,7 +418,13 @@ typedef struct st_spider_share
   long               *tgt_ports;
   long               *tgt_ssl_vscs;
   long               *link_statuses;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  long               *monitoring_bg_kind;
+#endif
   long               *monitoring_kind;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  longlong           *monitoring_bg_interval;
+#endif
   longlong           *monitoring_limit;
   longlong           *monitoring_sid;
 
@@ -467,7 +481,13 @@ typedef struct st_spider_share
   uint               tgt_ports_length;
   uint               tgt_ssl_vscs_length;
   uint               link_statuses_length;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  uint               monitoring_bg_kind_length;
+#endif
   uint               monitoring_kind_length;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  uint               monitoring_bg_interval_length;
+#endif
   uint               monitoring_limit_length;
   uint               monitoring_sid_length;
 
@@ -476,6 +496,12 @@ typedef struct st_spider_share
   SPIDER_PARTITION_SHARE *partition_share;
 #endif
 } SPIDER_SHARE;
+
+typedef struct st_spider_link_pack
+{
+  SPIDER_SHARE               *share;
+  int                        link_idx;
+} SPIDER_LINK_PACK;
 
 typedef struct st_spider_init_error_table
 {

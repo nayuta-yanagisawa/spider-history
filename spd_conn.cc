@@ -1101,13 +1101,16 @@ void *spider_bg_sts_action(
           pthread_mutex_lock(&spider_global_trx_mutex);
           spider_get_conn(share, 0, share->conn_keys[spider.search_link_idx],
             spider_global_trx, &spider, FALSE, FALSE, &error_num);
+          pthread_mutex_unlock(&spider_global_trx_mutex);
           if (
             error_num &&
             share->monitoring_kind[spider.search_link_idx] &&
             need_mons[spider.search_link_idx]
           ) {
+            lex_start(thd);
             error_num = spider_ping_table_mon_from_table(
                 spider_global_trx,
+                thd,
                 share,
                 share->monitoring_sid[spider.search_link_idx],
                 share->table_name,
@@ -1119,8 +1122,8 @@ void *spider_bg_sts_action(
                 share->monitoring_limit[spider.search_link_idx],
                 TRUE
               );
+            lex_end(thd->lex);
           }
-          pthread_mutex_unlock(&spider_global_trx_mutex);
         }
         if (conns[spider.search_link_idx])
         {
@@ -1141,9 +1144,10 @@ void *spider_bg_sts_action(
               share->monitoring_kind[spider.search_link_idx] &&
               need_mons[spider.search_link_idx]
             ) {
-              pthread_mutex_lock(&spider_global_trx_mutex);
+              lex_start(thd);
               error_num = spider_ping_table_mon_from_table(
                   spider_global_trx,
+                  thd,
                   share,
                   share->monitoring_sid[spider.search_link_idx],
                   share->table_name,
@@ -1155,7 +1159,7 @@ void *spider_bg_sts_action(
                   share->monitoring_limit[spider.search_link_idx],
                   TRUE
                 );
-              pthread_mutex_unlock(&spider_global_trx_mutex);
+              lex_end(thd->lex);
             }
             spider.search_link_idx = -1;
           }
@@ -1284,13 +1288,16 @@ void *spider_bg_crd_action(
           spider_get_conn(share, spider.search_link_idx,
             share->conn_keys[spider.search_link_idx],
             spider_global_trx, &spider, FALSE, FALSE, &error_num);
+          pthread_mutex_unlock(&spider_global_trx_mutex);
           if (
             error_num &&
             share->monitoring_kind[spider.search_link_idx] &&
             need_mons[spider.search_link_idx]
           ) {
+            lex_start(thd);
             error_num = spider_ping_table_mon_from_table(
                 spider_global_trx,
+                thd,
                 share,
                 share->monitoring_sid[spider.search_link_idx],
                 share->table_name,
@@ -1302,8 +1309,8 @@ void *spider_bg_crd_action(
                 share->monitoring_limit[spider.search_link_idx],
                 TRUE
               );
+            lex_end(thd->lex);
           }
-          pthread_mutex_unlock(&spider_global_trx_mutex);
         }
         if (conns[spider.search_link_idx])
         {
@@ -1324,9 +1331,10 @@ void *spider_bg_crd_action(
               share->monitoring_kind[spider.search_link_idx] &&
               need_mons[spider.search_link_idx]
             ) {
-              pthread_mutex_lock(&spider_global_trx_mutex);
+              lex_start(thd);
               error_num = spider_ping_table_mon_from_table(
                   spider_global_trx,
+                  thd,
                   share,
                   share->monitoring_sid[spider.search_link_idx],
                   share->table_name,
@@ -1338,7 +1346,7 @@ void *spider_bg_crd_action(
                   share->monitoring_limit[spider.search_link_idx],
                   TRUE
                 );
-              pthread_mutex_unlock(&spider_global_trx_mutex);
+              lex_end(thd->lex);
             }
             spider.search_link_idx = -1;
           }
@@ -1348,6 +1356,238 @@ void *spider_bg_crd_action(
     memset(need_mons, 0, sizeof(int) * share->link_count);
     share->bg_crd_thd_wait = TRUE;
     pthread_cond_wait(&share->bg_crd_cond, &share->crd_mutex);
+  }
+}
+
+int spider_create_mon_threads(
+  SPIDER_TRX *trx,
+  SPIDER_SHARE *share
+) {
+  bool create_bg_mons = FALSE;
+  int error_num, roop_count, roop_count2;
+  SPIDER_LINK_PACK link_pack;
+  SPIDER_TABLE_MON_LIST *table_mon_list;
+  DBUG_ENTER("spider_create_mon_threads");
+  if (!share->bg_mon_init)
+  {
+    for (roop_count = 0; roop_count < share->link_count; roop_count++)
+    {
+      if (share->monitoring_bg_kind[roop_count])
+      {
+        create_bg_mons = TRUE;
+        break;
+      }
+    }
+    if (create_bg_mons)
+    {
+      char link_idx_str[SPIDER_SQL_INT_LEN];
+      int link_idx_str_length;
+      char buf[share->table_name_length + SPIDER_SQL_INT_LEN + 1];
+      String conv_name_str(buf, share->table_name_length +
+        SPIDER_SQL_INT_LEN + 1, system_charset_info);
+      conv_name_str.length(0);
+      conv_name_str.q_append(share->table_name, share->table_name_length);
+      for (roop_count = 0; roop_count < share->link_count; roop_count++)
+      {
+        if (share->monitoring_bg_kind[roop_count])
+        {
+          conv_name_str.length(share->table_name_length);
+          link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str,
+            "%010ld", roop_count));
+          conv_name_str.q_append(link_idx_str, link_idx_str_length);
+          if (!(table_mon_list = spider_get_ping_table_mon_list(trx, trx->thd,
+            &conv_name_str, share->table_name_length, roop_count,
+            share->monitoring_sid[roop_count], FALSE, &error_num)))
+            goto error_get_ping_table_mon_list;
+        }
+      }
+      if (!(share->bg_mon_thds = (THD **)
+        my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
+          &share->bg_mon_thds, sizeof(THD *) * share->link_count,
+          &share->bg_mon_threads, sizeof(pthread_t) * share->link_count,
+          &share->bg_mon_mutexes, sizeof(pthread_mutex_t) * share->link_count,
+          &share->bg_mon_conds, sizeof(pthread_cond_t) * share->link_count,
+          NullS))
+      ) {
+        error_num = HA_ERR_OUT_OF_MEM;
+        goto error_alloc_base;
+      }
+      for (roop_count = 0; roop_count < share->link_count; roop_count++)
+      {
+        if (
+          share->monitoring_bg_kind[roop_count] &&
+          pthread_mutex_init(&share->bg_mon_mutexes[roop_count],
+            MY_MUTEX_INIT_FAST)
+        ) {
+          error_num = HA_ERR_OUT_OF_MEM;
+          goto error_mutex_init;
+        }
+      }
+      for (roop_count = 0; roop_count < share->link_count; roop_count++)
+      {
+        if (
+          share->monitoring_bg_kind[roop_count] &&
+          pthread_cond_init(&share->bg_mon_conds[roop_count], NULL)
+        ) {
+          error_num = HA_ERR_OUT_OF_MEM;
+          goto error_cond_init;
+        }
+      }
+      link_pack.share = share;
+      for (roop_count = 0; roop_count < share->link_count; roop_count++)
+      {
+        if (share->monitoring_bg_kind[roop_count])
+        {
+          link_pack.link_idx = roop_count;
+          pthread_mutex_lock(&share->bg_mon_mutexes[roop_count]);
+          if (pthread_create(&share->bg_mon_threads[roop_count],
+            &spider_pt_attr, spider_bg_mon_action, (void *) &link_pack)
+          ) {
+            error_num = HA_ERR_OUT_OF_MEM;
+            goto error_thread_create;
+          }
+          pthread_cond_wait(&share->bg_mon_conds[roop_count],
+            &share->bg_mon_mutexes[roop_count]);
+          pthread_mutex_unlock(&share->bg_mon_mutexes[roop_count]);
+        }
+      }
+      share->bg_mon_init = TRUE;
+    }
+  }
+  DBUG_RETURN(0);
+
+error_thread_create:
+  roop_count2 = roop_count;
+  for (roop_count--; roop_count >= 0; roop_count--)
+  {
+    if (share->monitoring_bg_kind[roop_count])
+      pthread_mutex_lock(&share->bg_mon_mutexes[roop_count]);
+  }
+  share->bg_mon_kill = TRUE;
+  for (roop_count = roop_count2 - 1; roop_count >= 0; roop_count--)
+  {
+    if (share->monitoring_bg_kind[roop_count])
+    {
+      pthread_cond_wait(&share->bg_mon_conds[roop_count],
+        &share->bg_mon_mutexes[roop_count]);
+      pthread_mutex_unlock(&share->bg_mon_mutexes[roop_count]);
+    }
+  }
+  share->bg_mon_kill = FALSE;
+  roop_count = share->link_count;
+error_cond_init:
+  for (roop_count--; roop_count >= 0; roop_count--)
+  {
+    if (share->monitoring_bg_kind[roop_count])
+      VOID(pthread_cond_destroy(&share->bg_mon_conds[roop_count]));
+  }
+  roop_count = share->link_count;
+error_mutex_init:
+  for (roop_count--; roop_count >= 0; roop_count--)
+  {
+    if (share->monitoring_bg_kind[roop_count])
+      VOID(pthread_mutex_destroy(&share->bg_mon_mutexes[roop_count]));
+  }
+  my_free(share->bg_mon_thds, MYF(0));
+error_alloc_base:
+error_get_ping_table_mon_list:
+  DBUG_RETURN(error_num);
+}
+
+void spider_free_mon_threads(
+  SPIDER_SHARE *share
+) {
+  int roop_count;
+  DBUG_ENTER("spider_free_mon_threads");
+  if (share->bg_mon_init)
+  {
+    for (roop_count = 0; roop_count < share->link_count; roop_count++)
+    {
+      if (share->monitoring_bg_kind[roop_count])
+        pthread_mutex_lock(&share->bg_mon_mutexes[roop_count]);
+    }
+    share->bg_mon_kill = TRUE;
+    for (roop_count = 0; roop_count < share->link_count; roop_count++)
+    {
+      if (share->monitoring_bg_kind[roop_count])
+      {
+        pthread_cond_wait(&share->bg_mon_conds[roop_count],
+          &share->bg_mon_mutexes[roop_count]);
+        pthread_mutex_unlock(&share->bg_mon_mutexes[roop_count]);
+        VOID(pthread_cond_destroy(&share->bg_mon_conds[roop_count]));
+        VOID(pthread_mutex_destroy(&share->bg_mon_mutexes[roop_count]));
+      }
+    }
+    my_free(share->bg_mon_thds, MYF(0));
+    share->bg_mon_kill = FALSE;
+    share->bg_mon_init = FALSE;
+  }
+  DBUG_VOID_RETURN;
+}
+
+void *spider_bg_mon_action(
+  void *arg
+) {
+  SPIDER_LINK_PACK *link_pack = (SPIDER_LINK_PACK*) arg;
+  SPIDER_SHARE *share = link_pack->share;
+  int error_num, link_idx = link_pack->link_idx;
+  THD *thd;
+  my_thread_init();
+  DBUG_ENTER("spider_bg_mon_action");
+  /* init start */
+  pthread_mutex_lock(&share->bg_mon_mutexes[link_idx]);
+  if (!(thd = new THD()))
+  {
+    share->bg_mon_kill = FALSE;
+    share->bg_mon_init = FALSE;
+    pthread_cond_signal(&share->bg_mon_conds[link_idx]);
+    pthread_mutex_unlock(&share->bg_mon_mutexes[link_idx]);
+    my_thread_end();
+    DBUG_RETURN(NULL);
+  }
+  thd->thread_stack = (char*) &thd;
+  thd->store_globals();
+  share->bg_mon_thds[link_idx] = thd;
+  pthread_cond_signal(&share->bg_mon_conds[link_idx]);
+  pthread_mutex_unlock(&share->bg_mon_mutexes[link_idx]);
+  /* init end */
+
+  while (TRUE)
+  {
+    DBUG_PRINT("info",("spider bg mon sleep %lld",
+      share->monitoring_bg_interval[link_idx]));
+    my_sleep((ulong) share->monitoring_bg_interval[link_idx]);
+    DBUG_PRINT("info",("spider bg mon roop start"));
+    if (share->bg_mon_kill)
+    {
+      DBUG_PRINT("info",("spider bg mon kill start"));
+      pthread_mutex_lock(&share->bg_mon_mutexes[link_idx]);
+      pthread_cond_signal(&share->bg_mon_conds[link_idx]);
+      pthread_mutex_unlock(&share->bg_mon_mutexes[link_idx]);
+      delete thd;
+      my_pthread_setspecific_ptr(THR_THD, NULL);
+      my_thread_end();
+      DBUG_RETURN(NULL);
+    }
+    if (share->monitoring_bg_kind[link_idx])
+    {
+      lex_start(thd);
+      error_num = spider_ping_table_mon_from_table(
+        spider_global_trx,
+        thd,
+        share,
+        share->monitoring_sid[link_idx],
+        share->table_name,
+        share->table_name_length,
+        link_idx,
+        "",
+        0,
+        share->monitoring_bg_kind[link_idx],
+        share->monitoring_limit[link_idx],
+        TRUE
+      );
+      lex_end(thd->lex);
+    }
   }
 }
 #endif

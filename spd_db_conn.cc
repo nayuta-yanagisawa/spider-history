@@ -438,6 +438,7 @@ int spider_db_before_query(
       mysql_free_result(result_list->bgs_current->result);
       result_list->bgs_current->result = NULL;
       conn->quick_target = NULL;
+      spider->quick_targets[conn->link_idx] = NULL;
     }
   }
   DBUG_RETURN(0);
@@ -454,6 +455,10 @@ int spider_db_query(
   DBUG_PRINT("info", ("spider conn->db_conn %x", conn->db_conn));
   if ((error_num = spider_db_before_query(conn, need_mon)))
     DBUG_RETURN(error_num);
+#ifndef DBUG_OFF
+  if (query[length])
+    ((char *) query)[length] = '\0';
+#endif
   DBUG_RETURN(mysql_real_query(conn->db_conn, query, length));
 }
 
@@ -823,6 +828,9 @@ void spider_db_append_xid_str(
 */
   tmp_str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
   tmp_str->q_append(format_id, format_id_length);
+#ifndef DBUG_OFF
+  ((char *) tmp_str->ptr())[tmp_str->length()] = '\0';
+#endif
 
   DBUG_VOID_RETURN;
 }
@@ -3098,8 +3106,12 @@ int spider_db_free_result(
     if (conn && result_list->bgs_working)
       spider_bg_conn_break(conn, spider);
 #endif
-    if (conn && conn->quick_target == spider)
+    if (spider->quick_targets[roop_count])
+    {
+      DBUG_ASSERT(spider->quick_targets[roop_count] == conn->quick_target);
       conn->quick_target = NULL;
+      spider->quick_targets[roop_count] = NULL;
+    }
   }
 
   if (
@@ -3361,6 +3373,7 @@ int spider_db_store_result(
         conn->db_conn->methods->use_result(db_conn)))
         DBUG_RETURN(spider_db_errorno(conn));
       conn->quick_target = spider;
+      spider->quick_targets[link_idx] = spider;
       if (!conn->mta_conn_mutex_unlock_later)
         pthread_mutex_unlock(&conn->mta_conn_mutex);
     }
@@ -3372,6 +3385,7 @@ int spider_db_store_result(
       mysql_free_result(current->result);
       current->result = NULL;
       conn->quick_target = NULL;
+      spider->quick_targets[link_idx] = NULL;
       if (
 #ifndef WITHOUT_SPIDER_BG_SEARCH
         result_list->bgs_phase <= 1 &&
@@ -3455,11 +3469,13 @@ int spider_db_store_result(
       mysql_free_result(current->result);
       current->result = NULL;
       conn->quick_target = NULL;
+      spider->quick_targets[link_idx] = NULL;
     } else if (result_list->limit_num == roop_count)
     {
       mysql_free_result(current->result);
       current->result = NULL;
       conn->quick_target = NULL;
+      spider->quick_targets[link_idx] = NULL;
     }
     if (
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -3664,6 +3680,7 @@ int spider_db_seek_next(
               ) {
                 error_num = spider_ping_table_mon_from_table(
                     spider->trx,
+                    spider->trx->thd,
                     share,
                     share->monitoring_sid[roop_count],
                     share->table_name,
@@ -3693,6 +3710,7 @@ int spider_db_seek_next(
               ) {
                 error_num = spider_ping_table_mon_from_table(
                     spider->trx,
+                    spider->trx->thd,
                     share,
                     share->monitoring_sid[roop_count],
                     share->table_name,
@@ -3720,6 +3738,7 @@ int spider_db_seek_next(
                 ) {
                   error_num = spider_ping_table_mon_from_table(
                       spider->trx,
+                      spider->trx->thd,
                       share,
                       share->monitoring_sid[roop_count],
                       share->table_name,
@@ -3858,6 +3877,7 @@ int spider_db_seek_last(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -3887,6 +3907,7 @@ int spider_db_seek_last(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -3913,6 +3934,7 @@ int spider_db_seek_last(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 spider->trx,
+                spider->trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -4001,6 +4023,7 @@ int spider_db_seek_last(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -4030,6 +4053,7 @@ int spider_db_seek_last(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -4056,6 +4080,7 @@ int spider_db_seek_last(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 spider->trx,
+                spider->trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -5150,6 +5175,7 @@ int spider_db_bulk_insert(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count2],
               share->table_name,
@@ -5210,6 +5236,7 @@ int spider_db_bulk_insert(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count2],
               share->table_name,
@@ -5337,6 +5364,7 @@ int spider_db_update(
       ) {
         error_num = spider_ping_table_mon_from_table(
             spider->trx,
+            spider->trx->thd,
             share,
             share->monitoring_sid[roop_count],
             share->table_name,
@@ -5366,6 +5394,7 @@ int spider_db_update(
       ) {
         error_num = spider_ping_table_mon_from_table(
             spider->trx,
+            spider->trx->thd,
             share,
             share->monitoring_sid[roop_count],
             share->table_name,
@@ -5411,6 +5440,7 @@ int spider_db_update(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -5489,6 +5519,7 @@ int spider_db_delete(
       ) {
         error_num = spider_ping_table_mon_from_table(
             spider->trx,
+            spider->trx->thd,
             share,
             share->monitoring_sid[roop_count],
             share->table_name,
@@ -5518,6 +5549,7 @@ int spider_db_delete(
       ) {
         error_num = spider_ping_table_mon_from_table(
             spider->trx,
+            spider->trx->thd,
             share,
             share->monitoring_sid[roop_count],
             share->table_name,
@@ -5612,6 +5644,7 @@ int spider_db_delete_all_rows(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 spider->trx,
+                spider->trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -5637,6 +5670,7 @@ int spider_db_delete_all_rows(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 spider->trx,
+                spider->trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -5666,6 +5700,7 @@ int spider_db_delete_all_rows(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 spider->trx,
+                spider->trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,
@@ -5690,6 +5725,7 @@ int spider_db_delete_all_rows(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -5754,6 +5790,7 @@ int spider_db_disable_keys(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -5783,6 +5820,7 @@ int spider_db_disable_keys(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -5847,6 +5885,7 @@ int spider_db_enable_keys(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -5876,6 +5915,7 @@ int spider_db_enable_keys(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -5942,6 +5982,7 @@ int spider_db_check_table(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -5971,6 +6012,7 @@ int spider_db_check_table(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -6037,6 +6079,7 @@ int spider_db_repair_table(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -6066,6 +6109,7 @@ int spider_db_repair_table(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -6130,6 +6174,7 @@ int spider_db_analyze_table(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -6159,6 +6204,7 @@ int spider_db_analyze_table(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -6223,6 +6269,7 @@ int spider_db_optimize_table(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -6252,6 +6299,7 @@ int spider_db_optimize_table(
         ) {
           error_num = spider_ping_table_mon_from_table(
               spider->trx,
+              spider->trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -6309,6 +6357,7 @@ int spider_db_flush_tables(
       ) {
         error_num = spider_ping_table_mon_from_table(
             spider->trx,
+            spider->trx->thd,
             share,
             share->monitoring_sid[roop_count],
             share->table_name,
@@ -6356,6 +6405,7 @@ int spider_db_flush_logs(
       ) {
         error_num = spider_ping_table_mon_from_table(
             spider->trx,
+            spider->trx->thd,
             share,
             share->monitoring_sid[roop_count],
             share->table_name,
@@ -7390,13 +7440,24 @@ int spider_db_udf_ping_table(
     spider.share = share;
     spider.trx = trx;
     spider.need_mons = &need_mon;
+    pthread_mutex_lock(&conn->mta_conn_mutex);
+    conn->need_mon = &need_mon;
+    conn->mta_conn_mutex_lock_already = TRUE;
+    conn->mta_conn_mutex_unlock_later = TRUE;
     if ((error_num = spider_db_ping(&spider, conn, 0)))
     {
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
+      pthread_mutex_unlock(&conn->mta_conn_mutex);
       table_mon_list->last_mon_result = error_num;
       pthread_mutex_unlock(&table_mon_list->monitor_mutex);
-      my_error(error_num, MYF(0));
-      DBUG_RETURN(error_num);
+      my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0),
+        share->server_names[0]);
+      DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
     }
+    conn->mta_conn_mutex_lock_already = FALSE;
+    conn->mta_conn_mutex_unlock_later = FALSE;
+    pthread_mutex_unlock(&conn->mta_conn_mutex);
     if (!ping_only)
     {
       int init_sql_alloc_size =
@@ -7430,6 +7491,7 @@ int spider_db_udf_ping_table(
         DBUG_RETURN(error_num);
       }
       pthread_mutex_lock(&conn->mta_conn_mutex);
+      conn->need_mon = &need_mon;
       conn->mta_conn_mutex_lock_already = TRUE;
       conn->mta_conn_mutex_unlock_later = TRUE;
       if ((error_num = spider_db_set_names(&spider, conn, 0)))
@@ -7581,7 +7643,7 @@ int spider_db_udf_ping_table_append_select(
 }
 
 int spider_db_udf_ping_table_mon_next(
-  SPIDER_TRX *trx,
+  THD *thd,
   SPIDER_TABLE_MON *table_mon,
   SPIDER_CONN *conn,
   SPIDER_MON_TABLE_RESULT *mon_table_result,
@@ -7603,20 +7665,22 @@ int spider_db_udf_ping_table_mon_next(
   SPIDER_DB_ROW row;
   SPIDER_SHARE *share = table_mon->share;
   int init_sql_alloc_size =
-    THDVAR(trx->thd, init_sql_alloc_size) < 0 ?
+    THDVAR(thd, init_sql_alloc_size) < 0 ?
     share->init_sql_alloc_size :
-    THDVAR(trx->thd, init_sql_alloc_size);
+    THDVAR(thd, init_sql_alloc_size);
   char sql_buf[init_sql_alloc_size];
   String sql_str(sql_buf, sizeof(sql_buf),
-    trx->thd->variables.character_set_client);
+    thd->variables.character_set_client);
   ha_spider spider;
+  SPIDER_TRX trx;
   DBUG_ENTER("spider_db_udf_ping_table_mon_next");
   sql_str.length(0);
+  trx.thd = thd;
   spider.share = share;
-  spider.trx = trx;
+  spider.trx = &trx;
   spider.need_mons = &need_mon;
 
-  share->access_charset = trx->thd->variables.character_set_client;
+  share->access_charset = thd->variables.character_set_client;
   if ((error_num = spider_db_udf_ping_table_append_mon_next(&sql_str,
     child_table_name, child_table_name_length, link_id, where_clause,
     where_clause_length, first_sid, full_mon_count, current_mon_count,
@@ -7626,14 +7690,19 @@ int spider_db_udf_ping_table_mon_next(
     DBUG_RETURN(error_num);
   }
 
-  if ((error_num = spider_db_ping(&spider, conn, 0)))
-  {
-    my_error(error_num, MYF(0));
-    DBUG_RETURN(error_num);
-  }
   pthread_mutex_lock(&conn->mta_conn_mutex);
+  conn->need_mon = &need_mon;
   conn->mta_conn_mutex_lock_already = TRUE;
   conn->mta_conn_mutex_unlock_later = TRUE;
+  if ((error_num = spider_db_ping(&spider, conn, 0)))
+  {
+    conn->mta_conn_mutex_lock_already = FALSE;
+    conn->mta_conn_mutex_unlock_later = FALSE;
+    pthread_mutex_unlock(&conn->mta_conn_mutex);
+    my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0),
+      share->server_names[0]);
+    DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
+  }
   if ((error_num = spider_db_set_names(&spider, conn, 0)))
   {
     conn->mta_conn_mutex_lock_already = FALSE;

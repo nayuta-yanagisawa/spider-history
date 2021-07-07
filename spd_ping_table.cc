@@ -30,12 +30,18 @@
 #include "spd_direct_sql.h"
 #include "spd_udf.h"
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+extern pthread_mutex_t spider_global_trx_mutex;
+extern SPIDER_TRX *spider_global_trx;
+#endif
+
 HASH *spider_udf_table_mon_list_hash;
 pthread_mutex_t *spider_udf_table_mon_mutexes;
 pthread_cond_t *spider_udf_table_mon_conds;
 
 SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
   SPIDER_TRX *trx,
+  THD *thd,
   String *str,
   uint conv_name_length,
   int link_idx,
@@ -46,14 +52,17 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
   uint mutex_hash;
   SPIDER_TABLE_MON_LIST *table_mon_list;
   DBUG_ENTER("spider_get_ping_table_mon_list");
-  mutex_hash = spider_udf_calc_hash(str->c_ptr_safe(),
+  mutex_hash = spider_udf_calc_hash(str->c_ptr(),
     spider_udf_table_mon_mutex_count);
+  DBUG_PRINT("info",("spider hash key=%s", str->c_ptr()));
+  DBUG_PRINT("info",("spider hash key length=%ld", str->length()));
   pthread_mutex_lock(&spider_udf_table_mon_mutexes[mutex_hash]);
   if (!(table_mon_list = (SPIDER_TABLE_MON_LIST *) hash_search(
     &spider_udf_table_mon_list_hash[mutex_hash],
     (uchar*) str->c_ptr(), str->length())))
   {
-    if (!(table_mon_list = spider_get_ping_table_tgt(trx, str->c_ptr(),
+    DBUG_ASSERT(trx != spider_global_trx);
+    if (!(table_mon_list = spider_get_ping_table_tgt(thd, str->c_ptr(),
       conv_name_length, link_idx, server_id, str, need_lock, error_num)))
     {
       pthread_mutex_unlock(&spider_udf_table_mon_mutexes[mutex_hash]);
@@ -137,7 +146,7 @@ void spider_release_ping_table_mon_list(
 }
 
 int spider_get_ping_table_mon(
-  SPIDER_TRX *trx,
+  THD *thd,
   SPIDER_TABLE_MON_LIST *table_mon_list,
   char *name,
   uint name_length,
@@ -161,7 +170,7 @@ int spider_get_ping_table_mon(
 
   if (
     !(table_link_mon = spider_open_sys_table(
-      trx->thd, SPIDER_SYS_LINK_MON_TABLE_NAME_STR,
+      thd, SPIDER_SYS_LINK_MON_TABLE_NAME_STR,
       SPIDER_SYS_LINK_MON_TABLE_NAME_LEN, FALSE, &open_tables_backup,
       need_lock, &error_num))
   ) {
@@ -183,8 +192,8 @@ int spider_get_ping_table_mon(
         &tmp_share, sizeof(SPIDER_SHARE),
         &tmp_connect_info, sizeof(char *) * 15,
         &tmp_connect_info_length, sizeof(uint) * 15,
-        &tmp_long, sizeof(long) * 4,
-        &tmp_longlong, sizeof(longlong) * 2,
+        &tmp_long, sizeof(long) * 5,
+        &tmp_longlong, sizeof(longlong) * 3,
         NullS))
     ) {
       spider_sys_index_end(table_link_mon);
@@ -194,6 +203,7 @@ int spider_get_ping_table_mon(
     }
     spider_set_tmp_share_pointer(tmp_share, tmp_connect_info,
       tmp_connect_info_length, tmp_long, tmp_longlong);
+    tmp_share->link_statuses[0] = -1;
     table_mon->share = tmp_share;
     if (table_mon_prev)
       table_mon_prev->next = table_mon;
@@ -230,7 +240,7 @@ int spider_get_ping_table_mon(
     error_num = spider_sys_index_next_same(table_link_mon, table_key);
   } while (error_num == 0);
   spider_sys_index_end(table_link_mon);
-  spider_close_sys_table(trx->thd, table_link_mon,
+  spider_close_sys_table(thd, table_link_mon,
     &open_tables_backup, need_lock);
   table_link_mon = NULL;
   table_mon_list->list_size = list_size;
@@ -247,7 +257,7 @@ int spider_get_ping_table_mon(
 
 error:
   if (table_link_mon)
-    spider_close_sys_table(trx->thd, table_link_mon,
+    spider_close_sys_table(thd, table_link_mon,
       &open_tables_backup, need_lock);
   table_mon = table_mon_list->first;
   table_mon_list->first = NULL;
@@ -263,7 +273,7 @@ error:
 }
 
 SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
-  SPIDER_TRX *trx,
+  THD *thd,
   char *name,
   uint name_length,
   int link_idx,
@@ -293,8 +303,8 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
       &tmp_share, sizeof(SPIDER_SHARE),
       &tmp_connect_info, sizeof(char *) * 15,
       &tmp_connect_info_length, sizeof(uint) * 15,
-      &tmp_long, sizeof(long) * 4,
-      &tmp_longlong, sizeof(longlong) * 2,
+      &tmp_long, sizeof(long) * 5,
+      &tmp_longlong, sizeof(longlong) * 3,
       &key_str, str->length() + 1,
       NullS))
   ) {
@@ -307,11 +317,11 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
   table_mon_list->key = key_str;
   table_mon_list->key_length = str->length();
   memcpy(key_str, str->ptr(), table_mon_list->key_length);
-  tmp_share->access_charset = trx->thd->variables.character_set_client;
+  tmp_share->access_charset = thd->variables.character_set_client;
 
   if (
     !(table_tables = spider_open_sys_table(
-      trx->thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
+      thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
       SPIDER_SYS_TABLES_TABLE_NAME_LEN, FALSE, &open_tables_backup, need_lock,
       error_num))
   ) {
@@ -330,7 +340,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
     table_tables->file->print_error(*error_num, MYF(0));
     goto error;
   }
-  spider_close_sys_table(trx->thd, table_tables,
+  spider_close_sys_table(thd, table_tables,
     &open_tables_backup, need_lock);
   table_tables = NULL;
 
@@ -346,7 +356,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
     (*error_num = spider_create_conn_keys(tmp_share)) ||
     (*error_num = spider_db_create_table_names_str(tmp_share)) ||
     (*error_num = spider_get_ping_table_mon(
-      trx, table_mon_list, name, name_length, link_idx, server_id, &mem_root,
+      thd, table_mon_list, name, name_length, link_idx, server_id, &mem_root,
       need_lock))
   )
     goto error;
@@ -388,7 +398,7 @@ error_receptor_mutex_init:
 error_caller_mutex_init:
 error:
   if (table_tables)
-    spider_close_sys_table(trx->thd, table_tables,
+    spider_close_sys_table(thd, table_tables,
       &open_tables_backup, need_lock);
   free_root(&mem_root, MYF(0));
   if (table_mon_list)
@@ -406,14 +416,28 @@ SPIDER_CONN *spider_get_ping_table_tgt_conn(
 ) {
   SPIDER_CONN *conn;
   DBUG_ENTER("spider_get_ping_table_tgt_conn");
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if (trx == spider_global_trx)
+    pthread_mutex_lock(&spider_global_trx_mutex);
+#endif
   if (
     !(conn = spider_get_conn(
       share, 0, share->conn_keys[0], trx, NULL, FALSE, FALSE,
       error_num))
   ) {
-    my_error(*error_num, MYF(0));
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if (trx == spider_global_trx)
+      pthread_mutex_unlock(&spider_global_trx_mutex);
+#endif
+    my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0),
+      share->server_names[0]);
+    *error_num = ER_CONNECT_TO_FOREIGN_DATA_SOURCE;
     goto error;
   }
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if (trx == spider_global_trx)
+    pthread_mutex_unlock(&spider_global_trx_mutex);
+#endif
   DBUG_RETURN(conn);
 
 error:
@@ -499,8 +523,8 @@ long long spider_ping_table_body(
   }
   conv_name.q_append(link_idx_str, conv_name_length);
 
-  if (!(table_mon_list = spider_get_ping_table_mon_list(trx, &conv_name,
-    conv_name_length, link_idx, thd->server_id, TRUE, &error_num)))
+  if (!(table_mon_list = spider_get_ping_table_mon_list(trx, trx->thd,
+    &conv_name, conv_name_length, link_idx, thd->server_id, TRUE, &error_num)))
     goto error;
 
   if (table_mon_list->mon_status == SPIDER_LINK_MON_NG)
@@ -563,8 +587,9 @@ long long spider_ping_table_body(
         {
           table_mon_list->mon_status = SPIDER_LINK_MON_NG;
           table_mon_list->share->link_statuses[0] = SPIDER_LINK_STATUS_NG;
-          VOID(spider_sys_update_tables_link_status(trx, conv_name.c_ptr(),
-            conv_name_length, link_idx, SPIDER_LINK_STATUS_NG, TRUE));
+          VOID(spider_sys_update_tables_link_status(trx->thd,
+            conv_name.c_ptr(), conv_name_length, link_idx,
+            SPIDER_LINK_STATUS_NG, TRUE));
         }
         pthread_mutex_unlock(&table_mon_list->update_status_mutex);
       }
@@ -609,7 +634,7 @@ long long spider_ping_table_body(
         table_mon->share, &error_num))
       ) {
         if (!spider_db_udf_ping_table_mon_next(
-          trx, table_mon, mon_conn, mon_table_result, args->args[0],
+          thd, table_mon, mon_conn, mon_table_result, args->args[0],
           args->lengths[0], link_idx,
           where_clause, args->lengths[4], first_sid, full_mon_count,
           current_mon_count, success_count, fault_count, flags, limit))
@@ -623,8 +648,9 @@ long long spider_ping_table_body(
             {
               table_mon_list->mon_status = SPIDER_LINK_MON_NG;
               table_mon_list->share->link_statuses[0] = SPIDER_LINK_STATUS_NG;
-              VOID(spider_sys_update_tables_link_status(trx, conv_name.c_ptr(),
-                conv_name_length, link_idx, SPIDER_LINK_STATUS_NG, TRUE));
+              VOID(spider_sys_update_tables_link_status(trx->thd,
+                conv_name.c_ptr(), conv_name_length, link_idx,
+                SPIDER_LINK_STATUS_NG, TRUE));
             }
             pthread_mutex_unlock(&table_mon_list->update_status_mutex);
           }
@@ -762,6 +788,7 @@ void spider_ping_table_free_mon(
 
 int spider_ping_table_mon_from_table(
   SPIDER_TRX *trx,
+  THD *thd,
   SPIDER_SHARE *share,
   uint32 server_id,
   char *conv_name,
@@ -775,7 +802,9 @@ int spider_ping_table_mon_from_table(
 ) {
   int error_num = 0, current_mon_count, flags;
   uint32 first_sid;
+/*
   THD *thd = trx->thd;
+*/
   SPIDER_TABLE_MON_LIST *table_mon_list;
   SPIDER_TABLE_MON *table_mon;
   SPIDER_MON_TABLE_RESULT mon_table_result;
@@ -803,6 +832,7 @@ int spider_ping_table_mon_from_table(
   link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str, "%010ld",
     link_idx));
   char buf[conv_name_length + link_idx_str_length + 1];
+  buf[conv_name_length + link_idx_str_length] = '\0';
   String conv_name_str(buf, conv_name_length + link_idx_str_length + 1,
     system_charset_info);
   conv_name_str.length(0);
@@ -816,8 +846,9 @@ int spider_ping_table_mon_from_table(
   else
     flags = 0;
 
-  if (!(table_mon_list = spider_get_ping_table_mon_list(trx, &conv_name_str,
-    conv_name_length, link_idx, server_id, need_lock, &error_num)))
+  if (!(table_mon_list = spider_get_ping_table_mon_list(trx, thd,
+    &conv_name_str, conv_name_length, link_idx, server_id, need_lock,
+    &error_num)))
     goto end;
 
   if (table_mon_list->mon_status == SPIDER_LINK_MON_NG)
@@ -858,7 +889,7 @@ int spider_ping_table_mon_from_table(
         table_mon->share, &error_num))
       ) {
         if (!spider_db_udf_ping_table_mon_next(
-          trx, table_mon, mon_conn, &mon_table_result, conv_name,
+          thd, table_mon, mon_conn, &mon_table_result, conv_name,
           conv_name_length, link_idx,
           where_clause, where_clause_length, -1, table_mon_list->list_size,
           0, 0, 0, flags, monitoring_limit))
@@ -873,7 +904,7 @@ int spider_ping_table_mon_from_table(
               table_mon_list->mon_status = SPIDER_LINK_MON_NG;
               table_mon_list->share->link_statuses[0] = SPIDER_LINK_STATUS_NG;
               share->link_statuses[link_idx] = SPIDER_LINK_STATUS_NG;
-              VOID(spider_sys_update_tables_link_status(trx, conv_name,
+              VOID(spider_sys_update_tables_link_status(thd, conv_name,
                 conv_name_length, link_idx, SPIDER_LINK_STATUS_NG, need_lock));
             }
             pthread_mutex_unlock(&table_mon_list->update_status_mutex);

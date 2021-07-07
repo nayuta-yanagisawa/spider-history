@@ -135,6 +135,19 @@ void spider_free_crd_thread(
 void *spider_bg_crd_action(
   void *arg
 );
+
+int spider_create_mon_threads(
+  SPIDER_TRX *trx,
+  SPIDER_SHARE *share
+);
+
+void spider_free_mon_threads(
+  SPIDER_SHARE *share
+);
+
+void *spider_bg_mon_action(
+  void *arg
+);
 #endif
 
 int spider_conn_first_link_idx(

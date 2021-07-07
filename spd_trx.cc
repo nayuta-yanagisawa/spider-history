@@ -2760,6 +2760,7 @@ int spider_check_trx_and_get_conn(
         ) {
           error_num = spider_ping_table_mon_from_table(
               trx,
+              trx->thd,
               share,
               share->monitoring_sid[roop_count],
               share->table_name,
@@ -2801,6 +2802,7 @@ int spider_check_trx_and_get_conn(
           ) {
             error_num = spider_ping_table_mon_from_table(
                 trx,
+                trx->thd,
                 share,
                 share->monitoring_sid[roop_count],
                 share->table_name,

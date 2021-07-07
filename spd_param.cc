@@ -1265,7 +1265,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x020a,
+  0x020b,
   NULL,
   spider_system_variables,
   NULL
