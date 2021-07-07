@@ -37,12 +37,15 @@ TABLE *spider_open_sys_table(
   int table_name_length,
   bool write,
   Open_tables_state *open_tables_backup,
+  bool need_lock,
   int *error_num
 );
 
 void spider_close_sys_table(
   THD *thd,
-  Open_tables_state *open_tables_backup
+  TABLE *table,
+  Open_tables_state *open_tables_backup,
+  bool need_lock
 );
 
 int spider_sys_index_init(

@@ -188,6 +188,7 @@ typedef struct st_spider_share
   String             *show_index;
   longlong           *cardinality;
   bool               *cardinality_upd;
+  longlong           additional_table_flags;
 
   double             sts_interval;
   int                sts_mode;
@@ -222,6 +223,8 @@ typedef struct st_spider_share
   int                quick_mode;
   longlong           quick_page_size;
   int                low_mem_read;
+  int                table_count_mode;
+  int                select_column_mode;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   int                bgs_mode;
   longlong           bgs_first_read;

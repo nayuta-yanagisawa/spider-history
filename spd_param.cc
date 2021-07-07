@@ -550,6 +550,24 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+/*
+ -1 :use table parameter
+  0 :Use index columns if select statement can solve by using index,
+     otherwise use all columns.
+  1 :Use columns that are judged necessary.
+ */
+MYSQL_THDVAR_INT(
+  select_column_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "The mode of using columns at select clause", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 /*
  -1 :use table parameter
@@ -605,6 +623,153 @@ MYSQL_THDVAR_LONGLONG(
 );
 #endif
 
+/*
+ -1 :use table parameter
+  0 :always get the newest information
+  1-:interval
+ */
+MYSQL_THDVAR_INT(
+  crd_interval, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Interval of cardinality confirmation.(second)", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2147483647, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :use table parameter
+  1 :use show command
+  2 :use information schema
+  3 :use explain
+ */
+MYSQL_THDVAR_INT(
+  crd_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Mode of cardinality confirmation.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  3, /* max */
+  0 /* blk */
+);
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+/*
+ -1 :use table parameter
+  0 :No synchronization.
+  1 :Cardinality is synchronized when opening a table.
+     Then no synchronization.
+  2 :Synchronization.
+ */
+MYSQL_THDVAR_INT(
+  crd_sync, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Cardinality synchronization in partitioned table.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2, /* max */
+  0 /* blk */
+);
+#endif
+
+/*
+ -1 :use table parameter
+  0 :The crd_weight is used as a fixed value.
+  1 :The crd_weight is used as an addition value.
+  2 :The crd_weight is used as a multiplication value.
+ */
+MYSQL_THDVAR_INT(
+  crd_type, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Type of cardinality calculation.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0-:weight
+ */
+MYSQL_THDVAR_INT(
+  crd_weight, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Weight coefficient to calculate effectiveness of index from cardinality of column.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2147483647, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :always get the newest information
+  1-:interval
+ */
+MYSQL_THDVAR_INT(
+  sts_interval, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Interval of table state confirmation.(second)", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2147483647, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :use table parameter
+  1 :use show command
+  2 :use information schema
+ */
+MYSQL_THDVAR_INT(
+  sts_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Mode of table state confirmation.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2, /* max */
+  0 /* blk */
+);
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+/*
+ -1 :use table parameter
+  0 :No synchronization.
+  1 :Table state is synchronized when opening a table.
+     Then no synchronization.
+  2 :Synchronization.
+ */
+MYSQL_THDVAR_INT(
+  sts_sync, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Table state synchronization in partitioned table.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2, /* max */
+  0 /* blk */
+);
+#endif
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -643,10 +808,23 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(quick_mode),
   MYSQL_SYSVAR(quick_page_size),
   MYSQL_SYSVAR(low_mem_read),
+  MYSQL_SYSVAR(select_column_mode),
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   MYSQL_SYSVAR(bgs_mode),
   MYSQL_SYSVAR(bgs_first_read),
   MYSQL_SYSVAR(bgs_second_read),
+#endif
+  MYSQL_SYSVAR(crd_interval),
+  MYSQL_SYSVAR(crd_mode),
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  MYSQL_SYSVAR(crd_sync),
+#endif
+  MYSQL_SYSVAR(crd_type),
+  MYSQL_SYSVAR(crd_weight),
+  MYSQL_SYSVAR(sts_interval),
+  MYSQL_SYSVAR(sts_mode),
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  MYSQL_SYSVAR(sts_sync),
 #endif
   NULL
 };
@@ -661,7 +839,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x000b,
+  0x000c,
   NULL,
   spider_system_variables,
   NULL

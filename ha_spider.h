@@ -50,6 +50,7 @@ public:
   int                bulk_size;
   int                store_error_num;
   uint               dup_key_idx;
+  int                select_column_mode;
 
   ha_spider();
   ha_spider(
@@ -250,4 +251,5 @@ public:
   );
   void cond_pop();
   st_table *get_table();
+  void set_select_column_mode();
 };

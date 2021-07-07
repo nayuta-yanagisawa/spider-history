@@ -131,7 +131,7 @@ handler* spider_create_handler(
 );
 
 int spider_close_connection(
-  handlerton*	hton,
+  handlerton* hton,
   THD* thd
 );
 
@@ -179,7 +179,7 @@ int spider_get_sts(
   SPIDER_SHARE *share,
   time_t tmp_time,
   ha_spider *spider,
-  int sts_sync
+  int sts_sync_level
 );
 
 int spider_get_crd(
@@ -187,7 +187,7 @@ int spider_get_crd(
   time_t tmp_time,
   ha_spider *spider,
   TABLE *table,
-  int crd_sync
+  int crd_sync_level
 );
 
 void spider_set_result_list_param(

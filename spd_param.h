@@ -48,8 +48,21 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(net_timeout, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(quick_mode, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(quick_page_size, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(low_mem_read, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(select_column_mode, int);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_mode, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_first_read, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_second_read, long long);
+#endif
+extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_interval, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_mode, int);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_sync, int);
+#endif
+extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_type, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_weight, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_interval, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_mode, int);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_sync, int);
 #endif

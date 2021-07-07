@@ -511,6 +511,8 @@ int spider_parse_connect_info(
   share->quick_mode = -1;
   share->quick_page_size = -1;
   share->low_mem_read = -1;
+  share->table_count_mode = -1;
+  share->select_column_mode = -1;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   share->bgs_mode = -1;
   share->bgs_first_read = -1;
@@ -649,6 +651,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_LONGLONG("qps", quick_page_size, 0);
           SPIDER_PARAM_DOUBLE("rrt", read_rate, 0);
           SPIDER_PARAM_INT_WITH_MAX("rsa", reset_sql_alloc, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX("scm", select_column_mode, 0, 1);
           SPIDER_PARAM_INT("srt", scan_rate, 0);
           SPIDER_PARAM_INT_WITH_MAX("slm", selupd_lock_mode, 0, 2);
           SPIDER_PARAM_INT_WITH_MAX("stl", semi_table_lock, 0, 1);
@@ -660,6 +663,11 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT_WITH_MAX("ssy", sts_sync, 0, 2);
 #endif
           SPIDER_PARAM_STR("tbl", tgt_table_name);
+          SPIDER_PARAM_INT_WITH_MAX("tcm", table_count_mode, 0, 1);
+          error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
+          my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
+            MYF(0), tmp_ptr);
+          goto error;
         case 4:
           SPIDER_PARAM_STR("host", tgt_host);
           SPIDER_PARAM_STR("user", tgt_username);
@@ -768,6 +776,8 @@ int spider_parse_connect_info(
             "selupd_lock_mode", selupd_lock_mode, 0, 2);
           SPIDER_PARAM_INT_WITH_MAX(
             "internal_delayed", internal_delayed, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX(
+            "table_count_mode", table_count_mode, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -775,6 +785,13 @@ int spider_parse_connect_info(
         case 17:
           SPIDER_PARAM_INT_WITH_MAX(
             "internal_optimize", internal_optimize, 0, 1);
+          error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
+          my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
+            MYF(0), tmp_ptr);
+          goto error;
+        case 18:
+          SPIDER_PARAM_INT_WITH_MAX(
+            "select_column_mode", select_column_mode, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1098,6 +1115,10 @@ int spider_set_connect_info_default(
     share->quick_page_size = 100;
   if (share->low_mem_read == -1)
     share->low_mem_read = 1;
+  if (share->table_count_mode == -1)
+    share->table_count_mode = 0;
+  if (share->select_column_mode == -1)
+    share->select_column_mode = 1;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   if (share->bgs_mode == -1)
     share->bgs_mode = 0;
@@ -1244,6 +1265,9 @@ SPIDER_SHARE *spider_get_share(
         &table->s->key_info[roop_count], share)))
         goto error_init_string;
     }
+
+    if (share->table_count_mode)
+      share->additional_table_flags |= HA_STATS_RECORDS_IS_EXACT;
 
     if (pthread_mutex_init(&share->mutex, MY_MUTEX_INIT_FAST))
     {
@@ -1535,7 +1559,7 @@ int spider_open_all_tables(
   if (
     !(table_tables = spider_open_sys_table(
       trx->thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
-      SPIDER_SYS_TABLES_TABLE_NAME_LEN, TRUE, &open_tables_backup,
+      SPIDER_SYS_TABLES_TABLE_NAME_LEN, TRUE, &open_tables_backup, TRUE,
       &error_num))
   )
     DBUG_RETURN(error_num);
@@ -1545,10 +1569,12 @@ int spider_open_all_tables(
     if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
     {
       table_tables->file->print_error(error_num, MYF(0));
-      spider_close_sys_table(trx->thd, &open_tables_backup);
+      spider_close_sys_table(trx->thd, table_tables,
+        &open_tables_backup, TRUE);
       DBUG_RETURN(error_num);
     } else {
-      spider_close_sys_table(trx->thd, &open_tables_backup);
+      spider_close_sys_table(trx->thd, table_tables,
+        &open_tables_backup, TRUE);
       DBUG_RETURN(0);
     }
   }
@@ -1573,7 +1599,8 @@ int spider_open_all_tables(
       (error_num = spider_create_conn_key(&tmp_share))
     ) {
       spider_sys_index_end(table_tables);
-      spider_close_sys_table(trx->thd, &open_tables_backup);
+      spider_close_sys_table(trx->thd, table_tables,
+        &open_tables_backup, TRUE);
       spider_free_tmp_share_alloc(&tmp_share);
       free_root(&mem_root, MYF(0));
       DBUG_RETURN(error_num);
@@ -1585,7 +1612,8 @@ int spider_open_all_tables(
         &tmp_share, trx, NULL, FALSE, FALSE, &error_num))
     ) {
       spider_sys_index_end(table_tables);
-      spider_close_sys_table(trx->thd, &open_tables_backup);
+      spider_close_sys_table(trx->thd, table_tables,
+        &open_tables_backup, TRUE);
       spider_free_tmp_share_alloc(&tmp_share);
       free_root(&mem_root, MYF(0));
       DBUG_RETURN(error_num);
@@ -1596,7 +1624,8 @@ int spider_open_all_tables(
       if (!(spider = new ha_spider()))
       {
         spider_sys_index_end(table_tables);
-        spider_close_sys_table(trx->thd, &open_tables_backup);
+        spider_close_sys_table(trx->thd, table_tables,
+          &open_tables_backup, TRUE);
         spider_free_tmp_share_alloc(&tmp_share);
         free_root(&mem_root, MYF(0));
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -1610,7 +1639,8 @@ int spider_open_all_tables(
       ) {
         delete spider;
         spider_sys_index_end(table_tables);
-        spider_close_sys_table(trx->thd, &open_tables_backup);
+        spider_close_sys_table(trx->thd, table_tables,
+          &open_tables_backup, TRUE);
         spider_free_tmp_share_alloc(&tmp_share);
         free_root(&mem_root, MYF(0));
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -1626,7 +1656,8 @@ int spider_open_all_tables(
         my_free(share, MYF(0));
         delete spider;
         spider_sys_index_end(table_tables);
-        spider_close_sys_table(trx->thd, &open_tables_backup);
+        spider_close_sys_table(trx->thd, table_tables,
+          &open_tables_backup, TRUE);
         spider_free_tmp_share_alloc(&tmp_share);
         free_root(&mem_root, MYF(0));
         DBUG_RETURN(error_num);
@@ -1646,7 +1677,8 @@ int spider_open_all_tables(
         my_free(share, MYF(0));
         delete spider;
         spider_sys_index_end(table_tables);
-        spider_close_sys_table(trx->thd, &open_tables_backup);
+        spider_close_sys_table(trx->thd, table_tables,
+          &open_tables_backup, TRUE);
         spider_free_tmp_share_alloc(&tmp_share);
         free_root(&mem_root, MYF(0));
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -1658,7 +1690,8 @@ int spider_open_all_tables(
   free_root(&mem_root, MYF(0));
 
   spider_sys_index_end(table_tables);
-  spider_close_sys_table(trx->thd, &open_tables_backup);
+  spider_close_sys_table(trx->thd, table_tables,
+    &open_tables_backup, TRUE);
   DBUG_RETURN(0);
 }
 
@@ -1973,15 +2006,20 @@ int spider_get_sts(
   SPIDER_SHARE *share,
   time_t tmp_time,
   ha_spider *spider,
-  int sts_sync
+  int sts_sync_level
 ) {
   int get_type;
   int error_num = 0;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  THD *thd = spider->trx->thd;
+  int sts_sync = THDVAR(thd, sts_sync) == -1 ?
+    share->sts_sync : THDVAR(thd, sts_sync);
+#endif
   DBUG_ENTER("spider_get_sts");
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   if (
-    share->sts_sync == 0
+    sts_sync == 0
   ) {
 #endif
     /* get */
@@ -2027,7 +2065,7 @@ int spider_get_sts(
   if (error_num)
     DBUG_RETURN(error_num);
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  if (share->sts_sync >= sts_sync && get_type > 0)
+  if (sts_sync >= sts_sync_level && get_type > 0)
   {
     spider_copy_sts_to_pt_share(share->partition_share, share);
     share->partition_share->sts_get_time = tmp_time;
@@ -2043,15 +2081,20 @@ int spider_get_crd(
   time_t tmp_time,
   ha_spider *spider,
   TABLE *table,
-  int crd_sync
+  int crd_sync_level
 ) {
   int get_type;
   int error_num = 0;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  THD *thd = spider->trx->thd;
+  int crd_sync = THDVAR(thd, crd_sync) == -1 ?
+    share->crd_sync : THDVAR(thd, crd_sync);
+#endif
   DBUG_ENTER("spider_get_crd");
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   if (
-    share->crd_sync == 0
+    crd_sync == 0
   ) {
 #endif
     /* get */
@@ -2098,7 +2141,7 @@ int spider_get_crd(
   if (error_num)
     DBUG_RETURN(error_num);
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-  if (share->crd_sync >= crd_sync && get_type > 0)
+  if (crd_sync >= crd_sync_level && get_type > 0)
   {
     spider_copy_crd_to_pt_share(share->partition_share, share,
       table->s->fields);

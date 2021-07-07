@@ -185,6 +185,16 @@ int spider_db_append_key_select(
   SPIDER_SHARE *share
 );
 
+int spider_db_append_minimum_select(
+  String *str,
+  const TABLE *table,
+  SPIDER_SHARE *share
+);
+
+int spider_db_append_select_columns(
+  ha_spider *spider
+);
+
 int spider_db_append_null(
   String *str,
   KEY_PART_INFO *key_part,
@@ -271,11 +281,10 @@ int spider_db_append_flush_tables(
 );
 
 void spider_db_fetch_row(
-  uchar *buf,
-  const TABLE *table,
   Field *field,
   SPIDER_DB_ROW row,
-  ulong *lengths
+  ulong *lengths,
+  my_ptrdiff_t ptr_diff
 );
 
 int spider_db_fetch_table(
@@ -288,6 +297,12 @@ int spider_db_fetch_key(
   uchar *buf,
   TABLE *table,
   const KEY *key_info,
+  SPIDER_RESULT_LIST *result_list
+);
+
+int spider_db_fetch_minimum_columns(
+  uchar *buf,
+  TABLE *table,
   SPIDER_RESULT_LIST *result_list
 );
 
@@ -364,6 +379,13 @@ int spider_db_seek_tmp_key(
   ha_spider *spider,
   TABLE *table,
   const KEY *key_info
+);
+
+int spider_db_seek_tmp_minimum_columns(
+  uchar *buf,
+  SPIDER_POSITION *pos,
+  ha_spider *spider,
+  TABLE *table
 );
 
 int spider_db_show_table_status(

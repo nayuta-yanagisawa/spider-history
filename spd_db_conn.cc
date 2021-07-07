@@ -1196,6 +1196,52 @@ int spider_db_append_key_select(
   DBUG_RETURN(spider_db_append_from(str, share));
 }
 
+int spider_db_append_minimum_select(
+  String *str,
+  const TABLE *table,
+  SPIDER_SHARE *share
+) {
+  Field **field;
+  int field_length;
+  DBUG_ENTER("spider_db_append_minimum_select");
+  for (field = table->field; *field; field++)
+  {
+    if (bitmap_is_set(table->read_set, (*field)->field_index))
+    {
+      field_length = strlen((*field)->field_name);
+      if (str->reserve(field_length +
+        (SPIDER_SQL_NAME_QUOTE_LEN) * 2 + SPIDER_SQL_COMMA_LEN))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      spider_db_append_column_name(str, *field, field_length);
+      str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+    }
+  }
+  str->length(str->length() - SPIDER_SQL_COMMA_LEN);
+  DBUG_RETURN(spider_db_append_from(str, share));
+}
+
+int spider_db_append_select_columns(
+  ha_spider *spider
+) {
+  SPIDER_SHARE *share = spider->share;
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  DBUG_ENTER("spider_db_append_select_columns");
+  if (!spider->select_column_mode)
+  {
+    if (result_list->keyread)
+    {
+      if (result_list->sql.append(share->key_select[spider->active_index]))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    } else {
+      if (result_list->sql.append(*(share->table_select)))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+    DBUG_RETURN(0);
+  }
+  DBUG_RETURN(spider_db_append_minimum_select(
+    &result_list->sql, spider->get_table(), share));
+}
+
 int spider_db_append_null(
   String *str,
   KEY_PART_INFO *key_part,
@@ -1294,6 +1340,7 @@ int spider_db_append_key_where(
   ha_spider *spider
 ) {
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  TABLE *table = spider->get_table();
   String *str = &result_list->sql;
   KEY *key_info = result_list->key_info;
   int error_num;
@@ -1324,6 +1371,9 @@ int spider_db_append_key_where(
   DBUG_PRINT("info", ("spider start_key_part_map=%lu", start_key_part_map));
   DBUG_PRINT("info", ("spider end_key_part_map=%lu", end_key_part_map));
 
+#ifndef DBUG_OFF
+  my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->read_set);
+#endif
 /*
   if (spider->condition)
   {
@@ -1504,6 +1554,9 @@ end:
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
   result_list->order_pos = str->length();
+#ifndef DBUG_OFF
+  dbug_tmp_restore_column_map(table->read_set, tmp_map);
+#endif
   DBUG_RETURN(0);
 }
 
@@ -2053,25 +2106,20 @@ int spider_db_append_flush_tables(
 }
 
 void spider_db_fetch_row(
-  uchar *buf,
-  const TABLE *table,
   Field *field,
   SPIDER_DB_ROW row,
-  ulong *length
+  ulong *length,
+  my_ptrdiff_t ptr_diff
 ) {
   DBUG_ENTER("spider_db_fetch_row");
-  if (bitmap_is_set(table->read_set, field->field_index))
-  {
-    my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
-    field->move_field_offset(ptr_diff);
-    if (!*row)
-      field->set_null();
-    else {
-      field->set_notnull();
-      field->store(*row, *length, system_charset_info);
-    }
-    field->move_field_offset(-ptr_diff);
+  field->move_field_offset(ptr_diff);
+  if (!*row)
+    field->set_null();
+  else {
+    field->set_notnull();
+    field->store(*row, *length, system_charset_info);
   }
+  field->move_field_offset(-ptr_diff);
   DBUG_VOID_RETURN;
 }
 
@@ -2080,6 +2128,7 @@ int spider_db_fetch_table(
   TABLE *table,
   SPIDER_RESULT_LIST *result_list
 ) {
+  my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
   SPIDER_DB_ROW row;
   ulong *lengths;
@@ -2107,7 +2156,11 @@ int spider_db_fetch_table(
     field++,
     lengths++
   ) {
-    spider_db_fetch_row(buf, table, *field, row, lengths);
+    if (bitmap_is_set(table->read_set, (*field)->field_index))
+    {
+      DBUG_PRINT("info", ("spider bitmap is set %s", (*field)->field_name));
+      spider_db_fetch_row(*field, row, lengths, ptr_diff);
+    }
     row++;
   }
 #ifndef DBUG_OFF
@@ -2123,11 +2176,13 @@ int spider_db_fetch_key(
   const KEY *key_info,
   SPIDER_RESULT_LIST *result_list
 ) {
+  my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
   KEY_PART_INFO *key_part;
   uint part_num;
   SPIDER_DB_ROW row;
   ulong *lengths;
+  Field *field;
   DBUG_ENTER("spider_db_fetch_key");
   if (result_list->quick_mode == 0)
   {
@@ -2153,8 +2208,60 @@ int spider_db_fetch_key(
     part_num++,
     lengths++
   ) {
-    spider_db_fetch_row(buf, table, key_part->field, row, lengths);
+    field = key_part->field;
+    if (bitmap_is_set(table->read_set, field->field_index))
+    {
+      DBUG_PRINT("info", ("spider bitmap is set %s", field->field_name));
+      spider_db_fetch_row(field, row, lengths, ptr_diff);
+    }
     row++;
+  }
+#ifndef DBUG_OFF
+  dbug_tmp_restore_column_map(table->write_set, tmp_map);
+#endif
+  table->status = 0;
+  DBUG_RETURN(0);
+}
+
+int spider_db_fetch_minimum_columns(
+  uchar *buf,
+  TABLE *table,
+  SPIDER_RESULT_LIST *result_list
+) {
+  my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
+  SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
+  SPIDER_DB_ROW row;
+  ulong *lengths;
+  Field **field;
+  DBUG_ENTER("spider_db_fetch_minimum_columns");
+  if (result_list->quick_mode == 0)
+  {
+    SPIDER_DB_RESULT *result = current->result;
+    if (!(row = mysql_fetch_row(result)))
+    {
+      table->status = STATUS_NOT_FOUND;
+      DBUG_RETURN(HA_ERR_END_OF_FILE);
+    }
+    lengths = mysql_fetch_lengths(result);
+  } else {
+    row = current->first_position[result_list->current_row_num].row;
+    lengths = current->first_position[result_list->current_row_num].lengths;
+  }
+#ifndef DBUG_OFF
+  my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->write_set);
+#endif
+  for (
+    field = table->field;
+    *field;
+    field++
+  ) {
+    if (bitmap_is_set(table->read_set, (*field)->field_index))
+    {
+      DBUG_PRINT("info", ("spider bitmap is set %s", (*field)->field_name));
+      spider_db_fetch_row(*field, row, lengths, ptr_diff);
+      row++;
+      lengths++;
+    }
   }
 #ifndef DBUG_OFF
   dbug_tmp_restore_column_map(table->write_set, tmp_map);
@@ -2555,11 +2662,16 @@ int spider_db_fetch(
   int error_num;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   DBUG_ENTER("spider_db_fetch");
-  if (result_list->keyread)
-    error_num = spider_db_fetch_key(buf, table,
-      result_list->key_info, result_list);
-  else
-    error_num = spider_db_fetch_table(buf, table,
+  if (!spider->select_column_mode)
+  {
+    if (result_list->keyread)
+      error_num = spider_db_fetch_key(buf, table,
+        result_list->key_info, result_list);
+    else
+      error_num = spider_db_fetch_table(buf, table,
+        result_list);
+  } else
+    error_num = spider_db_fetch_minimum_columns(buf, table,
       result_list);
   result_list->current_row_num++;
   DBUG_PRINT("info",("spider error_num=%d", error_num));
@@ -2810,11 +2922,14 @@ int spider_db_seek_tmp(
   int error_num;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   DBUG_ENTER("spider_db_seek_tmp");
-  if (result_list->keyread)
-    error_num = spider_db_seek_tmp_key(buf, pos, spider, table,
-      result_list->key_info);
-  else
-    error_num = spider_db_seek_tmp_table(buf, pos, spider, table);
+  if (!spider->select_column_mode)
+  {
+    if (result_list->keyread)
+      error_num = spider_db_seek_tmp_key(buf, pos, spider, table,
+        result_list->key_info);
+    else
+      error_num = spider_db_seek_tmp_table(buf, pos, spider, table);
+  }
   DBUG_PRINT("info",("spider error_num=%d", error_num));
   DBUG_RETURN(error_num);
 }
@@ -2828,6 +2943,7 @@ int spider_db_seek_tmp_table(
   ulong *lengths;
   Field **field;
   SPIDER_DB_ROW row = pos->row;
+  my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   DBUG_ENTER("spider_db_seek_tmp_table");
 #ifndef DBUG_OFF
   my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->write_set);
@@ -2839,7 +2955,11 @@ int spider_db_seek_tmp_table(
     field++,
     lengths++
   ) {
-    spider_db_fetch_row(buf, table, *field, row, lengths);
+    if (bitmap_is_set(table->read_set, (*field)->field_index))
+    {
+      DBUG_PRINT("info", ("spider bitmap is set %s", (*field)->field_name));
+      spider_db_fetch_row(*field, row, lengths, ptr_diff);
+    }
     row++;
   }
 #ifndef DBUG_OFF
@@ -2859,6 +2979,8 @@ int spider_db_seek_tmp_key(
   uint part_num;
   SPIDER_DB_ROW row = pos->row;
   ulong *lengths;
+  Field *field;
+  my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   DBUG_ENTER("spider_db_seek_tmp_key");
 #ifndef DBUG_OFF
   my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->write_set);
@@ -2872,8 +2994,47 @@ int spider_db_seek_tmp_key(
     part_num++,
     lengths++
   ) {
-    spider_db_fetch_row(buf, table, key_part->field, row, lengths);
+    field = key_part->field;
+    if (bitmap_is_set(table->read_set, field->field_index))
+    {
+      DBUG_PRINT("info", ("spider bitmap is set %s", field->field_name));
+      spider_db_fetch_row(field, row, lengths, ptr_diff);
+    }
     row++;
+  }
+#ifndef DBUG_OFF
+  dbug_tmp_restore_column_map(table->write_set, tmp_map);
+#endif
+  DBUG_RETURN(0);
+}
+
+int spider_db_seek_tmp_minimum_columns(
+  uchar *buf,
+  SPIDER_POSITION *pos,
+  ha_spider *spider,
+  TABLE *table
+) {
+  ulong *lengths;
+  Field **field;
+  SPIDER_DB_ROW row = pos->row;
+  my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
+  DBUG_ENTER("spider_db_seek_tmp_minimum_columns");
+#ifndef DBUG_OFF
+  my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->write_set);
+#endif
+  for (
+    field = table->field,
+    lengths = pos->lengths;
+    *field;
+    field++
+  ) {
+    if (bitmap_is_set(table->read_set, (*field)->field_index))
+    {
+      DBUG_PRINT("info", ("spider bitmap is set %s", (*field)->field_name));
+      spider_db_fetch_row(*field, row, lengths, ptr_diff);
+      row++;
+      lengths++;
+    }
   }
 #ifndef DBUG_OFF
   dbug_tmp_restore_column_map(table->write_set, tmp_map);
@@ -2885,12 +3046,15 @@ int spider_db_show_table_status(
   ha_spider *spider
 ) {
   int error_num;
+  THD *thd = spider->trx->thd;
+  int sts_mode = THDVAR(thd, sts_mode) <= 0 ?
+    spider->share->sts_mode : THDVAR(thd, sts_mode);
   SPIDER_CONN *conn = spider->conn;
   SPIDER_DB_RESULT *res;
   SPIDER_DB_ROW row;
   SPIDER_SHARE *share = spider->share;
   DBUG_ENTER("spider_db_show_table_status");
-  if (spider->share->sts_mode == 1)
+  if (sts_mode == 1)
   {
     if (spider_db_query(
       conn,
