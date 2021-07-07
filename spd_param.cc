@@ -104,6 +104,7 @@ uint spider_udf_table_lock_mutex_count;
 uint spider_udf_table_mon_mutex_count;
 char *spider_remote_access_charset;
 int spider_remote_autocommit;
+char *spider_remote_time_zone;
 int spider_remote_sql_log_off;
 int spider_remote_trx_isolation;
 my_bool spider_connect_mutex;
@@ -598,13 +599,26 @@ MYSQL_THDVAR_BOOL(
 );
 
 /*
+  FALSE: no sync
+  TRUE:  sync
+ */
+MYSQL_THDVAR_BOOL(
+  sync_time_zone, /* name */
+  PLUGIN_VAR_OPCMDARG, /* opt */
+  "Sync time_zone", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  FALSE /* def */
+);
+
+/*
   FALSE: sql_log_off = 0
   TRUE:  sql_log_off = 1
  */
 MYSQL_THDVAR_BOOL(
   internal_sql_log_off, /* name */
   PLUGIN_VAR_OPCMDARG, /* opt */
-  "Sync autocommit", /* comment */
+  "Sync sql_log_off", /* comment */
   NULL, /* check */
   NULL, /* update */
   TRUE /* def */
@@ -919,6 +933,40 @@ MYSQL_THDVAR_LONGLONG(
   0 /* blk */
 );
 #endif
+
+/*
+ -1 :use table parameter
+  0 :records is gotten usually
+  1-:number of records
+ */
+MYSQL_THDVAR_LONGLONG(
+  first_read, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Number of first read records", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :records is gotten usually
+  1-:number of records
+ */
+MYSQL_THDVAR_LONGLONG(
+  second_read, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Number of second read records", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
 
 /*
  -1 :use table parameter
@@ -1309,6 +1357,31 @@ static MYSQL_SYSVAR_INT(
 );
 
 /*
+ */
+#ifdef PLUGIN_VAR_CAN_MEMALLOC
+static MYSQL_SYSVAR_STR(
+  remote_time_zone,
+  spider_remote_time_zone,
+  PLUGIN_VAR_MEMALLOC |
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote time_zone at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+#else
+static MYSQL_SYSVAR_STR(
+  remote_time_zone,
+  spider_remote_time_zone,
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote time_zone at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+#endif
+
+/*
  -1 :don't set
   0 :sql_log_off = 0
   1 :sql_log_off = 1
@@ -1603,6 +1676,23 @@ MYSQL_THDVAR_LONGLONG(
   0 /* blk */
 );
 
+/*
+ -1 :use table parameter
+  0 :writable
+  1 :read only
+ */
+MYSQL_THDVAR_INT(
+  read_only_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Read only", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -1632,6 +1722,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(block_size),
   MYSQL_SYSVAR(selupd_lock_mode),
   MYSQL_SYSVAR(sync_autocommit),
+  MYSQL_SYSVAR(sync_time_zone),
   MYSQL_SYSVAR(internal_sql_log_off),
   MYSQL_SYSVAR(bulk_size),
   MYSQL_SYSVAR(bulk_update_mode),
@@ -1654,6 +1745,8 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(bgs_first_read),
   MYSQL_SYSVAR(bgs_second_read),
 #endif
+  MYSQL_SYSVAR(first_read),
+  MYSQL_SYSVAR(second_read),
   MYSQL_SYSVAR(crd_interval),
   MYSQL_SYSVAR(crd_mode),
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -1684,6 +1777,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(udf_ds_table_loop_mode),
   MYSQL_SYSVAR(remote_access_charset),
   MYSQL_SYSVAR(remote_autocommit),
+  MYSQL_SYSVAR(remote_time_zone),
   MYSQL_SYSVAR(remote_sql_log_off),
   MYSQL_SYSVAR(remote_trx_isolation),
   MYSQL_SYSVAR(connect_retry_interval),
@@ -1704,6 +1798,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(use_handler),
   MYSQL_SYSVAR(skip_default_condition),
   MYSQL_SYSVAR(direct_order_limit),
+  MYSQL_SYSVAR(read_only_mode),
   NULL
 };
 
@@ -1717,7 +1812,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0219,
+  0x021a,
   spider_status_variables,
   spider_system_variables,
   NULL

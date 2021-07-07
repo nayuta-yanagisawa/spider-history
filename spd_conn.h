@@ -24,7 +24,8 @@ uchar *spider_conn_get_key(
 );
 
 int spider_reset_conn_setted_parameter(
-  SPIDER_CONN *conn
+  SPIDER_CONN *conn,
+  THD *thd
 );
 
 int spider_free_conn_alloc(
@@ -40,15 +41,16 @@ void spider_free_conn_from_trx(
 );
 
 SPIDER_CONN *spider_create_conn(
-  const SPIDER_SHARE *share,
+  SPIDER_SHARE *share,
   ha_spider *spider,
   int link_id,
+  int base_link_id,
   uint conn_kind,
   int *error_num
 );
 
 SPIDER_CONN *spider_get_conn(
-  const SPIDER_SHARE *share,
+  SPIDER_SHARE *share,
   int link_idx,
   char *conn_key,
   SPIDER_TRX *trx,
@@ -60,6 +62,56 @@ SPIDER_CONN *spider_get_conn(
 );
 
 int spider_free_conn(
+  SPIDER_CONN *conn
+);
+
+void spider_conn_queue_connect(
+  SPIDER_SHARE *share,
+  SPIDER_CONN *conn,
+  int link_idx
+);
+
+void spider_conn_queue_ping(
+  ha_spider *spider,
+  SPIDER_CONN *conn,
+  int link_idx
+);
+
+void spider_conn_queue_trx_isolation(
+  SPIDER_CONN *conn,
+  int trx_isolation
+);
+
+void spider_conn_queue_semi_trx_isolation(
+  SPIDER_CONN *conn,
+  int trx_isolation
+);
+
+void spider_conn_queue_autocommit(
+  SPIDER_CONN *conn,
+  bool autocommit
+);
+
+void spider_conn_queue_sql_log_off(
+  SPIDER_CONN *conn,
+  bool sql_log_off
+);
+
+void spider_conn_queue_time_zone(
+  SPIDER_CONN *conn,
+  Time_zone *time_zone
+);
+
+void spider_conn_queue_start_transaction(
+  SPIDER_CONN *conn
+);
+
+void spider_conn_queue_xa_start(
+  SPIDER_CONN *conn,
+  XID *xid
+);
+
+void spider_conn_clear_queue(
   SPIDER_CONN *conn
 );
 
@@ -158,21 +210,24 @@ void *spider_bg_mon_action(
 
 int spider_conn_first_link_idx(
   THD *thd,
-  long *tmp_link_statuses,
+  long *link_statuses,
+  uint *conn_link_idx,
   int link_count,
   int link_status
 );
 
 int spider_conn_next_link_idx(
   THD *thd,
-  long *tmp_link_statuses,
+  long *link_statuses,
+  uint *conn_link_idx,
   int link_idx,
   int link_count,
   int link_status
 );
 
 int spider_conn_link_idx_next(
-  long *tmp_link_statuses,
+  long *link_statuses,
+  uint *conn_link_idx,
   int link_idx,
   int link_count,
   int link_status

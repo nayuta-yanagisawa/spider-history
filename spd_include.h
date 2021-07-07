@@ -81,6 +81,16 @@
 #define SPIDER_TMP_SHARE_LONG_COUNT         10
 #define SPIDER_TMP_SHARE_LONGLONG_COUNT      3
 
+class ha_spider;
+typedef struct st_spider_share SPIDER_SHARE;
+
+typedef struct st_spider_link_for_hash
+{
+  ha_spider          *spider;
+  int                link_idx;
+  String             *db_table_str;
+} SPIDER_LINK_FOR_HASH;
+
 /* alter table */
 typedef struct st_spider_alter_table
 {
@@ -90,6 +100,7 @@ typedef struct st_spider_alter_table
   char               *tmp_char;
   longlong           tmp_priority;
   uint               link_count;
+  uint               all_link_count;
 
   char               **tmp_server_names;
   char               **tmp_tgt_table_names;
@@ -205,6 +216,7 @@ typedef struct st_spider_conn
   int                error_length;
   time_t             ping_time;
   CHARSET_INFO       *access_charset;
+  Time_zone          *time_zone;
 
   char               *tgt_host;
   char               *tgt_username;
@@ -269,6 +281,28 @@ typedef struct st_spider_conn
   volatile
 #endif
     int              *need_mon;
+
+  bool               use_for_active_standby;
+
+  bool               queued_connect;
+  bool               queued_ping;
+  bool               queued_trx_isolation;
+  bool               queued_semi_trx_isolation;
+  bool               queued_autocommit;
+  bool               queued_sql_log_off;
+  bool               queued_time_zone;
+  bool               queued_trx_start;
+  bool               queued_xa_start;
+  SPIDER_SHARE       *queued_connect_share;
+  int                queued_connect_link_idx;
+  ha_spider          *queued_ping_spider;
+  int                queued_ping_link_idx;
+  int                queued_trx_isolation_val;
+  int                queued_semi_trx_isolation_val;
+  bool               queued_autocommit_val;
+  bool               queued_sql_log_off_val;
+  Time_zone          *queued_time_zone_val;
+  XID                *queued_xa_start_xid;
 } SPIDER_CONN;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -341,6 +375,7 @@ typedef struct st_spider_transaction
   HASH               trx_hs_w_conn_hash;
 #endif
   HASH               trx_alter_table_hash;
+  HASH               trx_ha_hash;
   XID_STATE          internal_xid_state;
   SPIDER_CONN        *join_trx_top;
   ulonglong          spider_thread_id;
@@ -366,6 +401,7 @@ typedef struct st_spider_share
   uint               table_name_length;
   uint               use_count;
   uint               link_count;
+  uint               all_link_count;
   uint               link_bitmap_size;
   pthread_mutex_t    mutex;
   pthread_mutex_t    sts_mutex;
@@ -442,6 +478,7 @@ typedef struct st_spider_share
   String             *set_names;
   String             *table_names_str;
   String             *db_names_str;
+  String             *db_table_str;
   int                table_nm_max_length;
   int                db_nm_max_length;
   bool               same_db_table_name;
@@ -503,12 +540,16 @@ typedef struct st_spider_share
   longlong           bgs_first_read;
   longlong           bgs_second_read;
 #endif
+  longlong           first_read;
+  longlong           second_read;
   int                auto_increment_mode;
   int                use_table_charset;
   int                use_pushdown_udf;
   int                skip_default_condition;
   int                direct_dup_insert;
   longlong           direct_order_limit;
+  int                read_only_mode;
+  int                active_link_count;
 
   int                bka_mode;
   char               *bka_engine;
@@ -834,6 +875,16 @@ class SPIDER_SORT
 public:
   ulong sort;
 };
+
+typedef struct st_spider_trx_ha
+{
+  char                       *table_name;
+  uint                       table_name_length;
+  SPIDER_TRX                 *trx;
+  SPIDER_SHARE               *share;
+  uint                       *conn_link_idx;
+  uchar                      *conn_can_fo;
+} SPIDER_TRX_HA;
 
 char *spider_create_string(
   const char *str,

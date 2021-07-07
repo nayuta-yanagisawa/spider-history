@@ -21,13 +21,13 @@
 #define SPIDER_LONGLONG_LEN 20
 #define SPIDER_MAX_KEY_LENGTH 16384
 
-#define SPIDER_SET_CONNS_PARAM(param_name, param_val, conns, link_statuses, link_count, link_status) \
+#define SPIDER_SET_CONNS_PARAM(param_name, param_val, conns, link_statuses, conn_link_idx, link_count, link_status) \
   for ( \
     roop_count = spider_conn_link_idx_next(link_statuses, \
-      -1, link_count, link_status); \
+      conn_link_idx, -1, link_count, link_status); \
     roop_count < link_count; \
     roop_count = spider_conn_link_idx_next(link_statuses, \
-      roop_count, link_count, link_status) \
+      conn_link_idx, roop_count, link_count, link_status) \
   ) { \
     if (conns[roop_count]) \
       conns[roop_count]->param_name = param_val; \
@@ -63,6 +63,7 @@ public:
   uint               *sql_kind;
   uint               conn_kinds;
   uint               *conn_kind;
+  char               *conn_keys_first_ptr;
   char               **conn_keys;
   SPIDER_CONN        **conns;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
@@ -71,6 +72,10 @@ public:
   char               **hs_w_conn_keys;
   SPIDER_CONN        **hs_w_conns;
 #endif
+  /* for active-standby mode */
+  uint               *conn_link_idx;
+  uchar              *conn_can_fo;
+  SPIDER_LINK_FOR_HASH *link_for_hash;
   void               **quick_targets;
   int                *need_mons;
   int                search_link_idx;
@@ -89,6 +94,9 @@ public:
   bool               clone_bitmap_init;
   ha_spider          *pt_clone_source_handler;
   ha_spider          *pt_clone_last_searcher;
+
+  bool               init_index_handler;
+  bool               init_rnd_handler;
 
   /* for mrr */
   bool               mrr_with_cnt;
@@ -172,6 +180,7 @@ public:
     TABLE_SHARE *table_arg
   );
   handler *clone(
+    const char *name,
     MEM_ROOT *mem_root
   );
   const char **bas_ext() const;
@@ -496,4 +505,6 @@ public:
     int link_idx,
     bool release_conn
   );
+  int index_handler_init();
+  int rnd_handler_init();
 };

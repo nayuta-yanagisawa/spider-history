@@ -72,6 +72,10 @@ void spider_db_disconnect(
   SPIDER_CONN *conn
 );
 
+int spider_db_conn_queue_action(
+  SPIDER_CONN *conn
+);
+
 int spider_db_before_query(
   SPIDER_CONN *conn,
   int *need_mon
@@ -94,16 +98,28 @@ int spider_db_set_trx_isolation(
   int *need_mon
 );
 
-int spider_db_set_autocommit(
+int spider_db_append_trx_isolation(
+  String *str,
   SPIDER_CONN *conn,
-  bool autocommit,
-  int *need_mon
+  int trx_isolation
 );
 
-int spider_db_set_sql_log_off(
+int spider_db_append_autocommit(
+  String *str,
   SPIDER_CONN *conn,
-  bool sql_log_off,
-  int *need_mon
+  bool autocommit
+);
+
+int spider_db_append_sql_log_off(
+  String *str,
+  SPIDER_CONN *conn,
+  bool sql_log_off
+);
+
+int spider_db_append_time_zone(
+  String *str,
+  SPIDER_CONN *conn,
+  Time_zone *time_zone
 );
 
 int spider_db_set_names(
@@ -143,6 +159,11 @@ int spider_db_start_transaction(
   int *need_mon
 );
 
+int spider_db_append_start_transaction(
+  String *str,
+  SPIDER_CONN *conn
+);
+
 int spider_db_commit(
   SPIDER_CONN *conn
 );
@@ -162,10 +183,10 @@ void spider_db_append_xid_str(
   XID *xid
 );
 
-int spider_db_xa_start(
+int spider_db_append_xa_start(
+  String *str,
   SPIDER_CONN *conn,
-  XID *xid,
-  int *need_mon
+  XID *xid
 );
 
 int spider_db_xa_end(

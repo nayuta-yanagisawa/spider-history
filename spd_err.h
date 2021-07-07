@@ -47,6 +47,12 @@
 #define ER_SPIDER_MON_AT_ALTER_TABLE_STR "Got an error in alter or drop table"
 #define ER_SPIDER_BLANK_UDF_ARGUMENT_NUM 12517
 #define ER_SPIDER_BLANK_UDF_ARGUMENT_STR "The UDF no.%d argument can't be blank"
+#define ER_SPIDER_READ_ONLY_NUM 12518
+#define ER_SPIDER_READ_ONLY_STR "Table '%s.%s' is read only"
+#define ER_SPIDER_LINK_IS_FAILOVER_NUM 12519
+#define ER_SPIDER_LINK_IS_FAILOVER_STR "A link is fail-overed"
+#define ER_SPIDER_AUTOINC_VAL_IS_DIFFERENT_NUM 12520
+#define ER_SPIDER_AUTOINC_VAL_IS_DIFFERENT_STR "Binlog's auto-inc value is probably different from linked table's auto-inc value"
 
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_NUM 12601
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_STR "Can't use both spider_use_consistent_snapshot = 1 and spider_internal_xa = 1"

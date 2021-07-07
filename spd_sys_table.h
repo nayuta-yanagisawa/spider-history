@@ -21,6 +21,8 @@
 #define SPIDER_SYS_TABLES_TABLE_NAME_LEN (sizeof(SPIDER_SYS_TABLES_TABLE_NAME_STR) - 1)
 #define SPIDER_SYS_LINK_MON_TABLE_NAME_STR "spider_link_mon_servers"
 #define SPIDER_SYS_LINK_MON_TABLE_NAME_LEN (sizeof(SPIDER_SYS_LINK_MON_TABLE_NAME_STR) - 1)
+#define SPIDER_SYS_LINK_FAILED_TABLE_NAME_STR "spider_link_failed_log"
+#define SPIDER_SYS_LINK_FAILED_TABLE_NAME_LEN (sizeof(SPIDER_SYS_LINK_FAILED_TABLE_NAME_STR) - 1)
 
 #define SPIDER_SYS_XA_PREPARED_STR "PREPARED"
 #define SPIDER_SYS_XA_NOT_YET_STR "NOT YET"
@@ -229,6 +231,13 @@ int spider_insert_tables(
   SPIDER_SHARE *share
 );
 
+int spider_log_tables_link_failed(
+  TABLE *table,
+  char *name,
+  uint name_length,
+  int link_idx
+);
+
 int spider_update_xa(
   TABLE *table,
   XID *xid,
@@ -328,6 +337,14 @@ int spider_sys_update_tables_link_status(
   uint name_length,
   int link_idx,
   long link_status,
+  bool need_lock
+);
+
+int spider_sys_log_tables_link_failed(
+  THD *thd,
+  char *name,
+  uint name_length,
+  int link_idx,
   bool need_lock
 );
 

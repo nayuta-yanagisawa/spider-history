@@ -33,6 +33,12 @@ uchar *spider_pt_handler_share_get_key(
 );
 #endif
 
+uchar *spider_link_get_key(
+  SPIDER_LINK_FOR_HASH *link_for_hash,
+  size_t *length,
+  my_bool not_used __attribute__ ((unused))
+);
+
 uchar *spider_ha_get_key(
   ha_spider *spider,
   size_t *length,
@@ -315,6 +321,18 @@ void spider_get_select_limit(
 );
 
 longlong spider_split_read_param(
+  ha_spider *spider
+);
+
+longlong spider_bg_split_read_param(
+  ha_spider *spider
+);
+
+void spider_first_split_read_param(
+  ha_spider *spider
+);
+
+void spider_next_split_read_param(
   ha_spider *spider
 );
 

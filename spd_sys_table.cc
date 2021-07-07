@@ -949,7 +949,7 @@ int spider_insert_tables(
 
   spider_store_tables_name(table, share->table_name, share->table_name_length);
   spider_store_tables_priority(table, share->priority);
-  for (roop_count = 0; roop_count < share->link_count; roop_count++)
+  for (roop_count = 0; roop_count < share->all_link_count; roop_count++)
   {
     spider_store_tables_link_idx(table, roop_count);
     spider_store_tables_connect_info(table, &share->alter_table, roop_count);
@@ -965,6 +965,27 @@ int spider_insert_tables(
     }
   }
 
+  DBUG_RETURN(0);
+}
+
+int spider_log_tables_link_failed(
+  TABLE *table,
+  char *name,
+  uint name_length,
+  int link_idx
+) {
+  int error_num;
+  DBUG_ENTER("spider_log_tables_link_failed");
+  table->use_all_columns();
+  spider_store_tables_name(table, name, name_length);
+  spider_store_tables_link_idx(table, link_idx);
+  if (table->field[3] == table->timestamp_field)
+    table->timestamp_field->set_time();
+  if ((error_num = table->file->ha_write_row(table->record[0])))
+  {
+    table->file->print_error(error_num, MYF(0));
+    DBUG_RETURN(error_num);
+  }
   DBUG_RETURN(0);
 }
 
@@ -1059,7 +1080,7 @@ int spider_update_tables_priority(
   char table_key[MAX_KEY_LENGTH];
   DBUG_ENTER("spider_update_tables_priority");
   table->use_all_columns();
-  for (roop_count = 0; roop_count < alter_table->link_count; roop_count++)
+  for (roop_count = 0; roop_count < alter_table->all_link_count; roop_count++)
   {
     spider_store_tables_name(table, alter_table->table_name,
       alter_table->table_name_length);
@@ -1089,7 +1110,7 @@ int spider_update_tables_priority(
             DBUG_RETURN(error_num);
           }
           roop_count++;
-        } while (roop_count < alter_table->link_count);
+        } while (roop_count < alter_table->all_link_count);
         DBUG_RETURN(0);
       } else {
         table->file->print_error(error_num, MYF(0));
@@ -1769,6 +1790,46 @@ int spider_sys_update_tables_link_status(
   }
   if ((error_num = spider_update_tables_link_status(table_tables,
     name, name_length, link_idx, link_status)))
+    goto error;
+  spider_close_sys_table(thd, table_tables,
+    &open_tables_backup, need_lock);
+  table_tables = NULL;
+  DBUG_RETURN(0);
+
+error:
+  if (table_tables)
+    spider_close_sys_table(thd, table_tables,
+      &open_tables_backup, need_lock);
+  DBUG_RETURN(error_num);
+}
+
+int spider_sys_log_tables_link_failed(
+  THD *thd,
+  char *name,
+  uint name_length,
+  int link_idx,
+  bool need_lock
+) {
+  int error_num;
+  TABLE *table_tables = NULL;
+#if MYSQL_VERSION_ID < 50500
+  Open_tables_state open_tables_backup;
+#else
+  Open_tables_backup open_tables_backup;
+#endif
+  DBUG_ENTER("spider_sys_log_tables_link_failed");
+  if (
+    !(table_tables = spider_open_sys_table(
+      thd, SPIDER_SYS_LINK_FAILED_TABLE_NAME_STR,
+      SPIDER_SYS_LINK_FAILED_TABLE_NAME_LEN, TRUE, &open_tables_backup,
+      need_lock, &error_num))
+  ) {
+    my_error(error_num, MYF(0));
+    goto error;
+  }
+  empty_record(table_tables);
+  if ((error_num = spider_log_tables_link_failed(table_tables,
+    name, name_length, link_idx)))
     goto error;
   spider_close_sys_table(thd, table_tables,
     &open_tables_backup, need_lock);

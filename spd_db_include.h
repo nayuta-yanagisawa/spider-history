@@ -182,6 +182,14 @@ typedef struct st_spider_result_list
   spider_bulk_upd_start  bulk_update_start;
   bool                   check_direct_order_limit;
   bool                   direct_order_limit;
+  bool                   set_split_read;
+  longlong               split_read_base;
+  double                 semi_split_read;
+  longlong               semi_split_read_limit;
+  longlong               semi_split_read_base;
+  longlong               first_read;
+  longlong               second_read;
+  int                    set_split_read_count;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   /* 0:nomal 1:store 2:store end */
   volatile

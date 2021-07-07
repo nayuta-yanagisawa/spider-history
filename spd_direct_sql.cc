@@ -399,7 +399,7 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
 
   if (
     my_hash_init(&conn->lock_table_hash, system_charset_info, 32, 0, 0,
-              (my_hash_get_key) spider_ha_get_key, 0, 0)
+              (my_hash_get_key) spider_link_get_key, 0, 0)
   ) {
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_init_lock_table_hash;

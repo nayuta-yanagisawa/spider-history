@@ -77,7 +77,8 @@ SPIDER_TRX *spider_get_trx(
 );
 
 int spider_free_trx(
-  SPIDER_TRX *trx
+  SPIDER_TRX *trx,
+  bool need_lock
 );
 
 int spider_check_and_set_trx_isolation(
@@ -92,6 +93,12 @@ int spider_check_and_set_autocommit(
 );
 
 int spider_check_and_set_sql_log_off(
+  THD *thd,
+  SPIDER_CONN *conn,
+  int *need_mon
+);
+
+int spider_check_and_set_time_zone(
   THD *thd,
   SPIDER_CONN *conn,
   int *need_mon
@@ -215,4 +222,26 @@ THD *spider_create_tmp_thd();
 
 void spider_free_tmp_thd(
   THD *thd
+);
+
+int spider_create_trx_ha(
+  SPIDER_TRX *trx,
+  ha_spider *spider
+);
+
+SPIDER_TRX_HA *spider_check_trx_ha(
+  SPIDER_TRX *trx,
+  ha_spider *spider
+);
+
+void spider_free_trx_ha(
+  SPIDER_TRX *trx
+);
+
+void spider_trx_set_link_idx_for_all(
+  ha_spider *spider
+);
+
+int spider_trx_check_link_idx_failed(
+  ha_spider *spider
 );

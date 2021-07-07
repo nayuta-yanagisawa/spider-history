@@ -801,6 +801,7 @@ long long spider_copy_tables_body(
   String *select_sql, *insert_sql;
   MEM_ROOT mem_root;
   longlong bulk_insert_rows;
+  SPIDER_LINK_FOR_HASH *tmp_link_for_hash;
   DBUG_ENTER("spider_copy_tables_body");
   if (
     thd->open_tables != 0 ||
@@ -994,6 +995,7 @@ long long spider_copy_tables_body(
   if (!(spider = (ha_spider *)
     my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
       &spider, sizeof(ha_spider) * all_link_cnt,
+      &tmp_link_for_hash, sizeof(SPIDER_LINK_FOR_HASH) * all_link_cnt,
       NullS))
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
@@ -1005,6 +1007,11 @@ long long spider_copy_tables_body(
     tmp_spider = &spider[roop_count];
     tmp_spider->share = table_conn->share;
     tmp_spider->trx = copy_tables->trx;
+    tmp_spider->link_for_hash = &tmp_link_for_hash[roop_count];
+    tmp_link_for_hash[roop_count].spider = tmp_spider;
+    tmp_link_for_hash[roop_count].link_idx = 0;
+    tmp_link_for_hash[roop_count].db_table_str =
+      &tmp_spider->share->db_table_str[0];
     if (spider_db_append_set_names(table_conn->share))
     {
       my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);

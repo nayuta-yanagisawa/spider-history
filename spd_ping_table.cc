@@ -880,6 +880,8 @@ long long spider_ping_table_body(
           spider_sys_update_tables_link_status(trx->thd,
             conv_name.c_ptr(), conv_name_length, link_idx,
             SPIDER_LINK_STATUS_NG, TRUE);
+          spider_sys_log_tables_link_failed(trx->thd,
+            conv_name.c_ptr(), conv_name_length, link_idx, TRUE);
         }
         pthread_mutex_unlock(&table_mon_list->update_status_mutex);
       }
@@ -948,6 +950,8 @@ long long spider_ping_table_body(
               spider_sys_update_tables_link_status(trx->thd,
                 conv_name.c_ptr(), conv_name_length, link_idx,
                 SPIDER_LINK_STATUS_NG, TRUE);
+              spider_sys_log_tables_link_failed(trx->thd,
+                conv_name.c_ptr(), conv_name_length, link_idx, TRUE);
             }
             pthread_mutex_unlock(&table_mon_list->update_status_mutex);
           }
@@ -1230,10 +1234,13 @@ int spider_ping_table_mon_from_table(
               table_mon_list->mon_status = SPIDER_LINK_MON_NG;
               table_mon_list->share->link_statuses[0] = SPIDER_LINK_STATUS_NG;
               DBUG_PRINT("info", (
-                "spider share->link_statuses[%d]=SPIDER_LINK_STATUS_NG", link_idx));
+                "spider share->link_statuses[%d]=SPIDER_LINK_STATUS_NG",
+                link_idx));
               share->link_statuses[link_idx] = SPIDER_LINK_STATUS_NG;
               spider_sys_update_tables_link_status(thd, conv_name,
                 conv_name_length, link_idx, SPIDER_LINK_STATUS_NG, need_lock);
+              spider_sys_log_tables_link_failed(thd, conv_name,
+                conv_name_length, link_idx, need_lock);
             }
             pthread_mutex_unlock(&table_mon_list->update_status_mutex);
           }
