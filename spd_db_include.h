@@ -80,6 +80,7 @@ typedef struct st_spider_result_list
   int                    order_pos;
   int                    limit_pos;
   int                    table_name_pos;
+  bool                   use_union;
   String                 insert_sql;
   String                 *insert_sqls;
   int                    insert_pos;

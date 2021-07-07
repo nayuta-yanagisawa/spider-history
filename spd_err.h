@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -45,6 +45,8 @@
 #define ER_SPIDER_TMP_TABLE_MON_STR "Can't use monitor by temporary table"
 #define ER_SPIDER_MON_AT_ALTER_TABLE_NUM 12516
 #define ER_SPIDER_MON_AT_ALTER_TABLE_STR "Got an error in alter or drop table"
+#define ER_SPIDER_BLANK_UDF_ARGUMENT_NUM 12517
+#define ER_SPIDER_BLANK_UDF_ARGUMENT_STR "The UDF no.%d argument can't be blank"
 
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_NUM 12601
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_STR "Can't use both spider_use_consistent_snapshot = 1 and spider_internal_xa = 1"
@@ -75,6 +77,18 @@
 #define ER_SPIDER_REMOTE_TABLE_NOT_FOUND_STR "Remote table '%s.%s' is not found"
 #define ER_SPIDER_UDF_TMP_TABLE_NOT_FOUND_NUM 12703
 #define ER_SPIDER_UDF_TMP_TABLE_NOT_FOUND_STR "Temporary table '%s.%s' is not found"
+#define ER_SPIDER_UDF_COPY_TABLE_SRC_NOT_FOUND_NUM 12704
+#define ER_SPIDER_UDF_COPY_TABLE_SRC_NOT_FOUND_STR "Source table is not found"
+#define ER_SPIDER_UDF_COPY_TABLE_DST_NOT_FOUND_NUM 12705
+#define ER_SPIDER_UDF_COPY_TABLE_DST_NOT_FOUND_STR "Destination table is not found"
+#define ER_SPIDER_UDF_COPY_TABLE_SRC_NG_STATUS_NUM 12705
+#define ER_SPIDER_UDF_COPY_TABLE_SRC_NG_STATUS_STR "Source table is NG status"
+#define ER_SPIDER_UDF_COPY_TABLE_DST_NG_STATUS_NUM 12706
+#define ER_SPIDER_UDF_COPY_TABLE_DST_NG_STATUS_STR "Destination table is NG status"
+#define ER_SPIDER_UDF_CANT_OPEN_TABLE_NUM 12707
+#define ER_SPIDER_UDF_CANT_OPEN_TABLE_STR "Can't open table %s.%s"
+#define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_NUM 12708
+#define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_STR "Table %s.%s needs PK for copying"
 #define ER_SPIDER_COND_SKIP_NUM 12801
 
 #define ER_SPIDER_UNKNOWN_NUM 12500

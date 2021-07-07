@@ -6,7 +6,8 @@ INCLUDES       = -I$(MYSQL_INC)$(top_srcdir)/include \
 noinst_HEADERS = ha_spider.h spd_conn.h spd_db_conn.h \
                  spd_db_include.h spd_err.h spd_sys_table.h \
                  spd_table.h spd_trx.h spd_include.h spd_param.h \
-                 spd_direct_sql.h spd_udf.h spd_ping_table.h
+                 spd_direct_sql.h spd_udf.h spd_ping_table.h \
+                 spd_copy_tables.h
 
 lib_LTLIBRARIES       = $(PLUGIN_SPIDER_LTLIBRARIES_TARGET)
 EXTRA_LTLIBRARIES     = ha_spider.la
@@ -24,6 +25,7 @@ ha_spider_la_SOURCES  = \
                    spd_direct_sql.cc \
                    spd_udf.cc \
                    spd_ping_table.cc \
+                   spd_copy_tables.cc \
                    ha_spider.cc
 
 lib_LIBRARIES        = $(PLUGIN_SPIDER_LIBRARIES_TARGET)
@@ -41,6 +43,7 @@ libspider_a_SOURCES  = \
                    spd_direct_sql.cc \
                    spd_udf.cc \
                    spd_ping_table.cc \
+                   spd_copy_tables.cc \
                    ha_spider.cc
 
 EXTRA_DIST = plug.in

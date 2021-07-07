@@ -1184,18 +1184,28 @@ MYSQL_THDVAR_INT(
 
 /*
  */
+#ifdef PLUGIN_VAR_CAN_MEMALLOC
 static MYSQL_SYSVAR_STR(
   remote_access_charset,
   spider_remote_access_charset,
-#ifdef PLUGIN_VAR_CAN_MEMALLOC
   PLUGIN_VAR_MEMALLOC |
-#endif
   PLUGIN_VAR_RQCMDARG,
   "Set remote access charset at connecting for improvement performance of connection if you know",
   NULL,
   NULL,
   NULL
 );
+#else
+static MYSQL_SYSVAR_STR(
+  remote_access_charset,
+  spider_remote_access_charset,
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote access charset at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+#endif
 
 /*
  -1 :don't set
@@ -1285,17 +1295,26 @@ MYSQL_THDVAR_INT(
 
 /*
  */
+#ifdef PLUGIN_VAR_CAN_MEMALLOC
 MYSQL_THDVAR_STR(
   bka_engine, /* name */
-#ifdef PLUGIN_VAR_CAN_MEMALLOC
   PLUGIN_VAR_MEMALLOC |
-#endif
   PLUGIN_VAR_RQCMDARG,
   "Temporary table's engine for BKA", /* comment */
   NULL, /* check */
   NULL, /* update */
   NULL /* def */
 );
+#else
+MYSQL_THDVAR_STR(
+  bka_engine, /* name */
+  PLUGIN_VAR_RQCMDARG,
+  "Temporary table's engine for BKA", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  NULL /* def */
+);
+#endif
 
 /*
  -1 :use table parameter
@@ -1415,7 +1434,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0215,
+  0x0216,
   NULL,
   spider_system_variables,
   NULL

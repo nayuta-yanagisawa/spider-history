@@ -112,6 +112,13 @@ int spider_set_connect_info_default(
   TABLE *table
 );
 
+#ifndef DBUG_OFF
+void spider_print_keys(
+  const char *key,
+  uint length
+);
+#endif
+
 int spider_create_conn_keys(
   SPIDER_SHARE *share
 );

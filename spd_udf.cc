@@ -106,4 +106,27 @@ void spider_ping_table_deinit(
 ) {
   spider_ping_table_deinit_body(initid);
 }
+
+long long spider_copy_tables(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *is_null,
+  char *error
+) {
+  return spider_copy_tables_body(initid, args, is_null, error);
+}
+
+my_bool spider_copy_tables_init(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *message
+) {
+  return spider_copy_tables_init_body(initid, args, message);
+}
+
+void spider_copy_tables_deinit(
+  UDF_INIT *initid
+) {
+  spider_copy_tables_deinit_body(initid);
+}
 }

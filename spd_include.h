@@ -191,6 +191,7 @@ typedef struct st_spider_conn
   volatile bool      bg_search;
   volatile bool      bg_discard_result;
   volatile bool      bg_direct_sql;
+  volatile bool      bg_exec_sql;
   THD                *bg_thd;
   pthread_t          bg_thread;
   pthread_cond_t     bg_conn_cond;
@@ -198,6 +199,8 @@ typedef struct st_spider_conn
   pthread_cond_t     bg_conn_sync_cond;
   pthread_mutex_t    bg_conn_sync_mutex;
   volatile void      *bg_target;
+  volatile int       *bg_error_num;
+  volatile String    *bg_sql;
 #endif
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   volatile
@@ -310,6 +313,7 @@ typedef struct st_spider_share
   THD                *bg_sts_thd;
   pthread_t          bg_sts_thread;
   pthread_cond_t     bg_sts_cond;
+  pthread_cond_t     bg_sts_sync_cond;
   volatile bool      crd_init;
 #endif
   volatile time_t    crd_get_time;
@@ -326,6 +330,7 @@ typedef struct st_spider_share
   THD                *bg_crd_thd;
   pthread_t          bg_crd_thread;
   pthread_cond_t     bg_crd_cond;
+  pthread_cond_t     bg_crd_sync_cond;
 #endif
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   volatile bool      bg_mon_init;
@@ -656,6 +661,53 @@ typedef struct st_spider_table_mon_list
   volatile int               last_receptor_result;
   volatile int               last_mon_result;
 } SPIDER_TABLE_MON_LIST;
+
+typedef struct st_spider_copy_table_conn
+{
+  SPIDER_SHARE               *share;
+  int                        link_idx;
+  SPIDER_CONN                *conn;
+  String                     select_sql;
+  int                        where_pos;
+  String                     insert_sql;
+  int                        values_pos;
+  void                       *spider;
+  int                        need_mon;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  int                        bg_error_num;
+#endif
+  st_spider_copy_table_conn  *next;
+} SPIDER_COPY_TABLE_CONN;
+
+typedef struct st_spider_copy_tables
+{
+  SPIDER_TRX                 *trx;
+  char                       *spider_db_name;
+  int                        spider_db_name_length;
+  char                       *spider_table_name;
+  int                        spider_table_name_length;
+  char                       *spider_real_table_name;
+  int                        spider_real_table_name_length;
+  TABLE_LIST                 spider_table_list;
+  CHARSET_INFO               *access_charset;
+
+  SPIDER_COPY_TABLE_CONN     *table_conn[2];
+  bool                       use_auto_mode[2];
+  int                        link_idx_count[2];
+  int                        *link_idxs[2];
+
+  int                        bulk_insert_interval;
+  longlong                   bulk_insert_rows;
+  int                        use_table_charset;
+  int                        use_transaction;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  int                        bg_mode;
+#endif
+
+  char                       *database;
+
+  int                        database_length;
+} SPIDER_COPY_TABLES;
 
 char *spider_create_string(
   const char *str,

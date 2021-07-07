@@ -58,3 +58,20 @@ my_bool spider_ping_table_init_body(
 void spider_ping_table_deinit_body(
   UDF_INIT *initid
 );
+
+long long spider_copy_tables_body(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *is_null,
+  char *error
+);
+
+my_bool spider_copy_tables_init_body(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *message
+);
+
+void spider_copy_tables_deinit_body(
+  UDF_INIT *initid
+);

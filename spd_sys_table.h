@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -123,6 +123,14 @@ void spider_store_tables_name(
   TABLE *table,
   const char *name,
   const uint name_length
+);
+
+void spider_store_db_and_table_name(
+  TABLE *table,
+  const char *db_name,
+  const uint db_name_length,
+  const char *table_name,
+  const uint table_name_length
 );
 
 void spider_store_tables_link_idx(
@@ -252,6 +260,12 @@ int spider_get_sys_tables_link_status(
   TABLE *table,
   SPIDER_SHARE *share,
   int link_idx,
+  MEM_ROOT *mem_root
+);
+
+int spider_get_sys_tables_link_idx(
+  TABLE *table,
+  int *link_idx,
   MEM_ROOT *mem_root
 );
 

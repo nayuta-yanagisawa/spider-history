@@ -72,7 +72,7 @@ bool spider_cmp_trx_alter_table(
 );
 
 SPIDER_TRX *spider_get_trx(
-  const THD *thd,
+  THD *thd,
   int *error_num
 );
 

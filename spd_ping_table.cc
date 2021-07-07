@@ -1,4 +1,4 @@
-/* Copyright (C) 2009 Kentoku Shiba
+/* Copyright (C) 2009-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -80,6 +80,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
     }
   }
   table_mon_list->use_count++;
+  DBUG_PRINT("info",("spider table_mon_list->use_count=%d", table_mon_list->use_count));
   pthread_mutex_unlock(&spider_udf_table_mon_mutexes[mutex_hash]);
   DBUG_RETURN(table_mon_list);
 
@@ -94,6 +95,7 @@ void spider_free_ping_table_mon_list(
   pthread_mutex_lock(&spider_udf_table_mon_mutexes[
     table_mon_list->mutex_hash]);
   table_mon_list->use_count--;
+  DBUG_PRINT("info",("spider table_mon_list->use_count=%d", table_mon_list->use_count));
   if (!table_mon_list->use_count)
     pthread_cond_broadcast(&spider_udf_table_mon_conds[
       table_mon_list->mutex_hash]);
@@ -114,9 +116,14 @@ void spider_release_ping_table_mon_list(
   DBUG_ENTER("spider_release_ping_table_mon_list");
   link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str, "%010ld",
     link_idx));
+#ifdef _MSC_VER
+  String conv_name_str(conv_name_length + link_idx_str_length + 1);
+  conv_name_str.set_charset(system_charset_info);
+#else
   char buf[conv_name_length + link_idx_str_length + 1];
   String conv_name_str(buf, conv_name_length + link_idx_str_length + 1,
     system_charset_info);
+#endif
   conv_name_str.length(0);
   conv_name_str.q_append(conv_name, conv_name_length);
   conv_name_str.q_append(link_idx_str, link_idx_str_length);
@@ -450,7 +457,7 @@ long long spider_ping_table_body(
   char *is_null,
   char *error
 ) {
-  int error_num, link_idx, flags, full_mon_count, current_mon_count,
+  int error_num = 0, link_idx, flags, full_mon_count, current_mon_count,
     success_count, fault_count;
   uint32 first_sid;
   longlong limit, tmp_sid = -1;
@@ -521,7 +528,8 @@ long long spider_ping_table_body(
     my_error(HA_ERR_OUT_OF_MEM, MYF(0));
     goto error;
   }
-  conv_name.q_append(link_idx_str, conv_name_length);
+  conv_name.q_append(link_idx_str, link_idx_str_length + 1);
+  conv_name.length(conv_name.length() - 1);
 
   if (!(table_mon_list = spider_get_ping_table_mon_list(trx, trx->thd,
     &conv_name, conv_name_length, link_idx, thd->server_id, TRUE, &error_num)))
@@ -530,6 +538,7 @@ long long spider_ping_table_body(
   if (table_mon_list->mon_status == SPIDER_LINK_MON_NG)
   {
     mon_table_result->result_status = SPIDER_LINK_MON_NG;
+    DBUG_PRINT("info",("spider mon_table_result->result_status=SPIDER_LINK_MON_NG 1"));
     goto end;
   }
 
@@ -580,6 +589,7 @@ long long spider_ping_table_body(
     if (fault_count > full_mon_count / 2)
     {
       mon_table_result->result_status = SPIDER_LINK_MON_NG;
+      DBUG_PRINT("info",("spider mon_table_result->result_status=SPIDER_LINK_MON_NG 2"));
       if (table_mon_list->mon_status != SPIDER_LINK_MON_NG)
       {
         pthread_mutex_lock(&table_mon_list->update_status_mutex);
@@ -600,6 +610,7 @@ long long spider_ping_table_body(
     if (success_count > full_mon_count / 2)
     {
       mon_table_result->result_status = SPIDER_LINK_MON_OK;
+      DBUG_PRINT("info",("spider mon_table_result->result_status=SPIDER_LINK_MON_OK 1"));
       goto end;
     }
   }
@@ -624,9 +635,15 @@ long long spider_ping_table_body(
         current_mon_count > full_mon_count
       ) {
         if (success_count + fault_count > full_mon_count / 2)
+        {
           mon_table_result->result_status = SPIDER_LINK_MON_DRAW;
-        else
+          DBUG_PRINT("info",(
+            "spider mon_table_result->result_status=SPIDER_LINK_MON_DRAW 1"));
+        } else {
           mon_table_result->result_status = SPIDER_LINK_MON_DRAW_FEW_MON;
+          DBUG_PRINT("info",(
+            "spider mon_table_result->result_status=SPIDER_LINK_MON_DRAW_FEW_MON 1"));
+        }
         table_mon_list->last_receptor_result = mon_table_result->result_status;
         break;
       }
@@ -668,6 +685,8 @@ long long spider_ping_table_body(
   } else {
     pthread_mutex_lock(&table_mon_list->receptor_mutex);
     mon_table_result->result_status = table_mon_list->last_receptor_result;
+    DBUG_PRINT("info",("spider mon_table_result->result_status=%d 1",
+      table_mon_list->last_receptor_result));
     pthread_mutex_unlock(&table_mon_list->receptor_mutex);
   }
 
@@ -687,7 +706,7 @@ my_bool spider_ping_table_init_body(
   UDF_ARGS *args,
   char *message
 ) {
-  int error_num, roop_count;
+  int error_num;
   THD *thd = current_thd;
   SPIDER_TRX *trx;
   SPIDER_MON_TABLE_RESULT *mon_table_result = NULL;
@@ -831,13 +850,21 @@ int spider_ping_table_mon_from_table(
 
   link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str, "%010ld",
     link_idx));
+#ifdef _MSC_VER
+  String conv_name_str(conv_name_length + link_idx_str_length + 1);
+  conv_name_str.set_charset(system_charset_info);
+  *((char *)(conv_name_str.ptr() + conv_name_length + link_idx_str_length)) =
+    '\0';
+#else
   char buf[conv_name_length + link_idx_str_length + 1];
   buf[conv_name_length + link_idx_str_length] = '\0';
   String conv_name_str(buf, conv_name_length + link_idx_str_length + 1,
     system_charset_info);
+#endif
   conv_name_str.length(0);
   conv_name_str.q_append(conv_name, conv_name_length);
-  conv_name_str.q_append(link_idx_str, link_idx_str_length);
+  conv_name_str.q_append(link_idx_str, link_idx_str_length + 1);
+  conv_name_str.length(conv_name_str.length() - 1);
 
   if (monitoring_kind == 1)
     flags = SPIDER_UDF_PING_TABLE_PING_ONLY;
@@ -853,6 +880,8 @@ int spider_ping_table_mon_from_table(
 
   if (table_mon_list->mon_status == SPIDER_LINK_MON_NG)
   {
+    DBUG_PRINT("info", ("spider share->link_statuses[%d]=SPIDER_LINK_STATUS_NG",
+      link_idx));
     share->link_statuses[link_idx] = SPIDER_LINK_STATUS_NG;
     error_num = ER_SPIDER_LINK_MON_NG_NUM;
     my_printf_error(error_num,
@@ -877,6 +906,8 @@ int spider_ping_table_mon_from_table(
       ) {
         table_mon_list->last_caller_result = SPIDER_LINK_MON_DRAW_FEW_MON;
         mon_table_result.result_status = SPIDER_LINK_MON_DRAW_FEW_MON;
+        DBUG_PRINT("info",(
+          "spider mon_table_result->result_status=SPIDER_LINK_MON_DRAW_FEW_MON 1"));
         error_num = ER_SPIDER_LINK_MON_DRAW_FEW_MON_NUM;
         my_printf_error(error_num,
           ER_SPIDER_LINK_MON_DRAW_FEW_MON_STR, MYF(0),
@@ -903,6 +934,8 @@ int spider_ping_table_mon_from_table(
             {
               table_mon_list->mon_status = SPIDER_LINK_MON_NG;
               table_mon_list->share->link_statuses[0] = SPIDER_LINK_STATUS_NG;
+              DBUG_PRINT("info", (
+                "spider share->link_statuses[%d]=SPIDER_LINK_STATUS_NG", link_idx));
               share->link_statuses[link_idx] = SPIDER_LINK_STATUS_NG;
               VOID(spider_sys_update_tables_link_status(thd, conv_name,
                 conv_name_length, link_idx, SPIDER_LINK_STATUS_NG, need_lock));

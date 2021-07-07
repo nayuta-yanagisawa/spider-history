@@ -21,6 +21,12 @@
 #define SPIDER_DB_TABLE_LOCK_LOW_PRIORITY_WRITE 2
 #define SPIDER_DB_TABLE_LOCK_WRITE              3
 
+#define SPIDER_DB_INSERT_REPLACE       (1 << 0)
+#define SPIDER_DB_INSERT_IGNORE        (1 << 1)
+#define SPIDER_DB_INSERT_LOW_PRIORITY  (1 << 2)
+#define SPIDER_DB_INSERT_HIGH_PRIORITY (1 << 3)
+#define SPIDER_DB_INSERT_DELAYED       (1 << 4)
+
 #define SPIDER_SQL_OPEN_PAREN_STR "("
 #define SPIDER_SQL_OPEN_PAREN_LEN (sizeof(SPIDER_SQL_OPEN_PAREN_STR) - 1)
 #define SPIDER_SQL_CLOSE_PAREN_STR ")"
@@ -217,6 +223,12 @@ int spider_db_convert_key_hint_str(
   TABLE_SHARE *table_share
 );
 
+int spider_db_append_table_name_with_reserve(
+  String *str,
+  SPIDER_SHARE *share,
+  int link_idx
+);
+
 void spider_db_append_table_name(
   String *str,
   SPIDER_SHARE *share,
@@ -248,8 +260,17 @@ int spider_db_append_column_values(
   String *str
 );
 
+int spider_db_append_select_str(
+  String *str
+);
+
 int spider_db_append_select(
   ha_spider *spider
+);
+
+int spider_db_append_insert_str(
+  String *str,
+  int insert_flg
 );
 
 int spider_db_append_insert(
@@ -279,6 +300,10 @@ int spider_db_append_truncate(
   int link_idx
 );
 
+int spider_db_append_from_str(
+  String *str
+);
+
 int spider_db_append_from(
   String *str,
   ha_spider *spider,
@@ -294,6 +319,18 @@ int spider_db_append_from_with_alias(
   uint table_count,
   int *table_name_pos,
   bool over_write
+);
+
+int spider_db_append_open_paren_str(
+  String *str
+);
+
+int spider_db_append_into_str(
+  String *str
+);
+
+int spider_db_append_values_str(
+  String *str
 );
 
 int spider_db_append_into(
@@ -387,6 +424,11 @@ int spider_db_append_key_column_types(
   String *str
 );
 
+int spider_db_append_table_columns(
+  String *str,
+  TABLE_SHARE *table_share
+);
+
 int spider_db_append_key_columns(
   const key_range *start_key,
   ha_spider *spider,
@@ -417,6 +459,13 @@ int spider_db_append_hint_after_table(
   String *hint
 );
 
+int spider_db_append_key_order_str(
+  String *str,
+  KEY *key_info,
+  int start_pos,
+  bool desc_flg
+);
+
 int spider_db_append_key_order(
   ha_spider *spider
 );
@@ -425,6 +474,11 @@ int spider_db_append_limit(
   String *str,
   longlong offset,
   longlong limit
+);
+
+int spider_db_append_select_lock_str(
+  String *str,
+  int lock_mode
 );
 
 int spider_db_append_select_lock(
@@ -814,6 +868,18 @@ int spider_db_open_item_row(
   String *str
 );
 
+int spider_db_open_item_string(
+  Item *item,
+  ha_spider *spider,
+  String *str
+);
+
+int spider_db_open_item_int(
+  Item *item,
+  ha_spider *spider,
+  String *str
+);
+
 int spider_db_append_condition(
   ha_spider *spider,
   String *str
@@ -924,4 +990,35 @@ int spider_db_udf_ping_table_mon_next(
   int fault_count,
   int flags,
   longlong limit
+);
+
+int spider_db_udf_copy_key_row(
+  String *str,
+  String *source_str,
+  Field *field,
+  ulong *row_pos,
+  ulong *length,
+  const char *joint_str,
+  const int joint_length
+);
+
+int spider_db_udf_copy_row(
+  String *str,
+  Field *field,
+  SPIDER_DB_ROW row,
+  ulong *length
+);
+
+int spider_db_udf_copy_rows(
+  String *str,
+  TABLE *table,
+  SPIDER_DB_RESULT *result,
+  ulong **last_row_pos,
+  ulong **last_lengths
+);
+
+int spider_db_udf_copy_tables(
+  SPIDER_COPY_TABLES *copy_tables,
+  ha_spider *spider,
+  TABLE *table
 );

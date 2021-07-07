@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2010 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -32,7 +32,6 @@ TABLE *spider_open_sys_table(
   bool need_lock,
   int *error_num
 ) {
-  int res;
   TABLE *table;
   TABLE_SHARE *table_share;
   TABLE_LIST tables;
@@ -432,13 +431,13 @@ void spider_store_tables_name(
   const char *ptr_db, *ptr_table;
   my_ptrdiff_t ptr_diff_db, ptr_diff_table;
   DBUG_ENTER("spider_store_tables_name");
-  if (name[0] == '.' && name[1] == '/')
+  if (name[0] == FN_CURLIB && name[1] == FN_LIBCHAR)
   {
-    ptr_db = strchr(name, '/');
+    ptr_db = strchr(name, FN_LIBCHAR);
     ptr_db++;
     ptr_diff_db = PTR_BYTE_DIFF(ptr_db, name);
     DBUG_PRINT("info",("spider ptr_diff_db = %ld", ptr_diff_db));
-    ptr_table = strchr(ptr_db, '/');
+    ptr_table = strchr(ptr_db, FN_LIBCHAR);
     ptr_table++;
     ptr_diff_table = PTR_BYTE_DIFF(ptr_table, ptr_db);
     DBUG_PRINT("info",("spider ptr_diff_table = %ld", ptr_diff_table));
@@ -458,6 +457,29 @@ void spider_store_tables_name(
   table->field[1]->store(
     ptr_table,
     name_length - ptr_diff_db - ptr_diff_table,
+    system_charset_info);
+  DBUG_PRINT("info",("spider field[1]->null_bit = %d",
+    table->field[1]->null_bit));
+  DBUG_VOID_RETURN;
+}
+
+void spider_store_db_and_table_name(
+  TABLE *table,
+  const char *db_name,
+  const uint db_name_length,
+  const char *table_name,
+  const uint table_name_length
+) {
+  DBUG_ENTER("spider_store_db_and_table_name");
+  table->field[0]->store(
+    db_name,
+    db_name_length,
+    system_charset_info);
+  DBUG_PRINT("info",("spider field[0]->null_bit = %d",
+    table->field[0]->null_bit));
+  table->field[1]->store(
+    table_name,
+    table_name_length,
     system_charset_info);
   DBUG_PRINT("info",("spider field[1]->null_bit = %d",
     table->field[1]->null_bit));
@@ -1095,7 +1117,7 @@ int spider_delete_tables(
   {
     spider_store_tables_link_idx(table, roop_count);
     if ((error_num = spider_check_sys_table(table, table_key)))
-      DBUG_RETURN(0);
+      break;
     else {
       if ((error_num = table->file->ha_delete_row(table->record[0])))
       {
@@ -1552,6 +1574,22 @@ int spider_get_sys_tables_link_status(
     share->link_statuses[link_idx] = 1;
   DBUG_PRINT("info",("spider link_statuses[%d]=%d",
     link_idx, share->link_statuses[link_idx]));
+  DBUG_RETURN(error_num);
+}
+
+int spider_get_sys_tables_link_idx(
+  TABLE *table,
+  int *link_idx,
+  MEM_ROOT *mem_root
+) {
+  char *ptr;
+  int error_num = 0;
+  DBUG_ENTER("spider_get_sys_tables_link_status");
+  if ((ptr = get_field(mem_root, table->field[2])))
+    *link_idx = my_strtoll10(ptr, (char**) NULL, &error_num);
+  else
+    *link_idx = 1;
+  DBUG_PRINT("info",("spider link_idx=%d", *link_idx));
   DBUG_RETURN(error_num);
 }
 
