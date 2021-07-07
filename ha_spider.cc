@@ -825,7 +825,6 @@ int ha_spider::index_init(
   bool sorted
 ) {
   int error_num, roop_count, lock_mode;
-  THD *thd = trx->thd;
   DBUG_ENTER("ha_spider::index_init");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider idx=%u", idx));
@@ -920,6 +919,7 @@ int ha_spider::index_read_map(
   }
 #endif
   result_list.finish_flg = FALSE;
+  result_list.record_num = 0;
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -1134,6 +1134,7 @@ int ha_spider::index_read_last_map(
   start_key.flag = HA_READ_KEY_EXACT;
   result_list.sql.length(0);
   result_list.finish_flg = FALSE;
+  result_list.record_num = 0;
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -1363,6 +1364,7 @@ int ha_spider::index_first(
   if (!result_list.sql.length())
   {
     result_list.finish_flg = FALSE;
+    result_list.record_num = 0;
     if (keyread)
       result_list.keyread = TRUE;
     else
@@ -1574,6 +1576,7 @@ int ha_spider::index_last(
   if (!result_list.sql.length())
   {
     result_list.finish_flg = FALSE;
+    result_list.record_num = 0;
     if (keyread)
       result_list.keyread = TRUE;
     else
@@ -1802,6 +1805,7 @@ int ha_spider::read_range_first(
   DBUG_PRINT("info",("spider this=%x", this));
   result_list.sql.length(0);
   result_list.finish_flg = FALSE;
+  result_list.record_num = 0;
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -2028,6 +2032,7 @@ int ha_spider::read_multi_range_first(
     DBUG_RETURN(error_num);
 
   result_list.finish_flg = FALSE;
+  result_list.record_num = 0;
   result_list.sql.length(0);
   result_list.desc_flg = FALSE;
   result_list.sorted = sorted;
@@ -2234,6 +2239,7 @@ int ha_spider::read_multi_range_first(
         {
           result_list.finish_flg = FALSE;
           result_list.current->finish_flg = FALSE;
+          result_list.record_num = 0;
           if (result_list.current == result_list.first)
             result_list.current = NULL;
           else
@@ -2493,6 +2499,7 @@ int ha_spider::read_multi_range_next(
       DBUG_RETURN(error_num);
     result_list.finish_flg = FALSE;
     result_list.current->finish_flg = FALSE;
+    result_list.record_num = 0;
     for (
       ;
       multi_range_curr < multi_range_end;
@@ -2677,6 +2684,7 @@ int ha_spider::read_multi_range_next(
         {
           result_list.finish_flg = FALSE;
           result_list.current->finish_flg = FALSE;
+          result_list.record_num = 0;
           result_list.current = result_list.current->prev;
         } else
           DBUG_RETURN(error_num);
@@ -2706,7 +2714,6 @@ int ha_spider::rnd_init(
   bool scan
 ) {
   int error_num, roop_count, lock_mode;
-  THD *thd = trx->thd;
   DBUG_ENTER("ha_spider::rnd_init");
   DBUG_PRINT("info",("spider this=%x", this));
   if (result_list.lock_type == F_WRLCK)
@@ -2824,6 +2831,7 @@ int ha_spider::rnd_next(
   if (rnd_scan_and_first)
   {
     result_list.finish_flg = FALSE;
+    result_list.record_num = 0;
     if (
       (error_num = spider_db_append_select(this)) ||
       (error_num = spider_db_append_select_columns(this))

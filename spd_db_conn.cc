@@ -2292,20 +2292,25 @@ int spider_db_append_key_where(
   int key_count;
   uint length;
   uint store_length;
-  const uchar *ptr;
-  const key_range *use_key;
+  const uchar *ptr, *another_ptr;
+  const key_range *use_key, *another_key;
   KEY_PART_INFO *key_part;
   Field *field;
+  bool use_both = TRUE, key_eq, set_order = FALSE;
   DBUG_ENTER("spider_db_append_key_where");
 
   if (start_key)
     start_key_part_map = start_key->keypart_map & full_key_part_map;
-  else
+  else {
     start_key_part_map = 0;
+    use_both = FALSE;
+  }
   if (end_key)
     end_key_part_map = end_key->keypart_map & full_key_part_map;
-  else
+  else {
     end_key_part_map = 0;
+    use_both = FALSE;
+  }
   DBUG_PRINT("info", ("spider key_info->key_parts=%lu", key_info->key_parts));
   DBUG_PRINT("info", ("spider full_key_part_map=%lu", full_key_part_map));
   DBUG_PRINT("info", ("spider start_key_part_map=%lu", start_key_part_map));
@@ -2350,9 +2355,11 @@ int spider_db_append_key_where(
   else if (start_key_part_map >= end_key_part_map)
   {
     use_key = start_key;
+    another_key = end_key;
     tgt_key_part_map = start_key_part_map;
   } else {
     use_key = end_key;
+    another_key = start_key;
     tgt_key_part_map = end_key_part_map;
   }
   DBUG_PRINT("info", ("spider tgt_key_part_map=%lu", tgt_key_part_map));
@@ -2365,147 +2372,205 @@ int spider_db_append_key_where(
     key_part = key_info->key_part,
     store_length = key_part->store_length,
     length = 0,
-    key_count = 0,
-    ptr = use_key->key;
-    tgt_key_part_map > 1;
+    key_count = 0;
+    tgt_key_part_map;
     length += store_length,
-    ptr = use_key->key + length,
     tgt_key_part_map >>= 1,
+    start_key_part_map >>= 1,
+    end_key_part_map >>= 1,
     key_part++,
     key_count++,
     store_length = key_part->store_length
   ) {
     field = key_part->field;
     key_name_length = share->column_name_str[field->field_index].length();
-    if (key_part->null_bit && *ptr++)
+    ptr = use_key->key + length;
+    if (use_both)
     {
-      if (str->reserve(SPIDER_SQL_IS_NULL_LEN + key_name_length +
-        SPIDER_SQL_AND_LEN))
-        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-      spider_db_append_column_name(share, str, field->field_index);
-      str->q_append(SPIDER_SQL_IS_NULL_STR,
-        SPIDER_SQL_IS_NULL_LEN);
-    } else {
-      if (str->reserve(store_length + key_name_length +
-        SPIDER_SQL_EQUAL_LEN + SPIDER_SQL_AND_LEN))
-        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-      spider_db_append_column_name(share, str, field->field_index);
-      str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
-      if (spider_db_append_column_value(share, str, field, ptr) ||
-        str->reserve(SPIDER_SQL_AND_LEN))
-        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    }
-    str->q_append(SPIDER_SQL_AND_STR,
-      SPIDER_SQL_AND_LEN);
-  }
-
-  /* last one */
-  field = key_part->field;
-  key_name_length = share->column_name_str[field->field_index].length();
-  result_list->key_order = key_count;
-  if (start_key_part_map >= end_key_part_map)
-  {
-    ptr = start_key->key + length;
-    if ((error_num = spider_db_append_null(share, str, key_part,
-      start_key, &ptr)))
-    {
-      if (error_num > 0)
-        DBUG_RETURN(error_num);
-    } else {
-      DBUG_PRINT("info", ("spider start_key->flag=%d", start_key->flag));
-      switch (start_key->flag)
-      {
-        case HA_READ_KEY_EXACT:
-          if (str->reserve(store_length + key_name_length +
-            SPIDER_SQL_EQUAL_LEN))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          spider_db_append_column_name(share, str, field->field_index);
-          str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
-          if (spider_db_append_column_value(share, str, field, ptr))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          result_list->key_order++;
-          break;
-        case HA_READ_AFTER_KEY:
-          if (str->reserve(store_length + key_name_length +
-            SPIDER_SQL_GT_LEN))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          spider_db_append_column_name(share, str, field->field_index);
-          str->q_append(SPIDER_SQL_GT_STR, SPIDER_SQL_GT_LEN);
-          if (spider_db_append_column_value(share, str, field, ptr))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          break;
-        case HA_READ_BEFORE_KEY:
-          if (str->reserve(store_length + key_name_length +
-            SPIDER_SQL_LT_LEN))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          spider_db_append_column_name(share, str, field->field_index);
-          str->q_append(SPIDER_SQL_LT_STR, SPIDER_SQL_LT_LEN);
-          if (spider_db_append_column_value(share, str, field, ptr))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          result_list->desc_flg = TRUE;
-          break;
-        case HA_READ_PREFIX_LAST_OR_PREV:
-          if (str->reserve(store_length + key_name_length +
-            SPIDER_SQL_LTEQUAL_LEN))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          spider_db_append_column_name(share, str, field->field_index);
-          str->q_append(SPIDER_SQL_LTEQUAL_STR, SPIDER_SQL_LTEQUAL_LEN);
-          if (spider_db_append_column_value(share, str, field, ptr))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          result_list->desc_flg = TRUE;
-          break;
-        default:
-          if (str->reserve(store_length + key_name_length +
-            SPIDER_SQL_GTEQUAL_LEN))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          spider_db_append_column_name(share, str, field->field_index);
-          str->q_append(SPIDER_SQL_GTEQUAL_STR, SPIDER_SQL_GTEQUAL_LEN);
-          if (spider_db_append_column_value(share, str, field, ptr))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          break;
+      another_ptr = another_key->key + length;
+      if (!memcmp(ptr, another_ptr, store_length))
+        key_eq = TRUE;
+      else {
+        key_eq = FALSE;
+        DBUG_PRINT("info", ("spider *another_ptr=%u", *another_ptr));
+        DBUG_PRINT("info", ("spider memcmp=%d",
+          memcmp(ptr, another_ptr, store_length)));
       }
-    }
-  }
-  if (start_key_part_map == end_key_part_map)
-  {
-    if (str->reserve(SPIDER_SQL_AND_LEN))
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    str->q_append(SPIDER_SQL_AND_STR,
-      SPIDER_SQL_AND_LEN);
-  }
-  if (end_key_part_map >= start_key_part_map)
-  {
-    ptr = end_key->key + length;
-    if ((error_num = spider_db_append_null(share, str, key_part,
-      end_key, &ptr)))
-    {
-      if (error_num > 0)
-        DBUG_RETURN(error_num);
     } else {
-      DBUG_PRINT("info", ("spider end_key->flag=%d", end_key->flag));
-      switch (end_key->flag)
-      {
-        case HA_READ_BEFORE_KEY:
-          if (str->reserve(store_length + key_name_length +
-            SPIDER_SQL_LT_LEN))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          spider_db_append_column_name(share, str, field->field_index);
-          str->q_append(SPIDER_SQL_LT_STR, SPIDER_SQL_LT_LEN);
-          if (spider_db_append_column_value(share, str, field, ptr))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          break;
-        default:
-          if (str->reserve(store_length + key_name_length +
-            SPIDER_SQL_LTEQUAL_LEN))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          spider_db_append_column_name(share, str, field->field_index);
-          str->q_append(SPIDER_SQL_LTEQUAL_STR, SPIDER_SQL_LTEQUAL_LEN);
-          if (spider_db_append_column_value(share, str, field, ptr))
-            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-          break;
-      }
+      if (tgt_key_part_map > 1)
+        key_eq = TRUE;
+      else
+        key_eq = FALSE;
     }
+    if (
+      (key_eq && use_key == start_key) ||
+      (!key_eq && start_key_part_map)
+    ) {
+      ptr = start_key->key + length;
+      if ((error_num = spider_db_append_null(share, str, key_part,
+        start_key, &ptr)))
+      {
+        if (error_num > 0)
+          DBUG_RETURN(error_num);
+      } else if (key_eq)
+      {
+        DBUG_PRINT("info", ("spider key_eq"));
+        if (str->reserve(store_length + key_name_length +
+          SPIDER_SQL_EQUAL_LEN + SPIDER_SQL_AND_LEN))
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        spider_db_append_column_name(share, str, field->field_index);
+        str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
+        if (spider_db_append_column_value(share, str, field, ptr))
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      } else {
+        DBUG_PRINT("info", ("spider start_key->flag=%d", start_key->flag));
+        switch (start_key->flag)
+        {
+          case HA_READ_KEY_EXACT:
+            if (str->reserve(store_length + key_name_length +
+              SPIDER_SQL_EQUAL_LEN))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            spider_db_append_column_name(share, str, field->field_index);
+            str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
+            if (spider_db_append_column_value(share, str, field, ptr))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            break;
+          case HA_READ_AFTER_KEY:
+            if (str->reserve(store_length + key_name_length +
+              SPIDER_SQL_GT_LEN))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            spider_db_append_column_name(share, str, field->field_index);
+            str->q_append(SPIDER_SQL_GT_STR, SPIDER_SQL_GT_LEN);
+            if (spider_db_append_column_value(share, str, field, ptr))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            if (use_both)
+              start_key_part_map = 0;
+            if (!set_order)
+            {
+              result_list->key_order = key_count;
+              set_order = TRUE;
+            }
+            break;
+          case HA_READ_BEFORE_KEY:
+            if (str->reserve(store_length + key_name_length +
+              SPIDER_SQL_LT_LEN))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            spider_db_append_column_name(share, str, field->field_index);
+            str->q_append(SPIDER_SQL_LT_STR, SPIDER_SQL_LT_LEN);
+            if (spider_db_append_column_value(share, str, field, ptr))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            result_list->desc_flg = TRUE;
+            if (use_both)
+              start_key_part_map = 0;
+            if (!set_order)
+            {
+              result_list->key_order = key_count;
+              set_order = TRUE;
+            }
+            break;
+          case HA_READ_PREFIX_LAST_OR_PREV:
+            if (str->reserve(store_length + key_name_length +
+              SPIDER_SQL_LTEQUAL_LEN))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            spider_db_append_column_name(share, str, field->field_index);
+            str->q_append(SPIDER_SQL_LTEQUAL_STR, SPIDER_SQL_LTEQUAL_LEN);
+            if (spider_db_append_column_value(share, str, field, ptr))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            result_list->desc_flg = TRUE;
+            if (!set_order)
+            {
+              result_list->key_order = key_count;
+              set_order = TRUE;
+            }
+            break;
+          default:
+            if (str->reserve(store_length + key_name_length +
+              SPIDER_SQL_GTEQUAL_LEN))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            spider_db_append_column_name(share, str, field->field_index);
+            str->q_append(SPIDER_SQL_GTEQUAL_STR, SPIDER_SQL_GTEQUAL_LEN);
+            if (spider_db_append_column_value(share, str, field, ptr))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            if (!set_order)
+            {
+              result_list->key_order = key_count;
+              set_order = TRUE;
+            }
+            break;
+        }
+      }
+      if (str->reserve(SPIDER_SQL_AND_LEN))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      str->q_append(SPIDER_SQL_AND_STR,
+        SPIDER_SQL_AND_LEN);
+    }
+    if (
+      (key_eq && use_key == end_key) ||
+      (!key_eq && end_key_part_map)
+    ) {
+      ptr = end_key->key + length;
+      if ((error_num = spider_db_append_null(share, str, key_part,
+        end_key, &ptr)))
+      {
+        if (error_num > 0)
+          DBUG_RETURN(error_num);
+      } else if (key_eq)
+      {
+        DBUG_PRINT("info", ("spider key_eq"));
+        if (str->reserve(store_length + key_name_length +
+          SPIDER_SQL_EQUAL_LEN + SPIDER_SQL_AND_LEN))
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        spider_db_append_column_name(share, str, field->field_index);
+        str->q_append(SPIDER_SQL_EQUAL_STR, SPIDER_SQL_EQUAL_LEN);
+        if (spider_db_append_column_value(share, str, field, ptr))
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      } else {
+        DBUG_PRINT("info", ("spider end_key->flag=%d", end_key->flag));
+        switch (end_key->flag)
+        {
+          case HA_READ_BEFORE_KEY:
+            if (str->reserve(store_length + key_name_length +
+              SPIDER_SQL_LT_LEN))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            spider_db_append_column_name(share, str, field->field_index);
+            str->q_append(SPIDER_SQL_LT_STR, SPIDER_SQL_LT_LEN);
+            if (spider_db_append_column_value(share, str, field, ptr))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            if (use_both)
+              end_key_part_map = 0;
+            if (!set_order)
+            {
+              result_list->key_order = key_count;
+              set_order = TRUE;
+            }
+            break;
+          default:
+            if (str->reserve(store_length + key_name_length +
+              SPIDER_SQL_LTEQUAL_LEN))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            spider_db_append_column_name(share, str, field->field_index);
+            str->q_append(SPIDER_SQL_LTEQUAL_STR, SPIDER_SQL_LTEQUAL_LEN);
+            if (spider_db_append_column_value(share, str, field, ptr))
+              DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+            if (!set_order)
+            {
+              result_list->key_order = key_count;
+              set_order = TRUE;
+            }
+            break;
+        }
+      }
+      if (str->reserve(SPIDER_SQL_AND_LEN))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      str->q_append(SPIDER_SQL_AND_STR,
+        SPIDER_SQL_AND_LEN);
+    }
+    if (use_both && (!start_key_part_map || !end_key_part_map))
+      break;
   }
+  str->length(str->length() - SPIDER_SQL_AND_LEN);
+  if (!set_order)
+    result_list->key_order = key_count;
 
 end:
   /* use condition */
