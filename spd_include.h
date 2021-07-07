@@ -269,6 +269,7 @@ typedef struct st_spider_share
   int                multi_split_read;
   int                max_order;
   int                semi_table_lock;
+  int                semi_table_lock_conn;
   int                selupd_lock_mode;
   int                query_cache;
   int                internal_delayed;

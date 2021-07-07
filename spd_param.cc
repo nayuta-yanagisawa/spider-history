@@ -15,11 +15,18 @@
 
 #define MYSQL_SERVER 1
 #include "mysql_priv.h"
+#include <my_getopt.h>
 #include <mysql/plugin.h>
+#include "spd_err.h"
 #include "spd_db_include.h"
 #include "spd_include.h"
 #include "ha_spider.h"
 #include "spd_table.h"
+#include "spd_trx.h"
+
+typedef DECLARE_MYSQL_THDVAR_SIMPLE(thdvar_int_t, int);
+extern bool throw_bounds_warning(THD *thd, bool fixed, bool unsignd,
+  const char *name, long long val);
 
 my_bool spider_support_xa;
 uint spider_table_init_error_interval;
@@ -310,6 +317,40 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+static int spider_param_semi_table_lock_check(
+  MYSQL_THD thd,
+  struct st_mysql_sys_var *var,
+  void *save,
+  struct st_mysql_value *value
+) {
+  int error_num;
+  SPIDER_TRX *trx;
+  my_bool fixed;
+  long long tmp;
+  struct my_option options;
+  DBUG_ENTER("spider_param_semi_table_lock_check");
+  if (!(trx = spider_get_trx((THD *) thd, &error_num)))
+    DBUG_RETURN(error_num);
+  if (trx->locked_connections)
+  {
+    my_message(ER_SPIDER_ALTER_BEFORE_UNLOCK_NUM,
+      ER_SPIDER_ALTER_BEFORE_UNLOCK_STR, MYF(0));
+    DBUG_RETURN(ER_SPIDER_ALTER_BEFORE_UNLOCK_NUM);
+  }
+  value->val_int(value, &tmp);
+  options.sub_size = 0;
+  options.var_type = GET_INT;
+  options.def_value = ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->def_val;
+  options.min_value = ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->min_val;
+  options.max_value = ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->max_val;
+  options.block_size =
+    (long) ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->blk_sz;
+  options.arg_type = REQUIRED_ARG;
+  *((int *) save) = (int) getopt_ll_limit_value(tmp, &options, &fixed);
+  DBUG_RETURN(throw_bounds_warning(thd, fixed, FALSE,
+    ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->name, (long long) tmp));
+}
+
 /*
   0 :off
   1 :on
@@ -318,10 +359,61 @@ MYSQL_THDVAR_INT(
   semi_table_lock, /* name */
   PLUGIN_VAR_RQCMDARG, /* opt */
   "Table lock during execute a sql", /* comment */
-  NULL, /* check */
+  &spider_param_semi_table_lock_check, /* check */
   NULL, /* update */
-  0, /* def */
+  1, /* def */
   0, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
+static int spider_param_semi_table_lock_connection_check(
+  MYSQL_THD thd,
+  struct st_mysql_sys_var *var,
+  void *save,
+  struct st_mysql_value *value
+) {
+  int error_num;
+  SPIDER_TRX *trx;
+  my_bool fixed;
+  long long tmp;
+  struct my_option options;
+  DBUG_ENTER("spider_param_semi_table_lock_connection_check");
+  if (!(trx = spider_get_trx((THD *) thd, &error_num)))
+    DBUG_RETURN(error_num);
+  if (trx->locked_connections)
+  {
+    my_message(ER_SPIDER_ALTER_BEFORE_UNLOCK_NUM,
+      ER_SPIDER_ALTER_BEFORE_UNLOCK_STR, MYF(0));
+    DBUG_RETURN(ER_SPIDER_ALTER_BEFORE_UNLOCK_NUM);
+  }
+  value->val_int(value, &tmp);
+  options.sub_size = 0;
+  options.var_type = GET_INT;
+  options.def_value = ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->def_val;
+  options.min_value = ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->min_val;
+  options.max_value = ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->max_val;
+  options.block_size =
+    (long) ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->blk_sz;
+  options.arg_type = REQUIRED_ARG;
+  *((int *) save) = (int) getopt_ll_limit_value(tmp, &options, &fixed);
+  DBUG_RETURN(throw_bounds_warning(thd, fixed, FALSE,
+    ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->name, (long long) tmp));
+}
+
+/*
+ -1 :off
+  0 :use same connection
+  1 :use different connection
+ */
+MYSQL_THDVAR_INT(
+  semi_table_lock_connection, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Use different connection if semi_table_lock is enabled", /* comment */
+  &spider_param_semi_table_lock_connection_check, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
   1, /* max */
   0 /* blk */
 );
@@ -945,6 +1037,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(max_order),
   MYSQL_SYSVAR(semi_trx_isolation),
   MYSQL_SYSVAR(semi_table_lock),
+  MYSQL_SYSVAR(semi_table_lock_connection),
   MYSQL_SYSVAR(block_size),
   MYSQL_SYSVAR(selupd_lock_mode),
   MYSQL_SYSVAR(sync_autocommit),
@@ -1004,7 +1097,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0100,
+  0x0200,
   NULL,
   spider_system_variables,
   NULL

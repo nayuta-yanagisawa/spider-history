@@ -95,6 +95,7 @@ void spider_free_conn_from_trx(
       THDVAR(trx->thd, conn_recycle_mode) == 1
     ) {
       /* conn_recycle_mode == 1 */
+      *conn->conn_key = '0';
       pthread_mutex_lock(&spider_conn_mutex);
       if (my_hash_insert(&spider_open_connections, (uchar*) conn))
       {
@@ -198,6 +199,7 @@ error_alloc_conn:
 
 SPIDER_CONN *spider_get_conn(
   const SPIDER_SHARE *share,
+  char *conn_key,
   SPIDER_TRX *trx,
   ha_spider *spider,
   bool another,
@@ -210,10 +212,10 @@ SPIDER_CONN *spider_get_conn(
   if (
     (another &&
       !(conn = (SPIDER_CONN*) hash_search(&trx->trx_another_conn_hash,
-        (uchar*) share->conn_key, share->conn_key_length))) ||
+        (uchar*) conn_key, share->conn_key_length))) ||
     (!another &&
       !(conn = (SPIDER_CONN*) hash_search(&trx->trx_conn_hash,
-        (uchar*) share->conn_key, share->conn_key_length)))
+        (uchar*) conn_key, share->conn_key_length)))
   ) {
     if (
       !trx->thd ||
@@ -229,6 +231,7 @@ SPIDER_CONN *spider_get_conn(
         DBUG_PRINT("info",("spider create new conn"));
         if(!(conn = spider_create_conn(share, error_num)))
           goto error;
+        *conn->conn_key = *conn_key;
         if (spider)
           spider->conn = conn;
       } else {
@@ -243,6 +246,7 @@ SPIDER_CONN *spider_get_conn(
       /* conn_recycle_strict = 0 and conn_recycle_mode = 0 or 2 */
       if(!(conn = spider_create_conn(share, error_num)))
         goto error;
+      *conn->conn_key = *conn_key;
       if (spider)
         spider->conn = conn;
     }
@@ -899,8 +903,8 @@ void *spider_bg_sts_action(
       if (!conn)
       {
         pthread_mutex_lock(&spider_global_trx_mutex);
-        spider.conn = conn = spider_get_conn(share, spider_global_trx,
-          &spider, FALSE, FALSE, &error_num);
+        spider.conn = conn = spider_get_conn(share, share->conn_key,
+          spider_global_trx, &spider, FALSE, FALSE, &error_num);
         pthread_mutex_unlock(&spider_global_trx_mutex);
       }
       if (conn)
@@ -1023,8 +1027,8 @@ void *spider_bg_crd_action(
       if (!conn)
       {
         pthread_mutex_lock(&spider_global_trx_mutex);
-        spider.conn = conn = spider_get_conn(share, spider_global_trx,
-          &spider, FALSE, FALSE, &error_num);
+        spider.conn = conn = spider_get_conn(share, share->conn_key,
+          spider_global_trx, &spider, FALSE, FALSE, &error_num);
         pthread_mutex_unlock(&spider_global_trx_mutex);
       }
       if (conn)

@@ -33,6 +33,7 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(multi_split_read, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(max_order, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_trx_isolation, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_table_lock, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(semi_table_lock_connection, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(block_size, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(selupd_lock_mode, int);
 extern DECLARE_MYSQL_THDVAR_BASIC(sync_autocommit, char);

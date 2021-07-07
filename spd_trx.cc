@@ -1609,7 +1609,7 @@ int spider_internal_xa_commit_by_xid(
 
     if (
       (!(conn = spider_get_conn(
-      &tmp_share, trx, NULL, FALSE, FALSE, &error_num)) ||
+      &tmp_share, tmp_share.conn_key, trx, NULL, FALSE, FALSE, &error_num)) ||
         (error_num = spider_db_xa_commit(conn, xid))) &&
       (force_commit == 0 ||
         (force_commit == 1 && error_num != ER_XAER_NOTA))
@@ -1812,7 +1812,7 @@ int spider_internal_xa_rollback_by_xid(
 
     if (
       (!(conn = spider_get_conn(
-      &tmp_share, trx, NULL, FALSE, FALSE, &error_num)) ||
+      &tmp_share, tmp_share.conn_key, trx, NULL, FALSE, FALSE, &error_num)) ||
         (error_num = spider_db_xa_rollback(conn, xid))) &&
       (force_commit == 0 ||
         (force_commit == 1 && error_num != ER_XAER_NOTA))
@@ -2214,23 +2214,41 @@ int spider_check_trx_and_get_conn(
   int error_num;
   SPIDER_TRX *trx;
   SPIDER_CONN *conn = spider->conn;
+  char first_byte;
+  int semi_table_lock_conn = THDVAR(thd, semi_table_lock_connection) == -1 ?
+    spider->share->semi_table_lock_conn :
+    THDVAR(thd, semi_table_lock_connection);
   DBUG_ENTER("spider_check_trx_and_get_conn");
   if (!(trx = spider_get_trx(thd, &error_num)))
   {
     DBUG_PRINT("info",("spider get trx error"));
     DBUG_RETURN(error_num);
   }
+  if (semi_table_lock_conn)
+    first_byte = '0' +
+      (spider->share->semi_table_lock & THDVAR(thd, semi_table_lock));
+  else
+    first_byte = '0';
+  DBUG_PRINT("info",("spider semi_table_lock_conn = %d",
+    semi_table_lock_conn));
+  DBUG_PRINT("info",("spider semi_table_lock = %d",
+    (spider->share->semi_table_lock & THDVAR(thd, semi_table_lock))));
+  DBUG_PRINT("info",("spider first_byte = %d", first_byte));
   if (trx->spider_thread_id != spider->spider_thread_id ||
-    trx->trx_conn_adjustment != spider->trx_conn_adjustment)
-  {
-    DBUG_PRINT("info",(trx != spider->trx ? "spider change thd" :
+    trx->trx_conn_adjustment != spider->trx_conn_adjustment ||
+    first_byte != *spider->conn_key
+  ) {
+    DBUG_PRINT("info",(first_byte != *spider->conn_key ?
+      "spider change conn type" : trx != spider->trx ? "spider change thd" :
       "spider next trx"));
     spider->trx = trx;
     spider->spider_thread_id = trx->spider_thread_id;
     spider->trx_conn_adjustment = trx->trx_conn_adjustment;
+    *spider->conn_key = first_byte;
     if (
       !(spider->conn = conn =
-        spider_get_conn(spider->share, trx, spider, FALSE, TRUE, &error_num))
+        spider_get_conn(spider->share, spider->conn_key, trx, spider,
+          FALSE, TRUE, &error_num))
     ) {
       DBUG_PRINT("info",("spider get conn error"));
       DBUG_RETURN(error_num);
@@ -2240,7 +2258,8 @@ int spider_check_trx_and_get_conn(
     DBUG_PRINT("info",("spider get conn"));
     if (
       !(spider->conn = conn =
-        spider_get_conn(spider->share, trx, spider, FALSE, TRUE, &error_num))
+        spider_get_conn(spider->share, spider->conn_key, trx, spider,
+          FALSE, TRUE, &error_num))
     ) {
       DBUG_PRINT("info",("spider get conn error"));
       DBUG_RETURN(error_num);

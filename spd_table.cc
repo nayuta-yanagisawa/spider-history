@@ -584,6 +584,7 @@ int spider_parse_connect_info(
   share->multi_split_read = -1;
   share->max_order = -1;
   share->semi_table_lock = -1;
+  share->semi_table_lock_conn = -1;
   share->selupd_lock_mode = -1;
   share->query_cache = -1;
   share->internal_delayed = -1;
@@ -753,6 +754,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT_WITH_MAX("scm", select_column_mode, 0, 1);
           SPIDER_PARAM_INT("srt", scan_rate, 0);
           SPIDER_PARAM_INT_WITH_MAX("slm", selupd_lock_mode, 0, 2);
+          SPIDER_PARAM_INT_WITH_MAX("stc", semi_table_lock_conn, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX("stl", semi_table_lock, 0, 1);
           SPIDER_PARAM_STR("srv", server_name);
           SPIDER_PARAM_LONGLONG("srd", split_read, 0);
@@ -916,6 +918,13 @@ int spider_parse_connect_info(
         case 23:
           SPIDER_PARAM_INT_WITH_MAX(
             "internal_optimize_local", internal_optimize_local, 0, 1);
+          error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
+          my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
+            MYF(0), tmp_ptr);
+          goto error;
+        case 26:
+          SPIDER_PARAM_INT_WITH_MAX(
+            "semi_table_lock_connection", semi_table_lock_conn, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1208,6 +1217,8 @@ int spider_set_connect_info_default(
     share->max_order = 32767;
   if (share->semi_table_lock == -1)
     share->semi_table_lock = 0;
+  if (share->semi_table_lock_conn == -1)
+    share->semi_table_lock_conn = 1;
   if (share->selupd_lock_mode == -1)
     share->selupd_lock_mode = 1;
   if (share->query_cache == -1)
@@ -1263,7 +1274,8 @@ int spider_create_conn_key(
 
   /* tgt_db not use */
   share->conn_key_length
-    = share->tgt_wrapper_length + 1
+    = 1
+    + share->tgt_wrapper_length + 1
     + share->tgt_host_length + 1
     + 5 + 1
     + share->tgt_socket_length + 1
@@ -1273,8 +1285,9 @@ int spider_create_conn_key(
         my_malloc(share->conn_key_length + 1, MYF(MY_WME | MY_ZEROFILL)))
   )
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  *share->conn_key = '0';
   DBUG_PRINT("info",("spider tgt_wrapper=%s", share->tgt_wrapper));
-  tmp_name = strmov(share->conn_key, share->tgt_wrapper);
+  tmp_name = strmov(share->conn_key + 1, share->tgt_wrapper);
   DBUG_PRINT("info",("spider tgt_host=%s", share->tgt_host));
   tmp_name = strmov(tmp_name + 1, share->tgt_host);
   my_sprintf(port_str, (port_str, "%05ld", share->tgt_port));
@@ -1326,6 +1339,8 @@ SPIDER_SHARE *spider_get_share(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   int crd_sync;
 #endif
+  char first_byte;
+  int semi_table_lock_conn;
   DBUG_ENTER("spider_get_share");
 
   length = (uint) strlen(table_name);
@@ -1450,11 +1465,32 @@ SPIDER_SHARE *spider_get_share(
     share->use_count++;
     pthread_mutex_unlock(&spider_tbl_mutex);
 
+    semi_table_lock_conn = THDVAR(thd, semi_table_lock_connection) == -1 ?
+      share->semi_table_lock_conn : THDVAR(thd, semi_table_lock_connection);
+    if (semi_table_lock_conn)
+      first_byte = '0' +
+        (share->semi_table_lock & THDVAR(thd, semi_table_lock));
+    else
+      first_byte = '0';
+
     spider->share = share;
+    if (!(spider->conn_key = (char *) my_malloc(share->conn_key_length + 1,
+      MYF(MY_WME | MY_ZEROFILL))))
+    {
+      share->init_error = HA_ERR_OUT_OF_MEM;
+      share->init_error_time = (time_t) time((time_t*) 0);
+      share->init = TRUE;
+      spider_free_share(share);
+      goto error_but_no_delete;
+    }
+    memcpy(spider->conn_key, share->conn_key, share->conn_key_length);
+    *spider->conn_key = first_byte;
+
     if (
       !(spider->trx = spider_get_trx(thd, error_num)) ||
       !(spider->conn =
-        spider_get_conn(share, spider->trx, spider, FALSE, TRUE, error_num))
+        spider_get_conn(share, spider->conn_key, spider->trx, spider,
+          FALSE, TRUE, error_num))
     ) {
       share->init_error = error_num;
       share->init_error_time = (time_t) time((time_t*) 0);
@@ -1549,11 +1585,29 @@ SPIDER_SHARE *spider_get_share(
       sleep(100);
     }
 
+    semi_table_lock_conn = THDVAR(thd, semi_table_lock_connection) == -1 ?
+      share->semi_table_lock_conn : THDVAR(thd, semi_table_lock_connection);
+    if (semi_table_lock_conn)
+      first_byte = '0' +
+        (share->semi_table_lock & THDVAR(thd, semi_table_lock));
+    else
+      first_byte = '0';
+
     spider->share = share;
+    if (!(spider->conn_key = (char *) my_malloc(share->conn_key_length + 1,
+      MYF(MY_WME | MY_ZEROFILL))))
+    {
+      spider_free_share(share);
+      goto error_but_no_delete;
+    }
+    memcpy(spider->conn_key, share->conn_key, share->conn_key_length);
+    *spider->conn_key = first_byte;
+
     if (
       !(spider->trx = spider_get_trx(thd, error_num)) ||
       !(spider->conn =
-        spider_get_conn(share, spider->trx, spider, FALSE, TRUE, error_num))
+        spider_get_conn(share, spider->conn_key, spider->trx, spider,
+          FALSE, TRUE, error_num))
     ) {
       spider_free_share(share);
       goto error_but_no_delete;
@@ -1897,7 +1951,7 @@ int spider_open_all_tables(
     /* create conn */
     if (
       !(conn = spider_get_conn(
-        &tmp_share, trx, NULL, FALSE, FALSE, &error_num))
+        &tmp_share, tmp_share.conn_key, trx, NULL, FALSE, FALSE, &error_num))
     ) {
       spider_sys_index_end(table_tables);
       spider_close_sys_table(trx->thd, table_tables,
@@ -1940,7 +1994,7 @@ int spider_open_all_tables(
       /* create another conn */
       if (
         (!(conn = spider_get_conn(
-        &tmp_share, trx, spider, TRUE, FALSE, &error_num)))
+        &tmp_share, tmp_share.conn_key, trx, spider, TRUE, FALSE, &error_num)))
       ) {
         my_free(share, MYF(0));
         delete spider;

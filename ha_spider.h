@@ -29,6 +29,7 @@ public:
   SPIDER_TRX         *trx;
   ulonglong          spider_thread_id;
   ulonglong          trx_conn_adjustment;
+  char               *conn_key;
   SPIDER_CONN        *conn;
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;
