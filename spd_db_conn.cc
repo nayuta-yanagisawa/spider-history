@@ -2250,6 +2250,26 @@ int spider_db_append_key_where(
           if (spider_db_append_column_value(share, str, field, ptr))
             DBUG_RETURN(HA_ERR_OUT_OF_MEM);
           break;
+        case HA_READ_BEFORE_KEY:
+          if (str->reserve(store_length + key_name_length +
+            SPIDER_SQL_LT_LEN))
+            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+          spider_db_append_column_name(share, str, field->field_index);
+          str->q_append(SPIDER_SQL_LT_STR, SPIDER_SQL_LT_LEN);
+          if (spider_db_append_column_value(share, str, field, ptr))
+            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+          result_list->desc_flg = TRUE;
+          break;
+        case HA_READ_PREFIX_LAST_OR_PREV:
+          if (str->reserve(store_length + key_name_length +
+            SPIDER_SQL_LTEQUAL_LEN))
+            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+          spider_db_append_column_name(share, str, field->field_index);
+          str->q_append(SPIDER_SQL_LTEQUAL_STR, SPIDER_SQL_LTEQUAL_LEN);
+          if (spider_db_append_column_value(share, str, field, ptr))
+            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+          result_list->desc_flg = TRUE;
+          break;
         default:
           if (str->reserve(store_length + key_name_length +
             SPIDER_SQL_GTEQUAL_LEN))
@@ -3056,18 +3076,18 @@ int spider_db_fetch_minimum_columns(
     field++
   ) {
     DBUG_PRINT("info", ("spider field_index %u", (*field)->field_index));
+    DBUG_PRINT("info", ("spider searched_bitmap %u",
+      spider_bit_is_set(spider->searched_bitmap, (*field)->field_index)));
+    DBUG_PRINT("info", ("spider read_set %u",
+      bitmap_is_set(table->read_set, (*field)->field_index)));
+    DBUG_PRINT("info", ("spider write_set %u",
+      bitmap_is_set(table->write_set, (*field)->field_index)));
     if (spider_bit_is_set(spider->searched_bitmap, (*field)->field_index))
     {
-      DBUG_PRINT("info", ("spider searched_bitmap %u",
-        spider_bit_is_set(spider->searched_bitmap, (*field)->field_index)));
       if ((
         bitmap_is_set(table->read_set, (*field)->field_index) |
         bitmap_is_set(table->write_set, (*field)->field_index)
       )) {
-        DBUG_PRINT("info", ("spider read_set %u",
-          bitmap_is_set(table->read_set, (*field)->field_index)));
-        DBUG_PRINT("info", ("spider write_set %u",
-          bitmap_is_set(table->write_set, (*field)->field_index)));
 #ifndef DBUG_OFF
         my_bitmap_map *tmp_map =
           dbug_tmp_use_all_columns(table, table->write_set);
@@ -6791,12 +6811,26 @@ int spider_db_open_item_ident(
   if (item_ident->cached_field_index != NO_CACHED_FIELD_INDEX)
   {
     DBUG_PRINT("info",("spider use cached_field_index"));
-    if (str->reserve(
-      share->column_name_str[item_ident->cached_field_index].length() +
-      (SPIDER_SQL_NAME_QUOTE_LEN) * 2))
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    spider_db_append_column_name(share, str,
-      item_ident->cached_field_index);
+#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
+    if (spider->set_top_table_fields)
+    {
+      Field *field = spider->top_table_field[item_ident->cached_field_index];
+      if (str->reserve(
+        share->column_name_str[field->field_index].length() +
+        (SPIDER_SQL_NAME_QUOTE_LEN) * 2))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      spider_db_append_column_name(share, str, field->field_index);
+    } else {
+#endif
+      if (str->reserve(
+        share->column_name_str[item_ident->cached_field_index].length() +
+        (SPIDER_SQL_NAME_QUOTE_LEN) * 2))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      spider_db_append_column_name(share, str,
+        item_ident->cached_field_index);
+#ifdef HANDLER_HAS_TOP_TABLE_FIELDS
+    }
+#endif
     DBUG_RETURN(0);
   }
   if (item_ident->field_name)

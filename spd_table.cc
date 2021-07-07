@@ -106,7 +106,7 @@ int spider_get_server(
   int link_idx
 ) {
   MEM_ROOT mem_root;
-  int error_num;
+  int error_num, length;
   FOREIGN_SERVER *server, server_buf;
   DBUG_ENTER("spider_get_server");
   init_alloc_root(&mem_root, 128, 0);
@@ -164,11 +164,11 @@ int spider_get_server(
     DBUG_PRINT("info",("spider tgt_sockets=%s", share->tgt_sockets[link_idx]));
   }
 
-  if (!share->tgt_dbs[link_idx] && server->db)
+  if (!share->tgt_dbs[link_idx] && server->db && (length = strlen(server->db)))
   {
-    share->tgt_dbs_lengths[link_idx] = strlen(server->db);
+    share->tgt_dbs_lengths[link_idx] = length;
     if (!(share->tgt_dbs[link_idx] =
-      spider_create_string(server->db, share->tgt_dbs_lengths[link_idx])))
+      spider_create_string(server->db, length)))
     {
       error_num = HA_ERR_OUT_OF_MEM;
       goto error;

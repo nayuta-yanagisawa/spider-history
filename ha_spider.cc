@@ -4282,31 +4282,6 @@ void ha_spider::set_select_column_mode()
     share->select_column_mode : THDVAR(thd, select_column_mode);
   if (select_column_mode)
   {
-    if (lock_type == F_WRLCK)
-    {
-      if (table_share->primary_key == MAX_KEY)
-      {
-        /* need all columns */
-        for (roop_count = 0; roop_count < table_share->fields; roop_count++)
-          bitmap_set_bit(table->read_set, roop_count);
-      } else {
-        /* need primary key columns */
-        key_info = &table_share->key_info[table_share->primary_key];
-        key_part = key_info->key_part;
-        for (roop_count = 0; roop_count < key_info->key_parts; roop_count++)
-        {
-          field = key_part[roop_count].field;
-          bitmap_set_bit(table->read_set, field->field_index);
-        }
-      }
-#ifndef DBUG_OFF
-      for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
-        roop_count++)
-        DBUG_PRINT("info", ("spider change bitmap is %x",
-          ((uchar *) table->read_set->bitmap)[roop_count]));
-#endif
-    }
-
     for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
       roop_count++)
     {
@@ -4320,6 +4295,30 @@ void ha_spider::set_select_column_mode()
         ((uchar *) table->read_set->bitmap)[roop_count]));
       DBUG_PRINT("info",("spider write_set=%d",
         ((uchar *) table->write_set->bitmap)[roop_count]));
+    }
+    if (result_list.lock_type == F_WRLCK && sql_command != SQLCOM_SELECT)
+    {
+      if (table_share->primary_key == MAX_KEY)
+      {
+        /* need all columns */
+        for (roop_count = 0; roop_count < table_share->fields; roop_count++)
+          spider_set_bit(searched_bitmap, roop_count);
+      } else {
+        /* need primary key columns */
+        key_info = &table_share->key_info[table_share->primary_key];
+        key_part = key_info->key_part;
+        for (roop_count = 0; roop_count < key_info->key_parts; roop_count++)
+        {
+          field = key_part[roop_count].field;
+          spider_set_bit(searched_bitmap, field->field_index);
+        }
+      }
+#ifndef DBUG_OFF
+      for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
+        roop_count++)
+        DBUG_PRINT("info", ("spider change bitmap is %x",
+          searched_bitmap[roop_count]));
+#endif
     }
   }
   DBUG_VOID_RETURN;
