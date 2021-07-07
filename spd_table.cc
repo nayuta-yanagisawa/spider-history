@@ -187,6 +187,8 @@ int spider_free_share_alloc(
     delete share->table_select;
   if (share->key_select)
     delete [] share->key_select;
+  if (share->key_hint)
+    delete [] share->key_hint;
   spider_db_free_show_table_status(share);
   spider_db_free_show_index(share);
   DBUG_RETURN(0);
@@ -241,6 +243,11 @@ void spider_free_tmp_share_alloc(
     my_free(share->conn_key, MYF(0));
     share->conn_key = NULL;
   }
+  if (share->key_hint)
+  {
+    delete [] share->key_hint;
+    share->key_hint = NULL;
+  }
   DBUG_VOID_RETURN;
 }
 
@@ -281,6 +288,7 @@ char *spider_get_string_between_quote(
 #define SPIDER_PARAM_STR(title_name, param_name) \
   if (!strncasecmp(tmp_ptr, title_name, title_length)) \
   { \
+    DBUG_PRINT("info",("spider "title_name" start")); \
     if (!share->param_name) \
     { \
       if ((share->param_name = spider_get_string_between_quote( \
@@ -296,9 +304,40 @@ char *spider_get_string_between_quote(
     } \
     break; \
   }
+#define SPIDER_PARAM_HINT(title_name, param_name, check_length, max_size, append_method) \
+  if (!strncasecmp(tmp_ptr, title_name, check_length)) \
+  { \
+    DBUG_PRINT("info",("spider "title_name" start")); \
+    DBUG_PRINT("info",("spider max_size=%d", max_size)); \
+    int hint_num = atoi(tmp_ptr + check_length); \
+    DBUG_PRINT("info",("spider hint_num=%d", hint_num)); \
+    DBUG_PRINT("info",("spider share->param_name=%x", share->param_name)); \
+    if (share->param_name) \
+    { \
+      if (hint_num < 0 || hint_num >= max_size) \
+      { \
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+          MYF(0), tmp_ptr); \
+        goto error; \
+      } else if (share->param_name[hint_num].length() > 0) \
+        break; \
+      char *hint_str = spider_get_string_between_quote(start_ptr, FALSE); \
+      if ((error_num = append_method(&share->param_name[hint_num], hint_str))) \
+        goto error; \
+      DBUG_PRINT("info",("spider "title_name"[%d]=%s", hint_num, share->param_name[hint_num].ptr())); \
+    } else { \
+      error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+      my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+        MYF(0), tmp_ptr); \
+      goto error; \
+    } \
+    break; \
+  }
 #define SPIDER_PARAM_INT_WITH_MAX(title_name, param_name, min_val, max_val) \
   if (!strncasecmp(tmp_ptr, title_name, title_length)) \
   { \
+    DBUG_PRINT("info",("spider "title_name" start")); \
     if (share->param_name == -1) \
     { \
       if ((tmp_ptr2 = spider_get_string_between_quote( \
@@ -322,6 +361,7 @@ char *spider_get_string_between_quote(
 #define SPIDER_PARAM_INT(title_name, param_name, min_val) \
   if (!strncasecmp(tmp_ptr, title_name, title_length)) \
   { \
+    DBUG_PRINT("info",("spider "title_name" start")); \
     if (share->param_name == -1) \
     { \
       if ((tmp_ptr2 = spider_get_string_between_quote( \
@@ -343,6 +383,7 @@ char *spider_get_string_between_quote(
 #define SPIDER_PARAM_DOUBLE(title_name, param_name, min_val) \
   if (!strncasecmp(tmp_ptr, title_name, title_length)) \
   { \
+    DBUG_PRINT("info",("spider "title_name" start")); \
     if (share->param_name == -1) \
     { \
       if ((tmp_ptr2 = spider_get_string_between_quote( \
@@ -364,6 +405,7 @@ char *spider_get_string_between_quote(
 #define SPIDER_PARAM_LONGLONG(title_name, param_name, min_val) \
   if (!strncasecmp(tmp_ptr, title_name, title_length)) \
   { \
+    DBUG_PRINT("info",("spider "title_name" start")); \
     if (share->param_name == -1) \
     { \
       if ((tmp_ptr2 = spider_get_string_between_quote( \
@@ -554,6 +596,7 @@ int spider_parse_connect_info(
         case 6:
           SPIDER_PARAM_STR("server", server_name);
           SPIDER_PARAM_STR("socket", tgt_socket);
+          SPIDER_PARAM_HINT("idx", key_hint, 3, table->s->keys, spider_db_append_key_hint);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1035,6 +1078,14 @@ SPIDER_SHARE *spider_get_share(
     strmov(share->csname, table->s->table_charset->csname);
     share->cardinality = tmp_cardinality;
 
+    if (table->s->keys > 0 &&
+      !(share->key_hint = new String[table->s->keys])
+    ) {
+      *error_num = HA_ERR_OUT_OF_MEM;
+      goto error_init_hint_string;
+    }
+    DBUG_PRINT("info",("spider share->key_hint=%x", share->key_hint));
+
     if ((*error_num = spider_parse_connect_info(share, table, 0)))
       goto error_parse_connect_string;
 
@@ -1043,8 +1094,9 @@ SPIDER_SHARE *spider_get_share(
 
     if (
       !(share->table_select = new String[1]) ||
-      (table->s->keys > 0 && !(share->key_select =
-        new String[table->s->keys])) ||
+      (table->s->keys > 0 &&
+        !(share->key_select = new String[table->s->keys])
+      ) ||
       (*error_num = spider_db_append_show_table_status(share)) ||
       (*error_num = spider_db_append_show_index(share))
     ) {
@@ -1114,7 +1166,7 @@ SPIDER_SHARE *spider_get_share(
     ) {
       share->init_error = TRUE;
       share->init = TRUE;
-      hash_delete(&spider->conn->user_ha_hash, (uchar*) spider);
+      spider_conn_user_ha_delete(spider->conn, spider);
       if (!spider->conn->user_ha_hash.records && !spider->conn->join_trx)
         spider_free_conn_from_trx(spider->trx, spider->conn,
           FALSE, FALSE, NULL);
@@ -1151,7 +1203,7 @@ SPIDER_SHARE *spider_get_share(
           (*error_num = spider_db_show_index(spider, table))
         ) {
           pthread_mutex_unlock(&share->sts_mutex);
-          hash_delete(&spider->conn->user_ha_hash, (uchar*) spider);
+          spider_conn_user_ha_delete(spider->conn, spider);
           if (!spider->conn->user_ha_hash.records && !spider->conn->join_trx)
             spider_free_conn_from_trx(spider->trx, spider->conn,
               FALSE, FALSE, NULL);
@@ -1179,6 +1231,7 @@ error_init_mutex:
 error_init_string:
 error_create_conn_key:
 error_parse_connect_string:
+error_init_hint_string:
   spider_free_share_alloc(share);
   my_free(share, MYF(0));
 error_alloc_share:
@@ -1321,7 +1374,7 @@ int spider_open_all_tables(
 
       if (my_hash_insert(&conn->lock_table_hash, (uchar*) spider))
       {
-        hash_delete(&spider->conn->user_ha_hash, (uchar*) spider);
+        spider_conn_user_ha_delete(spider->conn, spider);
         if (!spider->conn->user_ha_hash.records && !spider->conn->join_trx)
           spider_free_conn_from_trx(spider->trx, spider->conn,
             FALSE, FALSE, NULL);

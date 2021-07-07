@@ -60,6 +60,7 @@ typedef struct st_spider_conn
   int                sql_log_off;
   THD                *thd;
   HASH               user_ha_hash;
+  pthread_mutex_t    user_ha_mutex;
   HASH               lock_table_hash;
   st_spider_conn     *p_small;
   st_spider_conn     *p_big;
@@ -120,6 +121,7 @@ typedef struct st_spider_share
 
   String             *table_select;
   String             *key_select;
+  String             *key_hint;
   String             *show_table_status;
   String             *show_index;
   longlong           *cardinality;

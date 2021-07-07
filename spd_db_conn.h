@@ -193,10 +193,20 @@ int spider_db_append_null(
   const uchar **ptr
 );
 
+int spider_db_append_key_hint(
+  String *str,
+  char *hint_str
+);
+
 int spider_db_append_key_where(
   const key_range *start_key,
   const key_range *end_key,
   ha_spider *spider
+);
+
+int spider_db_append_hint_after_table(
+  String *str,
+  String *hint
 );
 
 int spider_db_append_key_order(

@@ -125,7 +125,7 @@ int ha_spider::close()
   spider_db_free_result(this, TRUE);
   if (conn)
   {
-    hash_delete(&conn->user_ha_hash, (uchar*) this);
+    spider_conn_user_ha_delete(conn, this);
     if (!conn->user_ha_hash.records && !conn->join_trx)
       spider_free_conn_from_trx(trx, conn, FALSE, FALSE, NULL);
   }
@@ -248,7 +248,7 @@ THR_LOCK_DATA **ha_spider::store_lock(
         } else {
           if (spider->lock_type < this->lock_type)
           {
-            hash_delete(&conn->user_ha_hash, (uchar*) spider);
+            spider_conn_user_ha_delete(conn, spider);
             if (my_hash_insert(&conn->lock_table_hash, (uchar*) this))
             {
               store_error_num = HA_ERR_OUT_OF_MEM;
@@ -279,7 +279,7 @@ THR_LOCK_DATA **ha_spider::store_lock(
           } else {
             if (spider->lock_type < this->lock_type)
             {
-              hash_delete(&conn->user_ha_hash, (uchar*) spider);
+              spider_conn_user_ha_delete(conn, spider);
               if (my_hash_insert(&conn->lock_table_hash, (uchar*) this))
               {
                 store_error_num = HA_ERR_OUT_OF_MEM;
@@ -312,6 +312,7 @@ int ha_spider::external_lock(
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider lock_type=%x", lock_type));
   DBUG_PRINT("info",("spider thd->options=%x", (int) thd->options));
+  DBUG_ASSERT(trx == spider_get_trx(thd, &error_num));
   if (store_error_num)
     DBUG_RETURN(store_error_num);
   if (lock_type == F_UNLCK)
@@ -388,7 +389,7 @@ int ha_spider::reset()
     DBUG_PRINT("info",("spider change thd"));
     if (conn)
     {
-      hash_delete(&conn->user_ha_hash, (uchar*) this);
+      spider_conn_user_ha_delete(conn, this);
       conn = NULL;
     }
     if (
@@ -522,6 +523,12 @@ int ha_spider::index_read_map(
     if (result_list.sql.append(*(share->table_select)))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   }
+  if (
+    share->key_hint &&
+    (error_num = spider_db_append_hint_after_table(
+      &result_list.sql, &share->key_hint[active_index]))
+  )
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   result_list.where_pos = result_list.sql.length();
   result_list.desc_flg = FALSE;
   result_list.sorted = TRUE;
@@ -581,6 +588,12 @@ int ha_spider::index_read_last_map(
     if (result_list.sql.append(*(share->table_select)))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   }
+  if (
+    share->key_hint &&
+    (error_num = spider_db_append_hint_after_table(
+      &result_list.sql, &share->key_hint[active_index]))
+  )
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   result_list.where_pos = result_list.sql.length();
   result_list.desc_flg = TRUE;
   result_list.sorted = TRUE;
@@ -655,6 +668,12 @@ int ha_spider::index_first(
       if (result_list.sql.append(*(share->table_select)))
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     }
+    if (
+      share->key_hint &&
+      (error_num = spider_db_append_hint_after_table(
+        &result_list.sql, &share->key_hint[active_index]))
+    )
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     result_list.where_pos = result_list.order_pos = result_list.sql.length();
     result_list.desc_flg = FALSE;
     result_list.sorted = TRUE;
@@ -708,6 +727,12 @@ int ha_spider::index_last(
       if (result_list.sql.append(*(share->table_select)))
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     }
+    if (
+      share->key_hint &&
+      (error_num = spider_db_append_hint_after_table(
+        &result_list.sql, &share->key_hint[active_index]))
+    )
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     result_list.where_pos = result_list.order_pos = result_list.sql.length();
     result_list.desc_flg = TRUE;
     result_list.sorted = TRUE;
@@ -784,6 +809,12 @@ int ha_spider::read_range_first(
     if (result_list.sql.append(*(share->table_select)))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   }
+  if (
+    share->key_hint &&
+    (error_num = spider_db_append_hint_after_table(
+      &result_list.sql, &share->key_hint[active_index]))
+  )
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   result_list.where_pos = result_list.sql.length();
   result_list.desc_flg = FALSE;
   result_list.sorted = sorted;
@@ -860,6 +891,12 @@ int ha_spider::read_multi_range_first(
       if (result_list.sql.append(*(share->table_select)))
         DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     }
+    if (
+      share->key_hint &&
+      (error_num = spider_db_append_hint_after_table(
+        &result_list.sql, &share->key_hint[active_index]))
+    )
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
     result_list.where_pos = result_list.sql.length();
     for (
       multi_range_curr = ranges,
@@ -933,6 +970,12 @@ int ha_spider::read_multi_range_first(
         if (result_list.sql.append(*(share->table_select)))
           DBUG_RETURN(HA_ERR_OUT_OF_MEM);
       }
+      if (
+        share->key_hint &&
+        (error_num = spider_db_append_hint_after_table(
+          &result_list.sql, &share->key_hint[active_index]))
+      )
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
       result_list.where_pos = result_list.sql.length();
       if (
         (error_num = spider_db_append_key_where(
@@ -1590,6 +1633,13 @@ int ha_spider::create(
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
   tmp_share.table_name = (char*) name;
   tmp_share.table_name_length = strlen(name);
+  if (form->s->keys > 0 &&
+    !(tmp_share.key_hint = new String[form->s->keys])
+  ) {
+    error_num = HA_ERR_OUT_OF_MEM;
+    goto error;
+  }
+  DBUG_PRINT("info",("spider tmp_share.key_hint=%x", tmp_share.key_hint));
   if ((error_num = spider_parse_connect_info(&tmp_share, form, 1)))
     goto error;
   if (sql_command == SQLCOM_CREATE_TABLE)

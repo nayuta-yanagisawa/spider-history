@@ -137,6 +137,12 @@
 #define SPIDER_SQL_SQL_EXTENDED_LEN (sizeof(SPIDER_SQL_SQL_EXTENDED_STR) - 1)
 #define SPIDER_SQL_SQL_USE_FRM_STR " use_frm"
 #define SPIDER_SQL_SQL_USE_FRM_LEN (sizeof(SPIDER_SQL_SQL_USE_FRM_STR) - 1)
+#define SPIDER_SQL_SQL_FORCE_IDX_STR " force index("
+#define SPIDER_SQL_SQL_FORCE_IDX_LEN (sizeof(SPIDER_SQL_SQL_FORCE_IDX_STR) - 1)
+#define SPIDER_SQL_SQL_USE_IDX_STR " use index("
+#define SPIDER_SQL_SQL_USE_IDX_LEN (sizeof(SPIDER_SQL_SQL_USE_IDX_STR) - 1)
+#define SPIDER_SQL_SQL_IGNORE_IDX_STR " ignore index("
+#define SPIDER_SQL_SQL_IGNORE_IDX_LEN (sizeof(SPIDER_SQL_SQL_IGNORE_IDX_STR) - 1)
 
 
 #define SPIDER_SQL_ISO_READ_UNCOMMITTED_STR "set session transaction isolation level read uncommitted"
@@ -1180,6 +1186,64 @@ int spider_db_append_null(
       DBUG_RETURN(-1);
     }
   }
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_key_hint(
+  String *str,
+  char *hint_str
+) {
+  int hint_str_len = strlen(hint_str);
+  DBUG_ENTER("spider_db_append_key_hint");
+  if (hint_str_len >= 2 &&
+    (hint_str[0] == 'f' || hint_str[0] == 'F') && hint_str[1] == ' '
+  ) {
+    if (str->reserve(hint_str_len - 2 +
+      SPIDER_SQL_SQL_FORCE_IDX_LEN + SPIDER_SQL_CLOSE_PAREN_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    hint_str += 2;
+    str->q_append(SPIDER_SQL_SQL_FORCE_IDX_STR, SPIDER_SQL_SQL_FORCE_IDX_LEN);
+    str->q_append(hint_str, hint_str_len - 2);
+    str->q_append(SPIDER_SQL_CLOSE_PAREN_STR, SPIDER_SQL_CLOSE_PAREN_LEN);
+  } else if (hint_str_len >= 2 &&
+    (hint_str[0] == 'u' || hint_str[0] == 'U') && hint_str[1] == ' '
+  ) {
+    if (str->reserve(hint_str_len - 2 +
+      SPIDER_SQL_SQL_USE_IDX_LEN + SPIDER_SQL_CLOSE_PAREN_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    hint_str += 2;
+    str->q_append(SPIDER_SQL_SQL_USE_IDX_STR, SPIDER_SQL_SQL_USE_IDX_LEN);
+    str->q_append(hint_str, hint_str_len - 2);
+    str->q_append(SPIDER_SQL_CLOSE_PAREN_STR, SPIDER_SQL_CLOSE_PAREN_LEN);
+  } else if (hint_str_len >= 3 &&
+    (hint_str[0] == 'i' || hint_str[0] == 'I') &&
+    (hint_str[1] == 'g' || hint_str[1] == 'G') && hint_str[2] == ' '
+  ) {
+    if (str->reserve(hint_str_len - 3 +
+      SPIDER_SQL_SQL_IGNORE_IDX_LEN + SPIDER_SQL_CLOSE_PAREN_LEN))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    hint_str += 3;
+    str->q_append(
+      SPIDER_SQL_SQL_IGNORE_IDX_STR, SPIDER_SQL_SQL_IGNORE_IDX_LEN);
+    str->q_append(hint_str, hint_str_len - 3);
+    str->q_append(SPIDER_SQL_CLOSE_PAREN_STR, SPIDER_SQL_CLOSE_PAREN_LEN);
+  } else if (str->reserve(hint_str_len + SPIDER_SQL_SPACE_LEN))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  else
+  {
+    str->q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
+    str->q_append(hint_str, hint_str_len);
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_db_append_hint_after_table(
+  String *str,
+  String *hint
+) {
+  DBUG_ENTER("spider_db_append_hint_after_table");
+  if (str->append(*hint))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   DBUG_RETURN(0);
 }
 

@@ -44,14 +44,17 @@ int spider_free_conn_alloc(
   ha_spider *spider;
   DBUG_ENTER("spider_free_conn_alloc");
   spider_db_disconnect(conn);
+  pthread_mutex_lock(&conn->user_ha_mutex);
   while ((spider = (ha_spider*) hash_element(&conn->user_ha_hash, 0)))
   {
     hash_delete(&conn->user_ha_hash, (uchar*) spider);
     spider->conn = NULL;
     spider->db_conn = NULL;
   }
+  pthread_mutex_unlock(&conn->user_ha_mutex);
   hash_free(&conn->user_ha_hash);
   hash_free(&conn->lock_table_hash);
+  VOID(pthread_mutex_destroy(&conn->user_ha_mutex));
   DBUG_RETURN(0);
 }
 
@@ -73,6 +76,7 @@ void spider_free_conn_from_trx(
       hash_delete(&trx->trx_another_conn_hash, (uchar*) conn);
     else
       hash_delete(&trx->trx_conn_hash, (uchar*) conn);
+    pthread_mutex_lock(&conn->user_ha_mutex);
     while ((spider = (ha_spider*) hash_element(&conn->user_ha_hash, 0)))
     {
       hash_delete(&conn->user_ha_hash, (uchar*) spider);
@@ -85,6 +89,7 @@ void spider_free_conn_from_trx(
         delete spider;
       }
     }
+    pthread_mutex_unlock(&conn->user_ha_mutex);
 
     if(
       THDVAR(trx->thd, conn_recycle_mode) == 1 &&
@@ -139,14 +144,19 @@ SPIDER_CONN *spider_create_conn(
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
 
-  if(
+  if (pthread_mutex_init(&conn->user_ha_mutex, MY_MUTEX_INIT_FAST))
+  {
+    *error_num = HA_ERR_OUT_OF_MEM;
+    goto error_init_user_ha_mutex;
+  }
+  if (
     hash_init(&conn->user_ha_hash, system_charset_info, 32, 0, 0,
               (hash_get_key) spider_ha_get_key, 0, 0)
   ) {
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_init_hash;
   }
-  if(
+  if (
     hash_init(&conn->lock_table_hash, system_charset_info, 32, 0, 0,
               (hash_get_key) spider_ha_get_key, 0, 0)
   ) {
@@ -164,7 +174,9 @@ error:
 error_init_lock_table_hash:
   hash_free(&conn->user_ha_hash);
 error_init_hash:
-  spider_free_conn(conn);
+  VOID(pthread_mutex_destroy(&conn->user_ha_mutex));
+error_init_user_ha_mutex:
+  my_free(conn, MYF(0));
 error_alloc_conn:
   DBUG_RETURN(NULL);
 }
@@ -219,11 +231,14 @@ SPIDER_CONN *spider_get_conn(
       spider->conn = conn;
       spider->db_conn = conn->db_conn;
 
+      pthread_mutex_lock(&conn->user_ha_mutex);
       if (my_hash_insert(&conn->user_ha_hash, (uchar*) spider))
       {
+        pthread_mutex_unlock(&conn->user_ha_mutex);
         *error_num = HA_ERR_OUT_OF_MEM;
         goto error;
       }
+      pthread_mutex_unlock(&conn->user_ha_mutex);
     }
 
     if (another)
@@ -242,13 +257,16 @@ SPIDER_CONN *spider_get_conn(
         goto error;
       }
     }
-  } else if (thd_chg)
+  } else if (spider)
   {
+    pthread_mutex_lock(&conn->user_ha_mutex);
     if (my_hash_insert(&conn->user_ha_hash, (uchar*) spider))
     {
+      pthread_mutex_unlock(&conn->user_ha_mutex);
       *error_num = HA_ERR_OUT_OF_MEM;
       goto error;
     }
+    pthread_mutex_unlock(&conn->user_ha_mutex);
   }
 
   DBUG_PRINT("info",("spider conn=%x", conn));
@@ -265,6 +283,17 @@ int spider_free_conn(
   spider_free_conn_alloc(conn);
   my_free(conn, MYF(0));
   DBUG_RETURN(0);
+}
+
+void spider_conn_user_ha_delete(
+  SPIDER_CONN *conn,
+  ha_spider *spider
+) {
+  DBUG_ENTER("spider_conn_user_ha_delete");
+  pthread_mutex_lock(&conn->user_ha_mutex);
+  hash_delete(&conn->user_ha_hash, (uchar*) spider);
+  pthread_mutex_unlock(&conn->user_ha_mutex);
+  DBUG_VOID_RETURN;
 }
 
 void spider_tree_insert(

@@ -49,6 +49,11 @@ int spider_free_conn(
   SPIDER_CONN *conn
 );
 
+void spider_conn_user_ha_delete(
+  SPIDER_CONN *conn,
+  ha_spider *spider
+);
+
 void spider_tree_insert(
   SPIDER_CONN *top,
   SPIDER_CONN *conn

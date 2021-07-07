@@ -1157,7 +1157,9 @@ int spider_internal_xa_prepare(
           DBUG_RETURN(error_num);
         conn->join_trx = 0;
       } else {
+        pthread_mutex_lock(&conn->user_ha_mutex);
         spider = (ha_spider*) hash_element(&conn->user_ha_hash, 0);
+        pthread_mutex_unlock(&conn->user_ha_mutex);
         /*
           insert into mysql.spider_xa_member
             (format_id, gtrid_length, bqual_length, data,
@@ -2075,23 +2077,28 @@ int spider_check_trx_and_get_conn(
   ha_spider *spider
 ) {
   int error_num;
-  SPIDER_TRX *trx = spider->trx;
+  SPIDER_TRX *trx;
   SPIDER_CONN *conn = spider->conn;
   DBUG_ENTER("spider_check_trx_and_get_conn");
-  if (thd != trx->thd)
+  if (!(trx = spider_get_trx(thd, &error_num)))
+  {
+    DBUG_PRINT("info",("spider get trx error"));
+    DBUG_RETURN(error_num);
+  }
+  if (trx != spider->trx)
   {
     DBUG_PRINT("info",("spider change thd"));
     if (conn)
     {
-      hash_delete(&conn->user_ha_hash, (uchar*) spider);
+      spider_conn_user_ha_delete(conn, spider);
       spider->conn = conn = NULL;
     }
+    spider->trx = trx;
     if (
-      !(spider->trx = trx = spider_get_trx(thd, &error_num)) ||
       !(spider->conn = conn =
         spider_get_conn(spider->share, trx, spider, FALSE, TRUE, &error_num))
     ) {
-      DBUG_PRINT("info",("spider get trx or conn error"));
+      DBUG_PRINT("info",("spider get conn error"));
       DBUG_RETURN(error_num);
     }
     spider->db_conn = conn->db_conn;
