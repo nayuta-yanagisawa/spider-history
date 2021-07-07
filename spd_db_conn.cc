@@ -1261,6 +1261,7 @@ int spider_db_append_key_where(
   key_part_map start_key_part_map;
   key_part_map end_key_part_map;
   key_part_map tgt_key_part_map;
+  int key_count;
   uint length;
   uint store_length;
   const uchar *ptr;
@@ -1302,12 +1303,14 @@ int spider_db_append_key_where(
     key_part = key_info->key_part,
     store_length = key_part->store_length,
     length = 0,
+    key_count = 0,
     ptr = use_key->key;
     tgt_key_part_map > 1;
     length += store_length,
     ptr = use_key->key + length,
     tgt_key_part_map >>= 1,
     key_part++,
+    key_count++,
     store_length = key_part->store_length
   ) {
     field = key_part->field;
@@ -1338,7 +1341,7 @@ int spider_db_append_key_where(
   /* last one */
   field = key_part->field;
   key_name_length = strlen(field->field_name);
-  result_list->key_order = length;
+  result_list->key_order = key_count;
   if (start_key_part_map >= end_key_part_map)
   {
     ptr = start_key->key + length;
@@ -1446,7 +1449,7 @@ int spider_db_append_key_order(
         key_part = key_info->key_part + result_list->key_order,
         length = 1;
         length + result_list->key_order < key_info->key_parts &&
-        length <= result_list->max_order;
+        length < result_list->max_order;
         key_part++,
         length++
       ) {
@@ -1475,7 +1478,7 @@ int spider_db_append_key_order(
       }
       if (
         length + result_list->key_order <= key_info->key_parts &&
-        length - 1 <= result_list->max_order
+        length <= result_list->max_order
       ) {
         field = key_part->field;
         key_name_length = strlen(field->field_name);
@@ -1502,7 +1505,7 @@ int spider_db_append_key_order(
         key_part = key_info->key_part + result_list->key_order,
         length = 1;
         length + result_list->key_order < key_info->key_parts &&
-        length <= result_list->max_order;
+        length < result_list->max_order;
         key_part++,
         length++
       ) {
@@ -1531,7 +1534,7 @@ int spider_db_append_key_order(
       }
       if (
         length + result_list->key_order <= key_info->key_parts &&
-        length - 1 <= result_list->max_order
+        length <= result_list->max_order
       ) {
         field = key_part->field;
         key_name_length = strlen(field->field_name);
@@ -2597,6 +2600,7 @@ int spider_db_show_index(
   Field *field;
   int roop_count;
   longlong *tmp_cardinality;
+  bool *tmp_cardinality_upd;
   DBUG_ENTER("spider_db_show_index");
   if (spider->share->crd_mode == 1)
   {
@@ -2610,12 +2614,13 @@ int spider_db_show_index(
       !(res = mysql_store_result(spider->db_conn)) ||
       !(row = mysql_fetch_row(res))
     ) {
-      if (res)
-        mysql_free_result(res);
       if ((error_num = spider_db_errorno(spider->conn)))
+      {
+        if (res)
+          mysql_free_result(res);
         DBUG_RETURN(error_num);
-      else
-        DBUG_RETURN(ER_QUERY_ON_FOREIGN_DATA_SOURCE);
+      }
+      /* no record is ok */
     }
     if (mysql_num_fields(res) != 12)
     {
@@ -2623,10 +2628,10 @@ int spider_db_show_index(
       DBUG_RETURN(ER_QUERY_ON_FOREIGN_DATA_SOURCE);
     }
 
-    for (roop_count = 0, tmp_cardinality = spider->share->cardinality;
-      roop_count < table->s->keys;
-      roop_count++, tmp_cardinality++)
-      *tmp_cardinality = 1;
+    for (roop_count = 0, tmp_cardinality_upd = spider->share->cardinality_upd;
+      roop_count < table->s->fields;
+      roop_count++, tmp_cardinality_upd++)
+      *tmp_cardinality_upd = FALSE;
     while (row)
     {
       if (
@@ -2637,18 +2642,32 @@ int spider_db_show_index(
         if ((spider->share->cardinality[field->field_index] =
           (longlong) my_strtoll10(row[6], (char**) NULL, &error_num)) <= 0)
           spider->share->cardinality[field->field_index] = 1;
+          spider->share->cardinality_upd[field->field_index] = TRUE;
         DBUG_PRINT("info",
           ("spider col_name=%s", row[4]));
         DBUG_PRINT("info",
           ("spider cardinality=%lld",
           spider->share->cardinality[field->field_index]));
+      } else if (row[4])
+      {
+        DBUG_PRINT("info",
+          ("spider skip col_name=%s", row[4]));
       } else {
         mysql_free_result(res);
         DBUG_RETURN(ER_QUERY_ON_FOREIGN_DATA_SOURCE);
       }
       row = mysql_fetch_row(res);
     }
-    mysql_free_result(res);
+    for (roop_count = 0, tmp_cardinality = spider->share->cardinality,
+      tmp_cardinality_upd = spider->share->cardinality_upd;
+      roop_count < table->s->fields;
+      roop_count++, tmp_cardinality++, tmp_cardinality_upd++)
+    {
+      if (!tmp_cardinality_upd)
+        *tmp_cardinality = 1;
+    }
+    if (res)
+      mysql_free_result(res);
   } else {
     if (spider_db_query(
       spider->conn,
@@ -2660,18 +2679,19 @@ int spider_db_show_index(
       !(res = mysql_store_result(spider->db_conn)) ||
       !(row = mysql_fetch_row(res))
     ) {
-      if (res)
-        mysql_free_result(res);
       if ((error_num = spider_db_errorno(spider->conn)))
+      {
+        if (res)
+          mysql_free_result(res);
         DBUG_RETURN(error_num);
-      else
-        DBUG_RETURN(ER_QUERY_ON_FOREIGN_DATA_SOURCE);
+      }
+      /* no record is ok */
     }
 
-    for (roop_count = 0, tmp_cardinality = spider->share->cardinality;
-      roop_count < table->s->keys;
-      roop_count++, tmp_cardinality++)
-      *tmp_cardinality = 1;
+    for (roop_count = 0, tmp_cardinality_upd = spider->share->cardinality_upd;
+      roop_count < table->s->fields;
+      roop_count++, tmp_cardinality_upd++)
+      *tmp_cardinality_upd = FALSE;
     while (row)
     {
       if (
@@ -2682,18 +2702,32 @@ int spider_db_show_index(
         if ((spider->share->cardinality[field->field_index] =
           (longlong) my_strtoll10(row[1], (char**) NULL, &error_num)) <= 0)
           spider->share->cardinality[field->field_index] = 1;
+          spider->share->cardinality_upd[field->field_index] = TRUE;
         DBUG_PRINT("info",
           ("spider col_name=%s", row[0]));
         DBUG_PRINT("info",
           ("spider cardinality=%lld",
           spider->share->cardinality[field->field_index]));
+      } else if (row[0])
+      {
+        DBUG_PRINT("info",
+          ("spider skip col_name=%s", row[0]));
       } else {
         mysql_free_result(res);
         DBUG_RETURN(ER_QUERY_ON_FOREIGN_DATA_SOURCE);
       }
       row = mysql_fetch_row(res);
     }
-    mysql_free_result(res);
+    for (roop_count = 0, tmp_cardinality = spider->share->cardinality,
+      tmp_cardinality_upd = spider->share->cardinality_upd;
+      roop_count < table->s->fields;
+      roop_count++, tmp_cardinality++, tmp_cardinality_upd++)
+    {
+      if (!tmp_cardinality_upd)
+        *tmp_cardinality = 1;
+    }
+    if (res)
+      mysql_free_result(res);
   }
   DBUG_RETURN(0);
 }

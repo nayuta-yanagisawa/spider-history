@@ -19,6 +19,14 @@ uchar *spider_tbl_get_key(
   my_bool not_used __attribute__ ((unused))
 );
 
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+uchar *spider_pt_share_get_key(
+  SPIDER_PARTITION_SHARE *share,
+  size_t *length,
+  my_bool not_used __attribute__ ((unused))
+);
+#endif
+
 uchar *spider_ha_get_key(
   ha_spider *spider,
   size_t *length,
@@ -72,6 +80,40 @@ SPIDER_SHARE *spider_get_share(
 int spider_free_share(
   SPIDER_SHARE *share
 );
+
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+SPIDER_PARTITION_SHARE *spider_get_pt_share(
+  TABLE *table,
+  SPIDER_SHARE *share,
+  int *error_num
+);
+
+int spider_free_pt_share(
+  SPIDER_PARTITION_SHARE *partition_share
+);
+
+void spider_copy_sts_to_pt_share(
+  SPIDER_PARTITION_SHARE *partition_share,
+  SPIDER_SHARE *share
+);
+
+void spider_copy_sts_to_share(
+  SPIDER_SHARE *share,
+  SPIDER_PARTITION_SHARE *partition_share
+);
+
+void spider_copy_crd_to_pt_share(
+  SPIDER_PARTITION_SHARE *partition_share,
+  SPIDER_SHARE *share,
+  int fields
+);
+
+void spider_copy_crd_to_share(
+  SPIDER_SHARE *share,
+  SPIDER_PARTITION_SHARE *partition_share,
+  int fields
+);
+#endif
 
 int spider_open_all_tables(
   SPIDER_TRX *trx,

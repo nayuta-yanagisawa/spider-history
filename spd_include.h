@@ -86,6 +86,34 @@ typedef struct st_spider_conn
   uint               tgt_wrapper_length;
 } SPIDER_CONN;
 
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+typedef struct st_spider_patition_share
+{
+  char               *table_name;
+  uint               table_name_length;
+  uint               use_count;
+  pthread_mutex_t    mutex;
+  pthread_mutex_t    sts_mutex;
+  pthread_mutex_t    crd_mutex;
+
+  volatile bool      sts_init;
+  volatile bool      crd_init;
+  volatile time_t    sts_get_time;
+  volatile time_t    crd_get_time;
+  ulonglong          data_file_length;
+  ulonglong          max_data_file_length;
+  ulonglong          index_file_length;
+  ulonglong          auto_increment_value;
+  ha_rows            records;
+  ulong              mean_rec_length;
+  time_t             check_time;
+  time_t             create_time;
+  time_t             update_time;
+
+  longlong           *cardinality;
+} SPIDER_PARTITION_SHARE;
+#endif
+
 typedef struct st_spider_transaction
 {
   bool               trx_start;
@@ -138,11 +166,18 @@ typedef struct st_spider_share
   String             *show_table_status;
   String             *show_index;
   longlong           *cardinality;
+  bool               *cardinality_upd;
 
   double             sts_interval;
   int                sts_mode;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  int                sts_sync;
+#endif
   double             crd_interval;
   int                crd_mode;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  int                crd_sync;
+#endif
   int                crd_type;
   double             crd_weight;
   longlong           internal_offset;
@@ -187,6 +222,9 @@ typedef struct st_spider_share
   uint               conn_key_length;
 
   SPIDER_ALTER_TABLE alter_table;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  SPIDER_PARTITION_SHARE *partition_share;
+#endif
 } SPIDER_SHARE;
 
 char *spider_create_string(

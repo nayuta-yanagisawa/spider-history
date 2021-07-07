@@ -1089,57 +1089,63 @@ int ha_spider::rnd_init(
   DBUG_PRINT("info",("spider this=%x", this));
   if (scan)
   {
-    if (result_list.current)
-      DBUG_RETURN(spider_db_free_result(this, FALSE));
-
-    result_list.internal_offset =
-      THDVAR(trx->thd, internal_offset) < 0 ?
-      share->internal_offset :
-      THDVAR(trx->thd, internal_offset);
-    result_list.internal_limit =
-      THDVAR(trx->thd, internal_limit) < 0 ?
-      share->internal_limit :
-      THDVAR(trx->thd, internal_limit);
-    result_list.split_read =
-      THDVAR(trx->thd, split_read) < 0 ?
-      share->split_read :
-      THDVAR(trx->thd, split_read);
-
+/* for later
     if (
       result_list.current &&
       (error_num = spider_db_free_result(this, FALSE))
     )
       DBUG_RETURN(error_num);
+*/
+    if (result_list.current)
+    {
+      result_list.current = result_list.first;
+      result_list.current_row_num = 0;
+      result_list.current->result->data_cursor =
+        result_list.current->first_row;
+    } else {
+      result_list.internal_offset =
+        THDVAR(trx->thd, internal_offset) < 0 ?
+        share->internal_offset :
+        THDVAR(trx->thd, internal_offset);
+      result_list.internal_limit =
+        THDVAR(trx->thd, internal_limit) < 0 ?
+        share->internal_limit :
+        THDVAR(trx->thd, internal_limit);
+      result_list.split_read =
+        THDVAR(trx->thd, split_read) < 0 ?
+        share->split_read :
+        THDVAR(trx->thd, split_read);
 
-    result_list.sql.length(0);
-    if ((error_num = spider_db_append_select(this)))
-      DBUG_RETURN(error_num);
-    result_list.keyread = FALSE;
-    if (result_list.sql.append(*(share->table_select)))
-      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    result_list.where_pos = result_list.sql.length();
-    result_list.order_pos = result_list.where_pos;
-    result_list.limit_pos = result_list.where_pos;
-    result_list.desc_flg = FALSE;
-    result_list.sorted = FALSE;
-    result_list.key_info = NULL;
-    if (
-      (error_num = spider_db_append_limit(
-        &result_list.sql, result_list.internal_offset,
-        result_list.internal_limit >= result_list.split_read ?
-        result_list.split_read : result_list.internal_limit)) ||
-      (error_num = spider_db_append_select_lock(this))
-    )
-      DBUG_RETURN(error_num);
+      result_list.sql.length(0);
+      if ((error_num = spider_db_append_select(this)))
+        DBUG_RETURN(error_num);
+      result_list.keyread = FALSE;
+      if (result_list.sql.append(*(share->table_select)))
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      result_list.where_pos = result_list.sql.length();
+      result_list.order_pos = result_list.where_pos;
+      result_list.limit_pos = result_list.where_pos;
+      result_list.desc_flg = FALSE;
+      result_list.sorted = FALSE;
+      result_list.key_info = NULL;
+      if (
+        (error_num = spider_db_append_limit(
+          &result_list.sql, result_list.internal_offset,
+          result_list.internal_limit >= result_list.split_read ?
+          result_list.split_read : result_list.internal_limit)) ||
+        (error_num = spider_db_append_select_lock(this))
+      )
+        DBUG_RETURN(error_num);
 
-    if (spider_db_query(
-      conn,
-      result_list.sql.ptr(),
-      result_list.sql.length())
-    )
-      DBUG_RETURN(spider_db_errorno(conn));
-    if ((error_num = spider_db_store_result(this, table)))
-      DBUG_RETURN(error_num);
+      if (spider_db_query(
+        conn,
+        result_list.sql.ptr(),
+        result_list.sql.length())
+      )
+        DBUG_RETURN(spider_db_errorno(conn));
+      if ((error_num = spider_db_store_result(this, table)))
+        DBUG_RETURN(error_num);
+    }
   }
   DBUG_RETURN(0);
 }
@@ -1206,13 +1212,32 @@ int ha_spider::info(
       {
         if (difftime(tmp_time, share->sts_get_time) >= share->sts_interval)
         {
-          if ((error_num = spider_check_trx_and_get_conn(ha_thd(), this)))
-            DBUG_RETURN(error_num);
-          if ((error_num = spider_db_show_table_status(this)))
-          {
-            pthread_mutex_unlock(&share->sts_mutex);
-            DBUG_RETURN(error_num);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+          if (
+            share->partition_share->sts_init &&
+            share->sts_sync > 1 &&
+            difftime(tmp_time, share->partition_share->sts_get_time) <
+              share->sts_interval
+          )
+            spider_copy_sts_to_share(share, share->partition_share);
+          else {
+#endif
+            if ((error_num = spider_check_trx_and_get_conn(ha_thd(), this)))
+              DBUG_RETURN(error_num);
+            if ((error_num = spider_db_show_table_status(this)))
+            {
+              pthread_mutex_unlock(&share->sts_mutex);
+              DBUG_RETURN(error_num);
+            }
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+            if (share->sts_sync > 1)
+            {
+              spider_copy_sts_to_pt_share(share->partition_share, share);
+              share->partition_share->sts_get_time = tmp_time;
+              share->partition_share->sts_init = TRUE;
+            }
           }
+#endif
           share->sts_get_time = tmp_time;
         }
         pthread_mutex_unlock(&share->sts_mutex);
@@ -1264,12 +1289,33 @@ ha_rows ha_spider::records_in_range(
       {
         if (difftime(tmp_time, share->crd_get_time) >= share->crd_interval)
         {
-          if ((error_num = spider_db_show_index(this, table)))
-          {
-            pthread_mutex_unlock(&share->crd_mutex);
-            my_errno = error_num;
-            DBUG_RETURN(HA_POS_ERROR);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+          if (
+            share->partition_share->crd_init &&
+            share->crd_sync > 1 &&
+            difftime(tmp_time, share->partition_share->crd_get_time) <
+              share->crd_interval
+          )
+            spider_copy_crd_to_share(share, share->partition_share,
+              table->s->fields);
+          else {
+#endif
+            if ((error_num = spider_db_show_index(this, table)))
+            {
+              pthread_mutex_unlock(&share->crd_mutex);
+              my_errno = error_num;
+              DBUG_RETURN(HA_POS_ERROR);
+            }
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+            if (share->crd_sync > 0)
+            {
+              spider_copy_crd_to_pt_share(share->partition_share, share,
+                table->s->fields);
+              share->partition_share->crd_get_time = tmp_time;
+              share->partition_share->crd_init = TRUE;
+            }
           }
+#endif
           share->crd_get_time = tmp_time;
         }
         pthread_mutex_unlock(&share->crd_mutex);
