@@ -389,12 +389,14 @@ int spider_db_seek_tmp_minimum_columns(
 );
 
 int spider_db_show_table_status(
-  ha_spider *spider
+  ha_spider *spider,
+  int sts_mode
 );
 
 int spider_db_show_index(
   ha_spider *spider,
-  TABLE *table
+  TABLE *table,
+  int crd_mode
 );
 
 ha_rows spider_db_explain_select(

@@ -97,4 +97,28 @@ int spider_bg_conn_search(
 void *spider_bg_conn_action(
   void *arg
 );
+
+int spider_create_sts_thread(
+  SPIDER_SHARE *share
+);
+
+void spider_free_sts_thread(
+  SPIDER_SHARE *share
+);
+
+void *spider_bg_sts_action(
+  void *arg
+);
+
+int spider_create_crd_thread(
+  SPIDER_SHARE *share
+);
+
+void spider_free_crd_thread(
+  SPIDER_SHARE *share
+);
+
+void *spider_bg_crd_action(
+  void *arg
+);
 #endif

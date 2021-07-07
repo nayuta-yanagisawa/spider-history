@@ -714,6 +714,25 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+/*
+ -1 :use table parameter
+  0 :Background confirmation is disabled
+  1 :Background confirmation is enabled
+ */
+MYSQL_THDVAR_INT(
+  crd_bg_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Mode of cardinality confirmation at background.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+#endif
+
 /*
  -1 :use table parameter
   0 :always get the newest information
@@ -770,6 +789,25 @@ MYSQL_THDVAR_INT(
 );
 #endif
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+/*
+ -1 :use table parameter
+  0 :Background confirmation is disabled
+  1 :Background confirmation is enabled
+ */
+MYSQL_THDVAR_INT(
+  sts_bg_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Mode of table state confirmation at background.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+#endif
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -821,10 +859,16 @@ struct st_mysql_sys_var* spider_system_variables[] = {
 #endif
   MYSQL_SYSVAR(crd_type),
   MYSQL_SYSVAR(crd_weight),
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  MYSQL_SYSVAR(crd_bg_mode),
+#endif
   MYSQL_SYSVAR(sts_interval),
   MYSQL_SYSVAR(sts_mode),
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   MYSQL_SYSVAR(sts_sync),
+#endif
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  MYSQL_SYSVAR(sts_bg_mode),
 #endif
   NULL
 };
@@ -839,7 +883,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x000c,
+  0x000d,
   NULL,
   spider_system_variables,
   NULL

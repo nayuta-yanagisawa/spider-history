@@ -120,8 +120,13 @@ error_get_share:
 
 int ha_spider::close()
 {
+  int error_num = 0;
+  THD *thd = ha_thd();
   DBUG_ENTER("ha_spider::close");
   DBUG_PRINT("info",("spider this=%x", this));
+
+  if (!thd || !thd_get_ha_data(thd, spider_hton_ptr))
+    conn = NULL;
 
   spider_db_free_result(this, TRUE);
   spider_free_share(share);
@@ -129,7 +134,7 @@ int ha_spider::close()
   trx = NULL;
   conn = NULL;
 
-  DBUG_RETURN(0);
+  DBUG_RETURN(error_num);
 }
 
 THR_LOCK_DATA **ha_spider::store_lock(
@@ -1167,6 +1172,7 @@ int ha_spider::rnd_init(
   int error_num;
   DBUG_ENTER("ha_spider::rnd_init");
   DBUG_PRINT("info",("spider this=%x", this));
+  rnd_scan_and_first = scan;
   if (scan)
   {
     if (
@@ -1176,11 +1182,11 @@ int ha_spider::rnd_init(
     )
       DBUG_RETURN(error_num);
 
-    set_select_column_mode();
     if (result_list.current)
     {
       result_list.current = result_list.first;
       spider_db_set_pos_to_first_row(&result_list);
+      rnd_scan_and_first = FALSE;
     } else {
       spider_set_result_list_param(this);
 
@@ -1193,52 +1199,8 @@ int ha_spider::rnd_init(
       )
         DBUG_RETURN(error_num);
 #endif
+      set_select_column_mode();
       result_list.keyread = FALSE;
-      if (
-        (error_num = spider_db_append_select(this)) ||
-        (error_num = spider_db_append_select_columns(this))
-      )
-        DBUG_RETURN(error_num);
-      result_list.where_pos = result_list.sql.length();
-
-      /* append condition pushdown */
-      if (spider_db_append_condition(this, &result_list.sql))
-        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-
-      result_list.order_pos = result_list.sql.length();
-      result_list.limit_pos = result_list.order_pos;
-      result_list.desc_flg = FALSE;
-      result_list.sorted = FALSE;
-      result_list.key_info = NULL;
-      result_list.limit_num =
-        result_list.internal_limit >= result_list.split_read ?
-        result_list.split_read : result_list.internal_limit;
-      if (
-        (error_num = spider_db_append_limit(
-          &result_list.sql, result_list.internal_offset,
-          result_list.limit_num)) ||
-        (error_num = spider_db_append_select_lock(this))
-      )
-        DBUG_RETURN(error_num);
-
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-      if (result_list.bgs_phase > 0)
-      {
-        if ((error_num = spider_bg_conn_search(this, TRUE)))
-          DBUG_RETURN(error_num);
-      } else {
-#endif
-        if (spider_db_query(
-          conn,
-          result_list.sql.ptr(),
-          result_list.sql.length())
-        )
-          DBUG_RETURN(spider_db_errorno(conn));
-        if ((error_num = spider_db_store_result(this, table)))
-          DBUG_RETURN(error_num);
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-      }
-#endif
     }
   }
   DBUG_RETURN(0);
@@ -1254,8 +1216,58 @@ int ha_spider::rnd_end()
 int ha_spider::rnd_next(
   uchar *buf
 ) {
+  int error_num;
   DBUG_ENTER("ha_spider::rnd_next");
   DBUG_PRINT("info",("spider this=%x", this));
+  if (rnd_scan_and_first)
+  {
+    if (
+      (error_num = spider_db_append_select(this)) ||
+      (error_num = spider_db_append_select_columns(this))
+    )
+      DBUG_RETURN(error_num);
+    result_list.where_pos = result_list.sql.length();
+
+    /* append condition pushdown */
+    if (spider_db_append_condition(this, &result_list.sql))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+
+    result_list.order_pos = result_list.sql.length();
+    result_list.limit_pos = result_list.order_pos;
+    result_list.desc_flg = FALSE;
+    result_list.sorted = FALSE;
+    result_list.key_info = NULL;
+    result_list.limit_num =
+      result_list.internal_limit >= result_list.split_read ?
+      result_list.split_read : result_list.internal_limit;
+    if (
+      (error_num = spider_db_append_limit(
+        &result_list.sql, result_list.internal_offset,
+        result_list.limit_num)) ||
+      (error_num = spider_db_append_select_lock(this))
+    )
+      DBUG_RETURN(error_num);
+
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if (result_list.bgs_phase > 0)
+    {
+      if ((error_num = spider_bg_conn_search(this, TRUE)))
+        DBUG_RETURN(error_num);
+    } else {
+#endif
+      if (spider_db_query(
+        conn,
+        result_list.sql.ptr(),
+        result_list.sql.length())
+      )
+        DBUG_RETURN(spider_db_errorno(conn));
+      if ((error_num = spider_db_store_result(this, table)))
+        DBUG_RETURN(error_num);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    }
+#endif
+    rnd_scan_and_first = FALSE;
+  }
   DBUG_RETURN(spider_db_seek_next(buf, this, table));
 }
 
@@ -1292,6 +1304,16 @@ int ha_spider::info(
   THD *thd = ha_thd();
   double sts_interval = THDVAR(thd, sts_interval) == -1 ?
     share->sts_interval : THDVAR(thd, sts_interval);
+  int sts_mode = THDVAR(thd, sts_mode) <= 0 ?
+    share->sts_mode : THDVAR(thd, sts_mode);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  int sts_sync = THDVAR(thd, sts_sync) == -1 ?
+    share->sts_sync : THDVAR(thd, sts_sync);
+#endif
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  int sts_bg_mode = THDVAR(thd, sts_bg_mode) == -1 ?
+    share->sts_bg_mode : THDVAR(thd, sts_bg_mode);
+#endif
   DBUG_ENTER("ha_spider::info");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider flag=%x", flag));
@@ -1309,18 +1331,51 @@ int ha_spider::info(
         sts_interval == 0 ||
         !pthread_mutex_trylock(&share->sts_mutex)
       ) {
-        if (sts_interval == 0)
-          pthread_mutex_lock(&share->sts_mutex);
-        if (difftime(tmp_time, share->sts_get_time) >= sts_interval)
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+        if (sts_interval == 0 || sts_bg_mode == 0)
         {
-          if (
-            (error_num = spider_check_trx_and_get_conn(ha_thd(), this)) ||
-            (error_num = spider_get_sts(share, tmp_time, this, 2))
-          ) {
-            pthread_mutex_unlock(&share->sts_mutex);
-            DBUG_RETURN(error_num);
+#endif
+          if (sts_interval == 0)
+            pthread_mutex_lock(&share->sts_mutex);
+          if (difftime(tmp_time, share->sts_get_time) >= sts_interval)
+          {
+            if (
+              (error_num = spider_check_trx_and_get_conn(ha_thd(), this)) ||
+              (error_num = spider_get_sts(share, tmp_time, this, sts_interval,
+                sts_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+                sts_sync,
+#endif
+                2))
+            ) {
+              pthread_mutex_unlock(&share->sts_mutex);
+              DBUG_RETURN(error_num);
+            }
+          }
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+        } else {
+          /* background */
+          if (!share->bg_sts_init || share->bg_sts_thd_wait)
+          {
+            share->bg_sts_thd_wait = FALSE;
+            share->bg_sts_try_time = tmp_time;
+            share->bg_sts_interval = sts_interval;
+            share->bg_sts_mode = sts_mode;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+            share->bg_sts_sync = sts_sync;
+#endif
+            if (!share->bg_sts_init)
+            {
+              if ((error_num = spider_create_sts_thread(share)))
+              {
+                pthread_mutex_unlock(&share->sts_mutex);
+                DBUG_RETURN(error_num);
+              }
+            } else
+              pthread_cond_signal(&share->bg_sts_cond);
           }
         }
+#endif
         pthread_mutex_unlock(&share->sts_mutex);
       }
     }
@@ -1362,6 +1417,14 @@ ha_rows ha_spider::records_in_range(
     share->crd_mode : THDVAR(thd, crd_mode);
   int crd_type = THDVAR(thd, crd_type) == -1 ?
     share->crd_type : THDVAR(thd, crd_type);
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  int crd_sync = THDVAR(thd, crd_sync) == -1 ?
+    share->crd_sync : THDVAR(thd, crd_sync);
+#endif
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  int crd_bg_mode = THDVAR(thd, crd_bg_mode) == -1 ?
+    share->crd_bg_mode : THDVAR(thd, crd_bg_mode);
+#endif
   DBUG_ENTER("ha_spider::records_in_range");
   DBUG_PRINT("info",("spider this=%x", this));
   if (crd_mode == 1 || crd_mode == 2)
@@ -1377,17 +1440,50 @@ ha_rows ha_spider::records_in_range(
         crd_interval == 0 ||
         !pthread_mutex_trylock(&share->crd_mutex)
       ) {
-        if (crd_interval == 0)
-          pthread_mutex_lock(&share->crd_mutex);
-        if (difftime(tmp_time, share->crd_get_time) >= crd_interval)
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+        if (crd_interval == 0 || crd_bg_mode == 0)
         {
-          if ((error_num = spider_get_crd(share, tmp_time, this, table, 2)))
+#endif
+          if (crd_interval == 0)
+            pthread_mutex_lock(&share->crd_mutex);
+          if (difftime(tmp_time, share->crd_get_time) >= crd_interval)
           {
-            pthread_mutex_unlock(&share->crd_mutex);
-            my_errno = error_num;
-            DBUG_RETURN(HA_POS_ERROR);
+            if ((error_num = spider_get_crd(share, tmp_time, this, table,
+              crd_interval, crd_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+              crd_sync,
+#endif
+              2)))
+            {
+              pthread_mutex_unlock(&share->crd_mutex);
+              my_errno = error_num;
+              DBUG_RETURN(HA_POS_ERROR);
+            }
+          }
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+        } else {
+          /* background */
+          if (!share->bg_crd_init || share->bg_crd_thd_wait)
+          {
+            share->bg_crd_thd_wait = FALSE;
+            share->bg_crd_try_time = tmp_time;
+            share->bg_crd_interval = crd_interval;
+            share->bg_crd_mode = crd_mode;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+            share->bg_crd_sync = crd_sync;
+#endif
+            if (!share->bg_crd_init)
+            {
+              if ((error_num = spider_create_crd_thread(share)))
+              {
+                pthread_mutex_unlock(&share->crd_mutex);
+                DBUG_RETURN(error_num);
+              }
+            } else
+              pthread_cond_signal(&share->bg_crd_cond);
           }
         }
+#endif
         pthread_mutex_unlock(&share->crd_mutex);
       }
     }

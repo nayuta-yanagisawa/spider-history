@@ -72,7 +72,7 @@ int spider_create_conn_key(
 SPIDER_SHARE *spider_get_share(
   const char *table_name,
   TABLE *table,
-  const THD *thd,
+  THD *thd,
   ha_spider *spider,
   int *error_num
 );
@@ -179,6 +179,11 @@ int spider_get_sts(
   SPIDER_SHARE *share,
   time_t tmp_time,
   ha_spider *spider,
+  double sts_interval,
+  int sts_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  int sts_sync,
+#endif
   int sts_sync_level
 );
 
@@ -187,6 +192,11 @@ int spider_get_crd(
   time_t tmp_time,
   ha_spider *spider,
   TABLE *table,
+  double crd_interval,
+  int crd_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  int crd_sync,
+#endif
   int crd_sync_level
 );
 

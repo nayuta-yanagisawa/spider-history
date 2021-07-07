@@ -26,6 +26,9 @@
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 extern pthread_attr_t spider_pt_attr;
+
+extern pthread_mutex_t spider_global_trx_mutex;
+extern SPIDER_TRX *spider_global_trx;
 #endif
 
 HASH spider_open_connections;
@@ -51,6 +54,7 @@ int spider_free_conn_alloc(
 #endif
   spider_db_disconnect(conn);
   hash_free(&conn->lock_table_hash);
+  VOID(pthread_mutex_destroy(&conn->mta_conn_mutex));
   DBUG_RETURN(0);
 }
 
@@ -64,8 +68,8 @@ void spider_free_conn_from_trx(
   ha_spider *spider;
   DBUG_ENTER("spider_free_conn_from_trx");
   if(
-    THDVAR(trx->thd, conn_recycle_mode) != 2 ||
-    trx_free
+    trx_free ||
+    THDVAR(trx->thd, conn_recycle_mode) != 2
   ) {
     conn->thd = NULL;
     if (another)
@@ -87,8 +91,8 @@ void spider_free_conn_from_trx(
       hash_delete(&trx->trx_conn_hash, (uchar*) conn);
 
     if(
-      THDVAR(trx->thd, conn_recycle_mode) == 1 &&
-      !trx_free
+      !trx_free &&
+      THDVAR(trx->thd, conn_recycle_mode) == 1
     ) {
       /* conn_recycle_mode == 1 */
       pthread_mutex_lock(&spider_conn_mutex);
@@ -161,6 +165,12 @@ SPIDER_CONN *spider_create_conn(
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
 
+  if (pthread_mutex_init(&conn->mta_conn_mutex, MY_MUTEX_INIT_FAST))
+  {
+    *error_num = HA_ERR_OUT_OF_MEM;
+    goto error_mta_conn_mutex_init;
+  }
+
   if (
     hash_init(&conn->lock_table_hash, system_charset_info, 32, 0, 0,
               (hash_get_key) spider_ha_get_key, 0, 0)
@@ -177,6 +187,8 @@ SPIDER_CONN *spider_create_conn(
 error:
   hash_free(&conn->lock_table_hash);
 error_init_lock_table_hash:
+  VOID(pthread_mutex_destroy(&conn->mta_conn_mutex));
+error_mta_conn_mutex_init:
   my_free(conn, MYF(0));
 error_alloc_conn:
   DBUG_RETURN(NULL);
@@ -202,6 +214,7 @@ SPIDER_CONN *spider_get_conn(
         (uchar*) share->conn_key, share->conn_key_length)))
   ) {
     if (
+      !trx->thd ||
       (THDVAR(trx->thd, conn_recycle_mode) & 1) ||
       THDVAR(trx->thd, conn_recycle_strict)
     ) {
@@ -778,6 +791,240 @@ void *spider_bg_conn_action(
         pthread_cond_signal(&conn->bg_conn_cond);
       continue;
     }
+  }
+}
+
+int spider_create_sts_thread(
+  SPIDER_SHARE *share
+) {
+  int error_num;
+  DBUG_ENTER("spider_create_sts_thread");
+  if (!share->bg_sts_init)
+  {
+    if (pthread_cond_init(&share->bg_sts_cond, NULL))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_cond_init;
+    }
+    if (pthread_create(&share->bg_sts_thread, &spider_pt_attr,
+      spider_bg_sts_action, (void *) share)
+    ) {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_thread_create;
+    }
+    share->bg_sts_init = TRUE;
+  }
+  DBUG_RETURN(0);
+
+error_thread_create:
+  VOID(pthread_cond_destroy(&share->bg_sts_cond));
+error_cond_init:
+  DBUG_RETURN(error_num);
+}
+
+void spider_free_sts_thread(
+  SPIDER_SHARE *share
+) {
+  DBUG_ENTER("spider_free_sts_thread");
+  if (share->bg_sts_init)
+  {
+    pthread_mutex_lock(&share->sts_mutex);
+    share->bg_sts_kill = TRUE;
+    pthread_cond_signal(&share->bg_sts_cond);
+    pthread_cond_wait(&share->bg_sts_cond, &share->sts_mutex);
+    pthread_mutex_unlock(&share->sts_mutex);
+    VOID(pthread_cond_destroy(&share->bg_sts_cond));
+    share->bg_sts_thd_wait = FALSE;
+    share->bg_sts_kill = FALSE;
+    share->bg_sts_init = FALSE;
+  }
+  DBUG_VOID_RETURN;
+}
+
+void *spider_bg_sts_action(
+  void *arg
+) {
+  SPIDER_SHARE *share = (SPIDER_SHARE*) arg;
+  int error_num;
+  ha_spider spider;
+  SPIDER_CONN *conn = NULL;
+  THD *thd;
+  my_thread_init();
+  DBUG_ENTER("spider_bg_sts_action");
+  /* init start */
+  pthread_mutex_lock(&share->sts_mutex);
+  if (!(thd = new THD()))
+  {
+    share->bg_sts_thd_wait = FALSE;
+    share->bg_sts_kill = FALSE;
+    share->bg_sts_init = FALSE;
+    pthread_mutex_unlock(&share->sts_mutex);
+    my_thread_end();
+    DBUG_RETURN(NULL);
+  }
+  thd->thread_stack = (char*) &thd;
+  thd->store_globals();
+  share->bg_sts_thd = thd;
+  spider.trx = spider_global_trx;
+  spider.share = share;
+  /* init end */
+
+  while (TRUE)
+  {
+    DBUG_PRINT("info",("spider bg sts roop start"));
+    if (share->bg_sts_kill)
+    {
+      DBUG_PRINT("info",("spider bg sts kill start"));
+      pthread_cond_signal(&share->bg_sts_cond);
+      pthread_mutex_unlock(&share->sts_mutex);
+      delete thd;
+      my_pthread_setspecific_ptr(THR_THD, NULL);
+      my_thread_end();
+      DBUG_RETURN(NULL);
+    }
+    if (difftime(share->bg_sts_try_time, share->sts_get_time) >=
+      share->bg_sts_interval)
+    {
+      if (!conn)
+      {
+        pthread_mutex_lock(&spider_global_trx_mutex);
+        spider.conn = conn = spider_get_conn(share, spider_global_trx,
+          &spider, FALSE, FALSE, &error_num);
+        pthread_mutex_unlock(&spider_global_trx_mutex);
+      }
+      if (conn)
+      {
+        pthread_mutex_lock(&conn->mta_conn_mutex);
+        VOID(spider_get_sts(share, share->bg_sts_try_time, &spider,
+          share->bg_sts_interval, share->bg_sts_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+          share->bg_sts_sync,
+#endif
+          2));
+        pthread_mutex_unlock(&conn->mta_conn_mutex);
+      }
+    }
+    share->bg_sts_thd_wait = TRUE;
+    pthread_cond_wait(&share->bg_sts_cond, &share->sts_mutex);
+  }
+}
+
+int spider_create_crd_thread(
+  SPIDER_SHARE *share
+) {
+  int error_num;
+  DBUG_ENTER("spider_create_crd_thread");
+  if (!share->bg_crd_init)
+  {
+    if (pthread_cond_init(&share->bg_crd_cond, NULL))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_cond_init;
+    }
+    if (pthread_create(&share->bg_crd_thread, &spider_pt_attr,
+      spider_bg_crd_action, (void *) share)
+    ) {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_thread_create;
+    }
+    share->bg_crd_init = TRUE;
+  }
+  DBUG_RETURN(0);
+
+error_thread_create:
+  VOID(pthread_cond_destroy(&share->bg_crd_cond));
+error_cond_init:
+  DBUG_RETURN(error_num);
+}
+
+void spider_free_crd_thread(
+  SPIDER_SHARE *share
+) {
+  DBUG_ENTER("spider_free_crd_thread");
+  if (share->bg_crd_init)
+  {
+    pthread_mutex_lock(&share->crd_mutex);
+    share->bg_crd_kill = TRUE;
+    pthread_cond_signal(&share->bg_crd_cond);
+    pthread_cond_wait(&share->bg_crd_cond, &share->crd_mutex);
+    pthread_mutex_unlock(&share->crd_mutex);
+    VOID(pthread_cond_destroy(&share->bg_crd_cond));
+    share->bg_crd_thd_wait = FALSE;
+    share->bg_crd_kill = FALSE;
+    share->bg_crd_init = FALSE;
+  }
+  DBUG_VOID_RETURN;
+}
+
+void *spider_bg_crd_action(
+  void *arg
+) {
+  SPIDER_SHARE *share = (SPIDER_SHARE*) arg;
+  int error_num;
+  ha_spider spider;
+  TABLE table;
+  SPIDER_CONN *conn = NULL;
+  THD *thd;
+  my_thread_init();
+  DBUG_ENTER("spider_bg_crd_action");
+  /* init start */
+  pthread_mutex_lock(&share->crd_mutex);
+  if (!(thd = new THD()))
+  {
+    share->bg_crd_thd_wait = FALSE;
+    share->bg_crd_kill = FALSE;
+    share->bg_crd_init = FALSE;
+    pthread_mutex_unlock(&share->crd_mutex);
+    my_thread_end();
+    DBUG_RETURN(NULL);
+  }
+  thd->thread_stack = (char*) &thd;
+  thd->store_globals();
+  share->bg_crd_thd = thd;
+  table.s = share->table_share;
+  table.field = share->table_share->field;
+  spider.trx = spider_global_trx;
+  spider.change_table_ptr(&table, share->table_share);
+  spider.share = share;
+  /* init end */
+
+  while (TRUE)
+  {
+    DBUG_PRINT("info",("spider bg crd roop start"));
+    if (share->bg_crd_kill)
+    {
+      DBUG_PRINT("info",("spider bg crd kill start"));
+      pthread_cond_signal(&share->bg_crd_cond);
+      pthread_mutex_unlock(&share->crd_mutex);
+      delete thd;
+      my_pthread_setspecific_ptr(THR_THD, NULL);
+      my_thread_end();
+      DBUG_RETURN(NULL);
+    }
+    if (difftime(share->bg_crd_try_time, share->crd_get_time) >=
+      share->bg_crd_interval)
+    {
+      if (!conn)
+      {
+        pthread_mutex_lock(&spider_global_trx_mutex);
+        spider.conn = conn = spider_get_conn(share, spider_global_trx,
+          &spider, FALSE, FALSE, &error_num);
+        pthread_mutex_unlock(&spider_global_trx_mutex);
+      }
+      if (conn)
+      {
+        pthread_mutex_lock(&conn->mta_conn_mutex);
+        VOID(spider_get_crd(share, share->bg_crd_try_time, &spider, &table,
+          share->bg_crd_interval, share->bg_crd_mode,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+          share->bg_crd_sync,
+#endif
+          2));
+        pthread_mutex_unlock(&conn->mta_conn_mutex);
+      }
+    }
+    share->bg_crd_thd_wait = TRUE;
+    pthread_cond_wait(&share->bg_crd_cond, &share->crd_mutex);
   }
 }
 #endif

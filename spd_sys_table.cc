@@ -31,22 +31,13 @@ TABLE *spider_open_sys_table(
   bool need_lock,
   int *error_num
 ) {
+  int res;
   TABLE *table;
   TABLE_SHARE *table_share;
   TABLE_LIST tables;
   char table_key[MAX_DBKEY_LENGTH];
   uint table_key_length;
   DBUG_ENTER("spider_open_sys_table");
-
-  thd->reset_n_backup_open_tables_state(open_tables_backup);
-  if (need_lock)
-    VOID(pthread_mutex_lock(&LOCK_open));
-
-  if (!(table = (TABLE*) my_malloc(sizeof(*table), MYF(MY_WME))))
-  {
-    *error_num = HA_ERR_OUT_OF_MEM;
-    goto error;
-  }
 
   memset(&tables, 0, sizeof(TABLE_LIST));
   tables.db = (char*)"mysql";
@@ -55,32 +46,46 @@ TABLE *spider_open_sys_table(
   tables.table_name_length = table_name_length;
   tables.lock_type = (write ? TL_WRITE : TL_READ);
 
-  table_key_length =
-    create_table_def_key(thd, table_key, &tables, FALSE);
-  if (!(table_share = get_table_share(thd,
-    &tables, table_key, table_key_length, 0, error_num)))
-    goto error;
-  if (open_table_from_share(thd, table_share, tables.alias,
-    (uint) (HA_OPEN_KEYFILE | HA_OPEN_RNDFILE | HA_GET_INDEX),
-    READ_KEYINFO | COMPUTE_TYPES | EXTRA_RECORD,
-    (uint) MYSQL_LOCK_IGNORE_GLOBAL_READ_LOCK |
-    MYSQL_LOCK_IGNORE_GLOBAL_READ_ONLY | MYSQL_LOCK_IGNORE_FLUSH,
-    table, FALSE)
-  ) {
-    release_table_share(table_share, RELEASE_NORMAL);
-    my_error(ER_NOT_KEYFILE, MYF(0), table_name, my_errno);
-    *error_num = my_errno;
-    goto error;
-  }
-
   if (need_lock)
-    VOID(pthread_mutex_unlock(&LOCK_open));
+  {
+    if (!(table = open_performance_schema_table(thd, &tables,
+      open_tables_backup)))
+    {
+      *error_num = my_errno;
+      DBUG_RETURN(NULL);
+    }
+  } else {
+    thd->reset_n_backup_open_tables_state(open_tables_backup);
+
+    if (!(table = (TABLE*) my_malloc(sizeof(*table), MYF(MY_WME))))
+    {
+      *error_num = HA_ERR_OUT_OF_MEM;
+      goto error_malloc;
+    }
+
+    table_key_length =
+      create_table_def_key(thd, table_key, &tables, FALSE);
+
+    if (!(table_share = get_table_share(thd,
+      &tables, table_key, table_key_length, 0, error_num)))
+      goto error;
+    if (open_table_from_share(thd, table_share, tables.alias,
+      (uint) (HA_OPEN_KEYFILE | HA_OPEN_RNDFILE | HA_GET_INDEX),
+      READ_KEYINFO | COMPUTE_TYPES | EXTRA_RECORD,
+      (uint) HA_OPEN_IGNORE_IF_LOCKED | HA_OPEN_FROM_SQL_LAYER,
+      table, FALSE)
+    ) {
+      release_table_share(table_share, RELEASE_NORMAL);
+      *error_num = my_errno;
+      goto error;
+    }
+  }
   DBUG_RETURN(table);
 
 error:
   my_free(table, MYF(0));
-  if (need_lock)
-    VOID(pthread_mutex_unlock(&LOCK_open));
+error_malloc:
+  thd->restore_backup_open_tables_state(open_tables_backup);
   DBUG_RETURN(NULL);
 }
 
@@ -92,12 +97,13 @@ void spider_close_sys_table(
 ) {
   DBUG_ENTER("spider_close_sys_table");
   if (need_lock)
-    VOID(pthread_mutex_lock(&LOCK_open));
-  closefrm(table, TRUE);
-  my_free(table, MYF(0));
-  if (need_lock)
-    VOID(pthread_mutex_unlock(&LOCK_open));
-  thd->restore_backup_open_tables_state(open_tables_backup);
+    close_performance_schema_table(thd, open_tables_backup);
+  else {
+    table->file->ha_reset();
+    closefrm(table, TRUE);
+    my_free(table, MYF(0));
+    thd->restore_backup_open_tables_state(open_tables_backup);
+  }
   DBUG_VOID_RETURN;
 }
 

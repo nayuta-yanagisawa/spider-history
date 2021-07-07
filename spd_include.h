@@ -47,6 +47,7 @@ typedef struct st_spider_conn
   char               *conn_key;
   uint               conn_key_length;
   SPIDER_DB_CONN     *db_conn;
+  pthread_mutex_t    mta_conn_mutex;
   uint               join_trx;
   int                trx_isolation;
   bool               semi_trx_isolation_chk;
@@ -166,11 +167,40 @@ typedef struct st_spider_share
   pthread_mutex_t    sts_mutex;
   pthread_mutex_t    crd_mutex;
   THR_LOCK           lock;
+  TABLE_SHARE        *table_share;
 
   volatile bool      init;
   volatile bool      init_error;
   volatile time_t    sts_get_time;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile time_t    bg_sts_try_time;
+  volatile double    bg_sts_interval;
+  volatile int       bg_sts_mode;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  volatile int       bg_sts_sync;
+#endif
+  volatile bool      bg_sts_init;
+  volatile bool      bg_sts_kill;
+  volatile bool      bg_sts_thd_wait;
+  THD                *bg_sts_thd;
+  pthread_t          bg_sts_thread;
+  pthread_cond_t     bg_sts_cond;
+#endif
   volatile time_t    crd_get_time;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile time_t    bg_crd_try_time;
+  volatile double    bg_crd_interval;
+  volatile int       bg_crd_mode;
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  volatile int       bg_crd_sync;
+#endif
+  volatile bool      bg_crd_init;
+  volatile bool      bg_crd_kill;
+  volatile bool      bg_crd_thd_wait;
+  THD                *bg_crd_thd;
+  pthread_t          bg_crd_thread;
+  pthread_cond_t     bg_crd_cond;
+#endif
   ulonglong          data_file_length;
   ulonglong          max_data_file_length;
   ulonglong          index_file_length;
@@ -190,10 +220,16 @@ typedef struct st_spider_share
   bool               *cardinality_upd;
   longlong           additional_table_flags;
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  int                sts_bg_mode;
+#endif
   double             sts_interval;
   int                sts_mode;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   int                sts_sync;
+#endif
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  int                crd_bg_mode;
 #endif
   double             crd_interval;
   int                crd_mode;

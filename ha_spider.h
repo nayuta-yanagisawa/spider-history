@@ -34,6 +34,7 @@ public:
   SPIDER_CONDITION   *condition;
   ha_spider          *next;
 
+  bool               rnd_scan_and_first;
   bool               quick_mode;
   bool               keyread;
   bool               ignore_dup_key;

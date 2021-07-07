@@ -51,8 +51,8 @@ int spider_free_trx_conn(
   SPIDER_CONN *conn;
   DBUG_ENTER("spider_free_trx_conn");
   if(
-    THDVAR(trx->thd, conn_recycle_mode) != 2 ||
-    trx_free
+    trx_free ||
+    THDVAR(trx->thd, conn_recycle_mode) != 2
   ) {
     while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash,
       roop_count)))
@@ -456,8 +456,10 @@ SPIDER_TRX *spider_get_trx(
   SPIDER_TRX *trx;
   DBUG_ENTER("spider_get_trx");
 
-  if (!(trx = (SPIDER_TRX*) thd_get_ha_data(thd, spider_hton_ptr)))
-  {
+  if (
+    !thd ||
+    !(trx = (SPIDER_TRX*) thd_get_ha_data(thd, spider_hton_ptr))
+  ) {
     DBUG_PRINT("info",("spider create new trx"));
     if (!(trx = (SPIDER_TRX *)
           my_malloc(sizeof(*trx), MYF(MY_WME | MY_ZEROFILL)))
@@ -486,7 +488,8 @@ SPIDER_TRX *spider_get_trx(
     trx->spider_thread_id = spider_thread_id++;
     trx->trx_conn_adjustment = 1;
 
-    thd_set_ha_data(thd, spider_hton_ptr, trx);
+    if (thd)
+      thd_set_ha_data(thd, spider_hton_ptr, trx);
   }
 
   DBUG_PRINT("info",("spider trx=%x", trx));
@@ -508,7 +511,8 @@ int spider_free_trx(
   SPIDER_TRX *trx
 ) {
   DBUG_ENTER("spider_free_trx");
-  thd_set_ha_data(trx->thd, spider_hton_ptr, NULL);
+  if (trx->thd)
+    thd_set_ha_data(trx->thd, spider_hton_ptr, NULL);
   spider_free_trx_alloc(trx);
   my_free(trx, MYF(0));
   DBUG_RETURN(0);

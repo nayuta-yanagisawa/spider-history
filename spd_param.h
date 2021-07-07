@@ -61,8 +61,14 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_sync, int);
 #endif
 extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_type, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_weight, int);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+extern DECLARE_MYSQL_THDVAR_SIMPLE(crd_bg_mode, int);
+#endif
 extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_interval, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_mode, int);
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_sync, int);
+#endif
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_bg_mode, int);
 #endif

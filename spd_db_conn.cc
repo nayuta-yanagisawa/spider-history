@@ -2318,10 +2318,10 @@ int spider_db_free_result(
   int roopCount;
   DBUG_ENTER("spider_db_free_result");
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-  if (result_list->bgs_working)
+  if (conn && result_list->bgs_working)
     spider_bg_conn_break(conn, spider);
 #endif
-  if (conn->quick_target == spider)
+  if (conn && conn->quick_target == spider)
     conn->quick_target = NULL;
   if (
     final ||
@@ -3043,17 +3043,16 @@ int spider_db_seek_tmp_minimum_columns(
 }
 
 int spider_db_show_table_status(
-  ha_spider *spider
+  ha_spider *spider,
+  int sts_mode
 ) {
   int error_num;
-  THD *thd = spider->trx->thd;
-  int sts_mode = THDVAR(thd, sts_mode) <= 0 ?
-    spider->share->sts_mode : THDVAR(thd, sts_mode);
   SPIDER_CONN *conn = spider->conn;
   SPIDER_DB_RESULT *res;
   SPIDER_DB_ROW row;
   SPIDER_SHARE *share = spider->share;
   DBUG_ENTER("spider_db_show_table_status");
+  DBUG_PRINT("info",("spider sts_mode=%d", sts_mode));
   if (sts_mode == 1)
   {
     if (spider_db_query(
@@ -3236,7 +3235,8 @@ int spider_db_show_table_status(
 
 int spider_db_show_index(
   ha_spider *spider,
-  TABLE *table
+  TABLE *table,
+  int crd_mode
 ) {
   int error_num;
   SPIDER_CONN *conn = spider->conn;
@@ -3248,7 +3248,8 @@ int spider_db_show_index(
   longlong *tmp_cardinality;
   bool *tmp_cardinality_upd;
   DBUG_ENTER("spider_db_show_index");
-  if (share->crd_mode == 1)
+  DBUG_PRINT("info",("spider crd_mode=%d", crd_mode));
+  if (crd_mode == 1)
   {
     if (spider_db_query(
       conn,
