@@ -230,7 +230,6 @@ SPIDER_CONN *spider_get_conn(
     if (spider)
     {
       spider->conn = conn;
-      spider->db_conn = conn->db_conn;
     }
 
     if (another)
@@ -478,6 +477,11 @@ int spider_create_conn_thread(
       error_num = HA_ERR_OUT_OF_MEM;
       goto error_mutex_init;
     }
+    if (pthread_cond_init(&conn->bg_conn_sync_cond, NULL))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_sync_cond_init;
+    }
     if (pthread_cond_init(&conn->bg_conn_cond, NULL))
     {
       error_num = HA_ERR_OUT_OF_MEM;
@@ -504,6 +508,8 @@ int spider_create_conn_thread(
 error_thread_create:
   VOID(pthread_cond_destroy(&conn->bg_conn_cond));
 error_cond_init:
+  VOID(pthread_cond_destroy(&conn->bg_conn_sync_cond));
+error_sync_cond_init:
   VOID(pthread_mutex_destroy(&conn->bg_conn_mutex));
 error_mutex_init:
   VOID(pthread_mutex_destroy(&conn->bg_conn_sync_mutex));
@@ -524,6 +530,7 @@ void spider_free_conn_thread(
     pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
     pthread_mutex_unlock(&conn->bg_conn_mutex);
     VOID(pthread_cond_destroy(&conn->bg_conn_cond));
+    VOID(pthread_cond_destroy(&conn->bg_conn_sync_cond));
     VOID(pthread_mutex_destroy(&conn->bg_conn_mutex));
     VOID(pthread_mutex_destroy(&conn->bg_conn_sync_mutex));
     conn->bg_kill = FALSE;
@@ -539,6 +546,7 @@ void spider_bg_conn_break(
   DBUG_ENTER("spider_bg_conn_break");
   if (
     conn->bg_init &&
+    conn->bg_thd != current_thd &&
     (
       !spider ||
       (
@@ -583,27 +591,37 @@ int spider_bg_conn_search(
     {
       DBUG_PRINT("info",("spider bg second search"));
       result_list->bgs_phase = 2;
-      result_list->split_read =
-        result_list->bgs_second_read > 0 ?
-        result_list->bgs_second_read :
-        result_list->bgs_split_read;
-      result_list->sql.length(result_list->limit_pos);
-      if ((error_num = spider_db_append_limit(
-        &result_list->sql,
-        result_list->internal_offset + result_list->record_num,
-        result_list->internal_limit - result_list->record_num >=
-        result_list->split_read ?
-        result_list->split_read :
-        result_list->internal_limit - result_list->record_num)) ||
-        (error_num = spider_db_append_select_lock(spider))
-      )
-        DBUG_RETURN(error_num);
+      if (
+        result_list->quick_mode == 0 ||
+        !result_list->bgs_current->result
+      ) {
+        result_list->split_read =
+          result_list->bgs_second_read > 0 ?
+          result_list->bgs_second_read :
+          result_list->bgs_split_read;
+        result_list->sql.length(result_list->limit_pos);
+        result_list->limit_num =
+          result_list->internal_limit - result_list->record_num >=
+          result_list->split_read ?
+          result_list->split_read :
+          result_list->internal_limit - result_list->record_num;
+        if ((error_num = spider_db_append_limit(
+          &result_list->sql,
+          result_list->internal_offset + result_list->record_num,
+          result_list->limit_num)) ||
+          (error_num = spider_db_append_select_lock(spider))
+        )
+          DBUG_RETURN(error_num);
+      }
       result_list->bgs_working = TRUE;
       conn->bg_search = TRUE;
+      conn->bg_caller_sync_wait = TRUE;
+      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
       pthread_cond_signal(&conn->bg_conn_cond);
       pthread_mutex_unlock(&conn->bg_conn_mutex);
-      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+      pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
       pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+      conn->bg_caller_sync_wait = FALSE;
     } else
       pthread_mutex_unlock(&conn->bg_conn_mutex);
   } else {
@@ -632,29 +650,43 @@ int spider_bg_conn_search(
     }
     result_list->current = result_list->current->next;
     result_list->current_row_num = 0;
-    DBUG_PRINT("info",("spider bg next search"));
-    if (!result_list->current->finish_flg)
+    if (result_list->current == result_list->bgs_current)
     {
-      pthread_mutex_lock(&conn->bg_conn_mutex);
-      result_list->bgs_phase = 3;
-      result_list->split_read = result_list->bgs_split_read;
-      result_list->sql.length(result_list->limit_pos);
-      if ((error_num = spider_db_append_limit(
-        &result_list->sql,
-        result_list->internal_offset + result_list->record_num,
-        result_list->internal_limit - result_list->record_num >=
-        result_list->split_read ?
-        result_list->split_read :
-        result_list->internal_limit - result_list->record_num))
-      )
-        DBUG_RETURN(error_num);
-      conn->bg_target = spider;
-      result_list->bgs_working = TRUE;
-      conn->bg_search = TRUE;
-      pthread_cond_signal(&conn->bg_conn_cond);
-      pthread_mutex_unlock(&conn->bg_conn_mutex);
-      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
-      pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+      DBUG_PRINT("info",("spider bg next search"));
+      if (!result_list->current->finish_flg)
+      {
+        pthread_mutex_lock(&conn->bg_conn_mutex);
+        result_list->bgs_phase = 3;
+        if (
+          result_list->quick_mode == 0 ||
+          !result_list->bgs_current->result
+        ) {
+          result_list->split_read = result_list->bgs_split_read;
+          result_list->sql.length(result_list->limit_pos);
+          result_list->limit_num =
+            result_list->internal_limit - result_list->record_num >=
+            result_list->split_read ?
+            result_list->split_read :
+            result_list->internal_limit - result_list->record_num;
+          if ((error_num = spider_db_append_limit(
+            &result_list->sql,
+            result_list->internal_offset + result_list->record_num,
+            result_list->limit_num)) ||
+            (error_num = spider_db_append_select_lock(spider))
+          )
+            DBUG_RETURN(error_num);
+        }
+        conn->bg_target = spider;
+        result_list->bgs_working = TRUE;
+        conn->bg_search = TRUE;
+        conn->bg_caller_sync_wait = TRUE;
+        pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+        pthread_cond_signal(&conn->bg_conn_cond);
+        pthread_mutex_unlock(&conn->bg_conn_mutex);
+        pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
+        pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+        conn->bg_caller_sync_wait = FALSE;
+      }
     }
   }
   DBUG_RETURN(0);
@@ -681,6 +713,7 @@ void *spider_bg_conn_action(
   thd->thread_stack = (char*) &thd;
   thd->store_globals();
   /* lex_start(thd); */
+  conn->bg_thd = thd;
   pthread_mutex_lock(&conn->bg_conn_mutex);
   pthread_cond_signal(&conn->bg_conn_cond);
   conn->bg_init = TRUE;
@@ -688,10 +721,14 @@ void *spider_bg_conn_action(
 
   while (TRUE)
   {
-    pthread_mutex_lock(&conn->bg_conn_sync_mutex);
     pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
-    pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
     DBUG_PRINT("info",("spider bg roop start"));
+    if (conn->bg_caller_sync_wait)
+    {
+      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+      pthread_cond_signal(&conn->bg_conn_sync_cond);
+      pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+    }
     if (conn->bg_kill)
     {
       DBUG_PRINT("info",("spider bg kill start"));
@@ -706,24 +743,36 @@ void *spider_bg_conn_action(
     if (conn->bg_break)
     {
       DBUG_PRINT("info",("spider bg break start"));
+      spider = (ha_spider*) conn->bg_target;
+      result_list = &spider->result_list;
+      result_list->bgs_working = FALSE;
       continue;
     }
     if (conn->bg_search)
     {
       DBUG_PRINT("info",("spider bg search start"));
-      conn->bg_search = FALSE;
       spider = (ha_spider*) conn->bg_target;
       result_list = &spider->result_list;
-      if (spider_db_query(
-        conn,
-        result_list->sql.ptr(),
-        result_list->sql.length())
-      )
-        result_list->bgs_error = spider_db_errorno(conn);
-      else {
+      if (
+        result_list->quick_mode == 0 ||
+        result_list->bgs_phase == 1 ||
+        !result_list->bgs_current->result
+      ) {
+        if (spider_db_query(
+          conn,
+          result_list->sql.ptr(),
+          result_list->sql.length())
+        )
+          result_list->bgs_error = spider_db_errorno(conn);
+        else {
+          result_list->bgs_error =
+            spider_db_store_result(spider, result_list->table);
+        }
+      } else {
         result_list->bgs_error =
           spider_db_store_result(spider, result_list->table);
       }
+      conn->bg_search = FALSE;
       result_list->bgs_working = FALSE;
       if (conn->bg_caller_wait)
         pthread_cond_signal(&conn->bg_conn_cond);

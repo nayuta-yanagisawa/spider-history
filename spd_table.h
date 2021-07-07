@@ -189,3 +189,7 @@ int spider_get_crd(
   TABLE *table,
   int crd_sync
 );
+
+void spider_set_result_list_param(
+  ha_spider *spider
+);

@@ -86,14 +86,21 @@ typedef struct st_spider_conn
   uint               tgt_wrapper_length;
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile
+#endif
+    void             *quick_target;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
   volatile bool      bg_init;
   volatile bool      bg_break;
   volatile bool      bg_kill;
   volatile bool      bg_caller_wait;
+  volatile bool      bg_caller_sync_wait;
   volatile bool      bg_search;
+  THD                *bg_thd;
   pthread_t          bg_thread;
   pthread_cond_t     bg_conn_cond;
   pthread_mutex_t    bg_conn_mutex;
+  pthread_cond_t     bg_conn_sync_cond;
   pthread_mutex_t    bg_conn_sync_mutex;
   volatile void      *bg_target;
 #endif
@@ -146,8 +153,8 @@ typedef struct st_spider_transaction
   HASH               trx_alter_table_hash;
   XID_STATE          internal_xid_state;
   SPIDER_CONN        *join_trx_top;
-  ulonglong           spider_thread_id;
-  ulonglong           trx_conn_adjustment;
+  ulonglong          spider_thread_id;
+  ulonglong          trx_conn_adjustment;
 } SPIDER_TRX;
 
 typedef struct st_spider_share
@@ -212,6 +219,9 @@ typedef struct st_spider_share
   double             read_rate;
   longlong           priority;
   int                net_timeout;
+  int                quick_mode;
+  longlong           quick_page_size;
+  int                low_mem_read;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   int                bgs_mode;
   longlong           bgs_first_read;

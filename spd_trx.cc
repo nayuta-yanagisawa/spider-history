@@ -179,7 +179,6 @@ int spider_trx_all_start_trx(
     roopCount)))
   {
     tmp_spider.conn = conn;
-    tmp_spider.db_conn = conn->db_conn;
     if (
       (THDVAR(trx->thd, sync_trx_isolation) &&
         (error_num = spider_check_and_set_trx_isolation(conn))) ||
@@ -2106,7 +2105,6 @@ int spider_check_trx_and_get_conn(
       DBUG_PRINT("info",("spider get conn error"));
       DBUG_RETURN(error_num);
     }
-    spider->db_conn = conn->db_conn;
   } else if (!conn)
   {
     DBUG_PRINT("info",("spider get conn"));
@@ -2117,7 +2115,6 @@ int spider_check_trx_and_get_conn(
       DBUG_PRINT("info",("spider get conn error"));
       DBUG_RETURN(error_num);
     }
-    spider->db_conn = conn->db_conn;
   }
   DBUG_RETURN(0);
 }

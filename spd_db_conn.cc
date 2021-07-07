@@ -278,7 +278,6 @@ int spider_db_ping(
     if ((error_num = spider_db_connect(spider->share, conn)))
       DBUG_RETURN(error_num);
     conn->server_lost = FALSE;
-    spider->db_conn = conn->db_conn;
   }
   if ((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
   {
@@ -291,7 +290,6 @@ int spider_db_ping(
       conn->server_lost = TRUE;
       DBUG_RETURN(error_num);
     }
-    spider->db_conn = conn->db_conn;
     if((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
     {
       spider_db_disconnect(conn);
@@ -322,6 +320,30 @@ int spider_db_query(
   DBUG_ENTER("spider_db_query");
   if (conn->server_lost)
     DBUG_RETURN(CR_SERVER_GONE_ERROR);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  if (conn->bg_search)
+    spider_bg_conn_break(conn, NULL);
+#endif
+  if (conn->quick_target)
+  {
+    int error_num;
+    ha_spider *spider = (ha_spider*) conn->quick_target;
+    SPIDER_RESULT_LIST *result_list = &spider->result_list;
+    if (result_list->quick_mode == 2)
+    {
+      result_list->quick_phase = 1;
+      while (conn->quick_target)
+      {
+        if ((error_num = spider_db_store_result(spider, result_list->table)))
+          DBUG_RETURN(error_num);
+      }
+      result_list->quick_phase = 2;
+    } else {
+      mysql_free_result(result_list->bgs_current->result);
+      result_list->bgs_current->result = NULL;
+      conn->quick_target = NULL;
+    }
+  }
   DBUG_RETURN(mysql_real_query(conn->db_conn, query, length));
 }
 
@@ -2019,23 +2041,31 @@ void spider_db_fetch_row(
 int spider_db_fetch_table(
   uchar *buf,
   TABLE *table,
-  SPIDER_DB_RESULT *result
+  SPIDER_RESULT_LIST *result_list
 ) {
+  SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
   SPIDER_DB_ROW row;
   ulong *lengths;
   Field **field;
   DBUG_ENTER("spider_db_fetch_table");
-  if (!(row = mysql_fetch_row(result)))
+  if (result_list->quick_mode == 0)
   {
-    table->status = STATUS_NOT_FOUND;
-    DBUG_RETURN(HA_ERR_END_OF_FILE);
+    SPIDER_DB_RESULT *result = current->result;
+    if (!(row = mysql_fetch_row(result)))
+    {
+      table->status = STATUS_NOT_FOUND;
+      DBUG_RETURN(HA_ERR_END_OF_FILE);
+    }
+    lengths = mysql_fetch_lengths(result);
+  } else {
+    row = current->first_position[result_list->current_row_num].row;
+    lengths = current->first_position[result_list->current_row_num].lengths;
   }
 #ifndef DBUG_OFF
   my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->write_set);
 #endif
   for (
-    field = table->field,
-    lengths = mysql_fetch_lengths(result);
+    field = table->field;
     *field;
     field++,
     lengths++
@@ -2054,25 +2084,33 @@ int spider_db_fetch_key(
   uchar *buf,
   TABLE *table,
   const KEY *key_info,
-  SPIDER_DB_RESULT *result
+  SPIDER_RESULT_LIST *result_list
 ) {
+  SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
   KEY_PART_INFO *key_part;
   uint part_num;
   SPIDER_DB_ROW row;
   ulong *lengths;
   DBUG_ENTER("spider_db_fetch_key");
-  if (!(row = mysql_fetch_row(result)))
+  if (result_list->quick_mode == 0)
   {
-    table->status = STATUS_NOT_FOUND;
-    DBUG_RETURN(HA_ERR_END_OF_FILE);
+    SPIDER_DB_RESULT *result = current->result;
+    if (!(row = mysql_fetch_row(result)))
+    {
+      table->status = STATUS_NOT_FOUND;
+      DBUG_RETURN(HA_ERR_END_OF_FILE);
+    }
+    lengths = mysql_fetch_lengths(result);
+  } else {
+    row = current->first_position[result_list->current_row_num].row;
+    lengths = current->first_position[result_list->current_row_num].lengths;
   }
 #ifndef DBUG_OFF
   my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->write_set);
 #endif
   for (
     key_part = key_info->key_part,
-    part_num = 0,
-    lengths = mysql_fetch_lengths(result);
+    part_num = 0;
     part_num < key_info->key_parts;
     key_part++,
     part_num++,
@@ -2088,6 +2126,40 @@ int spider_db_fetch_key(
   DBUG_RETURN(0);
 }
 
+void spider_db_free_one_result(
+  SPIDER_RESULT_LIST *result_list,
+  SPIDER_RESULT *result
+) {
+  DBUG_ENTER("spider_db_free_one_result");
+  if (result_list->quick_mode == 0)
+  {
+    if (
+      !result->use_position &&
+      result->result
+    ) {
+      mysql_free_result(result->result);
+      result->result = NULL;
+    }
+  } else {
+    int roopCount;
+    SPIDER_POSITION *position = result->first_position;
+    if (position)
+    {
+      for (roopCount = 0; roopCount < result->record_num; roopCount++)
+      {
+        if (
+          position[roopCount].row &&
+          !position[roopCount].use_position
+        ) {
+          my_free(position[roopCount].row, MYF(0));
+          position[roopCount].row = NULL;
+        }
+      }
+    }
+  }
+  DBUG_VOID_RETURN;
+}
+
 int spider_db_free_result(
   ha_spider *spider,
   bool final
@@ -2097,10 +2169,16 @@ int spider_db_free_result(
   SPIDER_RESULT *prev;
   SPIDER_SHARE *share = spider->share;
   SPIDER_TRX *trx = spider->trx;
+  SPIDER_CONN *conn = spider->conn;
+  SPIDER_POSITION *position;
+  int roopCount;
   DBUG_ENTER("spider_db_free_result");
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-  spider_bg_conn_break(spider->conn, spider);
+  if (result_list->bgs_working)
+    spider_bg_conn_break(conn, spider);
 #endif
+  if (conn->quick_target == spider)
+    conn->quick_target = NULL;
   if (
     final ||
     THDVAR(trx->thd, reset_sql_alloc) == 1 ||
@@ -2112,6 +2190,16 @@ int spider_db_free_result(
       THDVAR(trx->thd, init_sql_alloc_size));
     while (result)
     {
+      position = result->first_position;
+      if (position)
+      {
+        for (roopCount = 0; roopCount < result->record_num; roopCount++)
+        {
+          if (position[roopCount].row)
+            my_free(position[roopCount].row, MYF(0));
+        }
+        my_free(position, MYF(0));
+      }
       if (result->result)
       {
         mysql_free_result(result->result);
@@ -2147,19 +2235,32 @@ int spider_db_free_result(
   } else {
     while (result)
     {
+      position = result->first_position;
+      if (position)
+      {
+        for (roopCount = 0; roopCount < result->record_num; roopCount++)
+        {
+          if (position[roopCount].row)
+            my_free(position[roopCount].row, MYF(0));
+        }
+        my_free(position, MYF(0));
+      }
+      result->first_position = NULL;
       if (result->result)
       {
         mysql_free_result(result->result);
         result->result = NULL;
-        result->record_num = 0;
-        result->finish_flg = FALSE;
       }
+      result->record_num = 0;
+      result->finish_flg = FALSE;
+      result->use_position = FALSE;
       result = (SPIDER_RESULT*) result->next;
     }
   }
   result_list->current = NULL;
   result_list->record_num = 0;
   result_list->finish_flg = FALSE;
+  result_list->quick_phase = 0;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   result_list->bgs_phase = 0;
 #endif
@@ -2171,6 +2272,8 @@ int spider_db_store_result(
   TABLE *table
 ) {
   int error_num;
+  SPIDER_CONN *conn = spider->conn;
+  SPIDER_DB_CONN *db_conn = conn->db_conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   SPIDER_RESULT *current;
   DBUG_ENTER("spider_db_store_result");
@@ -2187,14 +2290,15 @@ int spider_db_store_result(
     } else {
       result_list->current = result_list->first;
     }
-#ifndef WITHOUT_SPIDER_BG_SEARCH
     result_list->bgs_current = result_list->current;
-#endif
     current = (SPIDER_RESULT*) result_list->current;
   } else {
+    if (
 #ifndef WITHOUT_SPIDER_BG_SEARCH
-    if (result_list->bgs_phase > 0)
-    {
+      result_list->bgs_phase > 0 ||
+#endif
+      result_list->quick_phase > 0
+    ) {
       if (result_list->bgs_current == result_list->last)
       {
         if (!(result_list->last = (SPIDER_RESULT *)
@@ -2207,11 +2311,26 @@ int spider_db_store_result(
       } else {
         result_list->bgs_current = result_list->bgs_current->next;
       }
-      if (result_list->bgs_phase == 1)
-        result_list->current = result_list->bgs_current;
+      if (
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+        result_list->bgs_phase == 1 ||
+#endif
+        result_list->quick_phase == 2
+      ) {
+        if (result_list->low_mem_read)
+        {
+          do {
+            spider_db_free_one_result(result_list,
+              (SPIDER_RESULT*) result_list->current);
+            result_list->current = result_list->current->next;
+          } while (result_list->current != result_list->bgs_current);
+        } else {
+          result_list->current = result_list->bgs_current;
+        }
+        result_list->quick_phase = 0;
+      }
       current = (SPIDER_RESULT*) result_list->bgs_current;
     } else {
-#endif
       if (result_list->current == result_list->last)
       {
         if (!(result_list->last = (SPIDER_RESULT *)
@@ -2224,50 +2343,169 @@ int spider_db_store_result(
       } else {
         result_list->current = result_list->current->next;
       }
+      result_list->bgs_current = result_list->current;
       current = (SPIDER_RESULT*) result_list->current;
-#ifndef WITHOUT_SPIDER_BG_SEARCH
     }
-#endif
   }
 
-  if (!(current->result = mysql_store_result(spider->db_conn)))
+  if (result_list->quick_mode == 0)
   {
-    if ((error_num = spider_db_errorno(spider->conn)))
-      DBUG_RETURN(error_num);
-    else {
-      current->finish_flg = TRUE;
-      result_list->finish_flg = TRUE;
+    if (!(current->result = mysql_store_result(db_conn)))
+    {
+      if ((error_num = spider_db_errorno(conn)))
+        DBUG_RETURN(error_num);
+      else {
+        current->finish_flg = TRUE;
+        result_list->finish_flg = TRUE;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+        if (result_list->bgs_phase <= 1)
+        {
+#endif
+          result_list->current_row_num = 0;
+          table->status = STATUS_NOT_FOUND;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+        }
+#endif
+        DBUG_RETURN(HA_ERR_END_OF_FILE);
+      }
+    } else {
+      current->record_num =
+        (longlong) mysql_num_rows(current->result);
+      result_list->record_num += current->record_num;
+      if (
+        result_list->internal_limit <= result_list->record_num ||
+        result_list->split_read > current->record_num
+      ) {
+        current->finish_flg = TRUE;
+        result_list->finish_flg = TRUE;
+      }
+      current->first_row = current->result->data_cursor;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
       if (result_list->bgs_phase <= 1)
       {
 #endif
         result_list->current_row_num = 0;
-        table->status = STATUS_NOT_FOUND;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
       }
 #endif
-      DBUG_RETURN(HA_ERR_END_OF_FILE);
     }
   } else {
-    current->record_num =
-      (longlong) mysql_num_rows(current->result);
-    result_list->record_num += current->record_num;
+    if (current->prev && current->prev->result)
+    {
+      current->result = current->prev->result;
+      current->prev->result = NULL;
+      result_list->limit_num -= current->prev->record_num;
+    } else {
+      if (!(current->result =
+        conn->db_conn->methods->use_result(db_conn)))
+        DBUG_RETURN(spider_db_errorno(conn));
+      conn->quick_target = spider;
+    }
+    SPIDER_DB_ROW row;
+    if (!(row = mysql_fetch_row(current->result)))
+    {
+      current->finish_flg = TRUE;
+      result_list->finish_flg = TRUE;
+      mysql_free_result(current->result);
+      current->result = NULL;
+      conn->quick_target = NULL;
+      if (
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+        result_list->bgs_phase <= 1 &&
+#endif
+        result_list->quick_phase == 0
+      ) {
+        result_list->current_row_num = 0;
+        table->status = STATUS_NOT_FOUND;
+      } else if (result_list->quick_phase > 0)
+        DBUG_RETURN(0);
+      DBUG_RETURN(HA_ERR_END_OF_FILE);
+    }
+    SPIDER_DB_ROW tmp_row;
+    char *tmp_char;
+    ulong *lengths;
+    uint field_count = db_conn->field_count;
+    int row_size;
+    SPIDER_POSITION *position;
+    longlong page_size =
+      !result_list->quick_page_size ||
+      result_list->limit_num < result_list->quick_page_size ?
+      result_list->limit_num : result_list->quick_page_size;
+    int roopCount = 0;
+    int roopCount2;
+    if (!(position = (SPIDER_POSITION *)
+      my_malloc(sizeof(SPIDER_POSITION) * (page_size + 1),
+      MYF(MY_WME | MY_ZEROFILL)))
+    )
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    current->first_position = position;
+    do {
+      row_size = field_count;
+      lengths = current->result->lengths;
+      for (roopCount2 = 0; roopCount2 < field_count; roopCount2++)
+      {
+        row_size += *lengths;
+        lengths++;
+      }
+      DBUG_PRINT("info",("spider row_size=%d", row_size));
+      if (!my_multi_malloc(MYF(MY_WME),
+        &tmp_row, sizeof(char*) * field_count,
+        &tmp_char, row_size,
+        &lengths, sizeof(ulong) * field_count,
+        NullS)
+      )
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      memcpy(lengths, current->result->lengths, sizeof(ulong) * field_count);
+      position->row = tmp_row;
+      position->lengths = lengths;
+      for (roopCount2 = 0; roopCount2 < field_count; roopCount2++)
+      {
+        DBUG_PRINT("info",("spider *lengths=%u", *lengths));
+        if (*row == NULL)
+        {
+          *tmp_row = NULL;
+          *tmp_char = 0;
+          tmp_char++;
+        } else {
+          *tmp_row = tmp_char;
+          memcpy(tmp_char, *row, *lengths + 1);
+          tmp_char += *lengths + 1;
+        }
+        tmp_row++;
+        lengths++;
+        row++;
+      }
+      position++;
+      roopCount++;
+    } while (
+      page_size > roopCount &&
+      (row = mysql_fetch_row(current->result))
+    );
+    current->record_num = roopCount;
+    result_list->record_num += roopCount;
     if (
       result_list->internal_limit <= result_list->record_num ||
-      result_list->split_read > current->record_num
+      page_size > roopCount
     ) {
       current->finish_flg = TRUE;
       result_list->finish_flg = TRUE;
-    }
-    current->first_row = current->result->data_cursor;
-#ifndef WITHOUT_SPIDER_BG_SEARCH
-    if (result_list->bgs_phase <= 1)
+      mysql_free_result(current->result);
+      current->result = NULL;
+      conn->quick_target = NULL;
+    } else if (result_list->limit_num == roopCount)
     {
-#endif
-      result_list->current_row_num = 0;
-#ifndef WITHOUT_SPIDER_BG_SEARCH
+      mysql_free_result(current->result);
+      current->result = NULL;
+      conn->quick_target = NULL;
     }
+    if (
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+      result_list->bgs_phase <= 1 &&
 #endif
+      result_list->quick_phase == 0
+    ) {
+      result_list->current_row_num = 0;
+    }
   }
   DBUG_RETURN(0);
 }
@@ -2282,10 +2520,10 @@ int spider_db_fetch(
   DBUG_ENTER("spider_db_fetch");
   if (result_list->keyread)
     error_num = spider_db_fetch_key(buf, table,
-      result_list->key_info, result_list->current->result);
+      result_list->key_info, result_list);
   else
     error_num = spider_db_fetch_table(buf, table,
-      result_list->current->result);
+      result_list);
   result_list->current_row_num++;
   DBUG_PRINT("info",("spider error_num=%d", error_num));
   DBUG_RETURN(error_num);
@@ -2305,13 +2543,19 @@ int spider_db_seek_prev(
       table->status = STATUS_NOT_FOUND;
       DBUG_RETURN(HA_ERR_END_OF_FILE);
     }
+    if (result_list->low_mem_read == 1)
+    {
+      my_message(ER_SPIDER_LOW_MEM_READ_PREV_NUM, ER_SPIDER_LOW_MEM_READ_PREV_STR, MYF(0));
+      DBUG_RETURN(ER_SPIDER_LOW_MEM_READ_PREV_NUM);
+    }
     result_list->current = result_list->current->prev;
     result_list->current_row_num = result_list->current->record_num - 1;
   } else {
     result_list->current_row_num -= 2;
   }
-  result_list->current->result->data_cursor =
-    result_list->current->first_row + result_list->current_row_num;
+  if (result_list->quick_mode == 0)
+    result_list->current->result->data_cursor =
+      result_list->current->first_row + result_list->current_row_num;
   DBUG_RETURN(spider_db_fetch(buf, spider, table));
 }
 
@@ -2325,6 +2569,9 @@ int spider_db_seek_next(
   DBUG_ENTER("spider_db_seek_next");
   if (result_list->current_row_num >= result_list->current->record_num)
   {
+    if (result_list->low_mem_read)
+      spider_db_free_one_result(result_list,
+        (SPIDER_RESULT*) result_list->current);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (result_list->bgs_phase > 0)
     {
@@ -2332,30 +2579,49 @@ int spider_db_seek_next(
         DBUG_RETURN(error_num);
     } else {
 #endif
-      if (result_list->finish_flg)
+      if (result_list->current == result_list->bgs_current)
       {
-        table->status = STATUS_NOT_FOUND;
-        DBUG_RETURN(HA_ERR_END_OF_FILE);
+        if (result_list->finish_flg)
+        {
+          table->status = STATUS_NOT_FOUND;
+          DBUG_RETURN(HA_ERR_END_OF_FILE);
+        }
+        if (
+          result_list->quick_mode == 0 ||
+          !result_list->current->result
+        ) {
+          result_list->sql.length(result_list->limit_pos);
+          result_list->limit_num =
+            result_list->internal_limit - result_list->record_num >=
+            result_list->split_read ?
+            result_list->split_read :
+            result_list->internal_limit - result_list->record_num;
+          if ((error_num = spider_db_append_limit(
+            &result_list->sql, result_list->record_num,
+            result_list->limit_num)) ||
+            (error_num = spider_db_append_select_lock(spider))
+          )
+            DBUG_RETURN(error_num);
+          if (spider_db_query(
+            spider->conn,
+            result_list->sql.ptr(),
+            result_list->sql.length())
+          )
+            DBUG_RETURN(spider_db_errorno(spider->conn));
+        }
+        if ((error_num = spider_db_store_result(spider, table)))
+          DBUG_RETURN(error_num);
+      } else {
+        result_list->current = result_list->current->next;
+        result_list->current_row_num = 0;
+        if (
+          result_list->current == result_list->bgs_current &&
+          result_list->finish_flg
+        ) {
+          table->status = STATUS_NOT_FOUND;
+          DBUG_RETURN(HA_ERR_END_OF_FILE);
+        }
       }
-      result_list->sql.length(result_list->limit_pos);
-      if ((error_num = spider_db_append_limit(
-        &result_list->sql,
-        result_list->internal_offset + result_list->record_num,
-        result_list->internal_limit - result_list->record_num >=
-        result_list->split_read ?
-        result_list->split_read :
-        result_list->internal_limit - result_list->record_num)) ||
-        (error_num = spider_db_append_select_lock(spider))
-      )
-        DBUG_RETURN(error_num);
-      if (spider_db_query(
-        spider->conn,
-        result_list->sql.ptr(),
-        result_list->sql.length())
-      )
-        DBUG_RETURN(spider_db_errorno(spider->conn));
-      if ((error_num = spider_db_store_result(spider, table)))
-        DBUG_RETURN(error_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     }
 #endif
@@ -2374,19 +2640,33 @@ int spider_db_seek_last(
   DBUG_ENTER("spider_db_seek_last");
   if (result_list->finish_flg)
   {
+    if (result_list->low_mem_read == 1)
+    {
+      my_message(ER_SPIDER_LOW_MEM_READ_PREV_NUM, ER_SPIDER_LOW_MEM_READ_PREV_STR, MYF(0));
+      DBUG_RETURN(ER_SPIDER_LOW_MEM_READ_PREV_NUM);
+    }
     result_list->current = result_list->last;
     result_list->current_row_num = result_list->current->record_num - 1;
-    result_list->current->result->data_cursor =
-      result_list->current->first_row + result_list->current_row_num;
+    if (result_list->quick_mode == 0)
+      result_list->current->result->data_cursor =
+        result_list->current->first_row + result_list->current_row_num;
     DBUG_RETURN(spider_db_fetch(buf, spider, table));
   } else if (!result_list->sorted ||
     result_list->internal_limit <= result_list->record_num * 2)
   {
+    if (result_list->low_mem_read == 1)
+    {
+      my_message(ER_SPIDER_LOW_MEM_READ_PREV_NUM, ER_SPIDER_LOW_MEM_READ_PREV_STR, MYF(0));
+      DBUG_RETURN(ER_SPIDER_LOW_MEM_READ_PREV_NUM);
+    }
     result_list->sql.length(result_list->limit_pos);
+    result_list->limit_num =
+      result_list->internal_limit - result_list->record_num;
     if ((error_num = spider_db_append_limit(
       &result_list->sql,
       result_list->internal_offset + result_list->record_num,
-      result_list->internal_limit - result_list->record_num))
+      result_list->limit_num)) ||
+      (error_num = spider_db_append_select_lock(spider))
     )
       DBUG_RETURN(error_num);
     if (spider_db_query(
@@ -2398,20 +2678,24 @@ int spider_db_seek_last(
     if ((error_num = spider_db_store_result(spider, table)))
       DBUG_RETURN(error_num);
     result_list->current_row_num = result_list->current->record_num - 1;
-    result_list->current->result->data_cursor =
-      result_list->current->first_row + result_list->current_row_num;
+    if (result_list->quick_mode == 0)
+      result_list->current->result->data_cursor =
+        result_list->current->first_row + result_list->current_row_num;
     DBUG_RETURN(spider_db_fetch(buf, spider, table));
   } else {
     if ((error_num = spider_db_free_result(spider, FALSE)))
       DBUG_RETURN(error_num);
     result_list->sql.length(result_list->order_pos);
     result_list->desc_flg = ~(result_list->desc_flg);
+    result_list->limit_num =
+      result_list->internal_limit >= result_list->split_read ?
+      result_list->split_read : result_list->internal_limit;
     if (
       (error_num = spider_db_append_key_order(spider)) ||
       (error_num = spider_db_append_limit(
         &result_list->sql, result_list->internal_offset,
-        result_list->internal_limit >= result_list->split_read ?
-        result_list->split_read : result_list->internal_limit))
+        result_list->limit_num)) ||
+      (error_num = spider_db_append_select_lock(spider))
     )
       DBUG_RETURN(error_num);
     if (spider_db_query(
@@ -2433,25 +2717,50 @@ int spider_db_seek_first(
 ) {
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   DBUG_ENTER("spider_db_seek_first");
+  if (
+    result_list->current != result_list->first &&
+    result_list->low_mem_read == 1
+  ) {
+    my_message(ER_SPIDER_LOW_MEM_READ_PREV_NUM, ER_SPIDER_LOW_MEM_READ_PREV_STR, MYF(0));
+    DBUG_RETURN(ER_SPIDER_LOW_MEM_READ_PREV_NUM);
+  }
   result_list->current = result_list->first;
-  result_list->current_row_num = 0;
-  result_list->current->result->data_cursor =
-    result_list->current->first_row;
+  spider_db_set_pos_to_first_row(result_list);
   DBUG_RETURN(spider_db_fetch(buf, spider, table));
+}
+
+void spider_db_set_pos_to_first_row(
+  SPIDER_RESULT_LIST *result_list
+) {
+  DBUG_ENTER("spider_db_set_pos_to_first_row");
+  result_list->current_row_num = 0;
+  if (result_list->quick_mode == 0)
+    result_list->current->result->data_cursor =
+      result_list->current->first_row;
+  DBUG_VOID_RETURN;
 }
 
 SPIDER_POSITION *spider_db_create_position(
   ha_spider *spider
 ) {
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
-  SPIDER_DB_RESULT *result = result_list->current->result;
+  SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
+  SPIDER_POSITION *pos;
   DBUG_ENTER("spider_db_create_position");
-  SPIDER_POSITION *pos = (SPIDER_POSITION*) sql_alloc(sizeof(SPIDER_POSITION));
-  ulong *lengths = (ulong*) sql_alloc(sizeof(ulong) * result->field_count);
-  pos->row =
-    (result_list->current->first_row + result_list->current_row_num - 1)->data;
-  memcpy(lengths, result->lengths, sizeof(ulong) * result->field_count);
-  pos->lengths = lengths;
+  if (result_list->quick_mode == 0)
+  {
+    SPIDER_DB_RESULT *result = current->result;
+    pos = (SPIDER_POSITION*) sql_alloc(sizeof(SPIDER_POSITION));
+    ulong *lengths = (ulong*) sql_alloc(sizeof(ulong) * result->field_count);
+    pos->row =
+      (current->first_row + result_list->current_row_num - 1)->data;
+    memcpy(lengths, result->lengths, sizeof(ulong) * result->field_count);
+    pos->lengths = lengths;
+  } else {
+    pos = &current->first_position[result_list->current_row_num - 1];
+  }
+  current->use_position = TRUE;
+  pos->use_position = TRUE;
   DBUG_RETURN(pos);
 }
 
@@ -2539,6 +2848,7 @@ int spider_db_show_table_status(
   ha_spider *spider
 ) {
   int error_num;
+  SPIDER_CONN *conn = spider->conn;
   SPIDER_DB_RESULT *res;
   SPIDER_DB_ROW row;
   SPIDER_SHARE *share = spider->share;
@@ -2546,18 +2856,18 @@ int spider_db_show_table_status(
   if (spider->share->sts_mode == 1)
   {
     if (spider_db_query(
-      spider->conn,
+      conn,
       share->show_table_status[0].ptr(),
       share->show_table_status[0].length())
     )
-      DBUG_RETURN(spider_db_errorno(spider->conn));
+      DBUG_RETURN(spider_db_errorno(conn));
     if (
-      !(res = mysql_store_result(spider->db_conn)) ||
+      !(res = mysql_store_result(conn->db_conn)) ||
       !(row = mysql_fetch_row(res))
     ) {
       if (res)
         mysql_free_result(res);
-      if ((error_num = spider_db_errorno(spider->conn)))
+      if ((error_num = spider_db_errorno(conn)))
         DBUG_RETURN(error_num);
       else {
         my_printf_error(ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM,
@@ -2638,18 +2948,18 @@ int spider_db_show_table_status(
     mysql_free_result(res);
   } else {
     if (spider_db_query(
-      spider->conn,
-      spider->share->show_table_status[1].ptr(),
-      spider->share->show_table_status[1].length())
+      conn,
+      share->show_table_status[1].ptr(),
+      share->show_table_status[1].length())
     )
-      DBUG_RETURN(spider_db_errorno(spider->conn));
+      DBUG_RETURN(spider_db_errorno(conn));
     if (
-      !(res = mysql_store_result(spider->db_conn)) ||
+      !(res = mysql_store_result(conn->db_conn)) ||
       !(row = mysql_fetch_row(res))
     ) {
       if (res)
         mysql_free_result(res);
-      if ((error_num = spider_db_errorno(spider->conn)))
+      if ((error_num = spider_db_errorno(conn)))
         DBUG_RETURN(error_num);
       else
         DBUG_RETURN(ER_QUERY_ON_FOREIGN_DATA_SOURCE);
@@ -2728,6 +3038,8 @@ int spider_db_show_index(
   TABLE *table
 ) {
   int error_num;
+  SPIDER_CONN *conn = spider->conn;
+  SPIDER_SHARE *share = spider->share;
   SPIDER_DB_RESULT *res;
   SPIDER_DB_ROW row;
   Field *field;
@@ -2735,19 +3047,19 @@ int spider_db_show_index(
   longlong *tmp_cardinality;
   bool *tmp_cardinality_upd;
   DBUG_ENTER("spider_db_show_index");
-  if (spider->share->crd_mode == 1)
+  if (share->crd_mode == 1)
   {
     if (spider_db_query(
-      spider->conn,
-      spider->share->show_index[0].ptr(),
-      spider->share->show_index[0].length())
+      conn,
+      share->show_index[0].ptr(),
+      share->show_index[0].length())
     )
-      DBUG_RETURN(spider_db_errorno(spider->conn));
+      DBUG_RETURN(spider_db_errorno(conn));
     if (
-      !(res = mysql_store_result(spider->db_conn)) ||
+      !(res = mysql_store_result(conn->db_conn)) ||
       !(row = mysql_fetch_row(res))
     ) {
-      if ((error_num = spider_db_errorno(spider->conn)))
+      if ((error_num = spider_db_errorno(conn)))
       {
         if (res)
           mysql_free_result(res);
@@ -2761,7 +3073,7 @@ int spider_db_show_index(
       DBUG_RETURN(ER_QUERY_ON_FOREIGN_DATA_SOURCE);
     }
 
-    for (roop_count = 0, tmp_cardinality_upd = spider->share->cardinality_upd;
+    for (roop_count = 0, tmp_cardinality_upd = share->cardinality_upd;
       roop_count < table->s->fields;
       roop_count++, tmp_cardinality_upd++)
       *tmp_cardinality_upd = FALSE;
@@ -2772,15 +3084,15 @@ int spider_db_show_index(
         row[6] &&
         (field = find_field_in_table_sef(table, row[4]))
       ) {
-        if ((spider->share->cardinality[field->field_index] =
+        if ((share->cardinality[field->field_index] =
           (longlong) my_strtoll10(row[6], (char**) NULL, &error_num)) <= 0)
-          spider->share->cardinality[field->field_index] = 1;
-          spider->share->cardinality_upd[field->field_index] = TRUE;
+          share->cardinality[field->field_index] = 1;
+          share->cardinality_upd[field->field_index] = TRUE;
         DBUG_PRINT("info",
           ("spider col_name=%s", row[4]));
         DBUG_PRINT("info",
           ("spider cardinality=%lld",
-          spider->share->cardinality[field->field_index]));
+          share->cardinality[field->field_index]));
       } else if (row[4])
       {
         DBUG_PRINT("info",
@@ -2791,8 +3103,8 @@ int spider_db_show_index(
       }
       row = mysql_fetch_row(res);
     }
-    for (roop_count = 0, tmp_cardinality = spider->share->cardinality,
-      tmp_cardinality_upd = spider->share->cardinality_upd;
+    for (roop_count = 0, tmp_cardinality = share->cardinality,
+      tmp_cardinality_upd = share->cardinality_upd;
       roop_count < table->s->fields;
       roop_count++, tmp_cardinality++, tmp_cardinality_upd++)
     {
@@ -2803,16 +3115,16 @@ int spider_db_show_index(
       mysql_free_result(res);
   } else {
     if (spider_db_query(
-      spider->conn,
-      spider->share->show_index[1].ptr(),
-      spider->share->show_index[1].length())
+      conn,
+      share->show_index[1].ptr(),
+      share->show_index[1].length())
     )
-      DBUG_RETURN(spider_db_errorno(spider->conn));
+      DBUG_RETURN(spider_db_errorno(conn));
     if (
-      !(res = mysql_store_result(spider->db_conn)) ||
+      !(res = mysql_store_result(conn->db_conn)) ||
       !(row = mysql_fetch_row(res))
     ) {
-      if ((error_num = spider_db_errorno(spider->conn)))
+      if ((error_num = spider_db_errorno(conn)))
       {
         if (res)
           mysql_free_result(res);
@@ -2821,7 +3133,7 @@ int spider_db_show_index(
       /* no record is ok */
     }
 
-    for (roop_count = 0, tmp_cardinality_upd = spider->share->cardinality_upd;
+    for (roop_count = 0, tmp_cardinality_upd = share->cardinality_upd;
       roop_count < table->s->fields;
       roop_count++, tmp_cardinality_upd++)
       *tmp_cardinality_upd = FALSE;
@@ -2832,15 +3144,15 @@ int spider_db_show_index(
         row[1] &&
         (field = find_field_in_table_sef(table, row[0]))
       ) {
-        if ((spider->share->cardinality[field->field_index] =
+        if ((share->cardinality[field->field_index] =
           (longlong) my_strtoll10(row[1], (char**) NULL, &error_num)) <= 0)
-          spider->share->cardinality[field->field_index] = 1;
-          spider->share->cardinality_upd[field->field_index] = TRUE;
+          share->cardinality[field->field_index] = 1;
+          share->cardinality_upd[field->field_index] = TRUE;
         DBUG_PRINT("info",
           ("spider col_name=%s", row[0]));
         DBUG_PRINT("info",
           ("spider cardinality=%lld",
-          spider->share->cardinality[field->field_index]));
+          share->cardinality[field->field_index]));
       } else if (row[0])
       {
         DBUG_PRINT("info",
@@ -2851,8 +3163,8 @@ int spider_db_show_index(
       }
       row = mysql_fetch_row(res);
     }
-    for (roop_count = 0, tmp_cardinality = spider->share->cardinality,
-      tmp_cardinality_upd = spider->share->cardinality_upd;
+    for (roop_count = 0, tmp_cardinality = share->cardinality,
+      tmp_cardinality_upd = share->cardinality_upd;
       roop_count < table->s->fields;
       roop_count++, tmp_cardinality++, tmp_cardinality_upd++)
     {
@@ -2871,6 +3183,7 @@ ha_rows spider_db_explain_select(
   ha_spider *spider
 ) {
   int error_num;
+  SPIDER_CONN *conn = spider->conn;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
   String *str = &result_list->sql;
   SPIDER_DB_RESULT *res;
@@ -2892,20 +3205,20 @@ ha_rows spider_db_explain_select(
   }
 
   if (spider_db_query(
-    spider->conn,
+    conn,
     str->ptr(),
     str->length())
   ) {
-    my_errno = spider_db_errorno(spider->conn);
+    my_errno = spider_db_errorno(conn);
     DBUG_RETURN(HA_POS_ERROR);
   }
   if (
-    !(res = mysql_store_result(spider->db_conn)) ||
+    !(res = mysql_store_result(conn->db_conn)) ||
     !(row = mysql_fetch_row(res))
   ) {
     if (res)
       mysql_free_result(res);
-    if ((error_num = spider_db_errorno(spider->conn)))
+    if ((error_num = spider_db_errorno(conn)))
     {
       my_errno = error_num;
       DBUG_RETURN(HA_POS_ERROR);
@@ -3022,20 +3335,21 @@ int spider_db_bulk_insert(
     (bulk_end || str->length() >= spider->bulk_size) &&
     str->length() > result_list->insert_pos
   ) {
+    SPIDER_CONN *conn = spider->conn;
     if (spider_db_query(
-      spider->conn,
+      conn,
       str->ptr(),
       str->length() - SPIDER_SQL_COMMA_LEN)
     ) {
       str->length(result_list->insert_pos);
-      error_num = spider_db_errorno(spider->conn);
+      error_num = spider_db_errorno(conn);
       if (error_num == HA_ERR_FOUND_DUPP_KEY)
       {
         uint roop_count;
         int key_name_length;
         int max_length = 0;
         char *key_name;
-        DBUG_PRINT("info",("spider error_str=%s", spider->conn->error_str));
+        DBUG_PRINT("info",("spider error_str=%s", conn->error_str));
         for (roop_count = 0; roop_count < table->s->keys; roop_count++)
         {
           key_name = table->s->key_info[roop_count].name;
@@ -3043,11 +3357,11 @@ int spider_db_bulk_insert(
           DBUG_PRINT("info",("spider key_name=%s", key_name));
           if (
             max_length < key_name_length &&
-            spider->conn->error_length - 1 >= key_name_length &&
-            *(spider->conn->error_str + spider->conn->error_length - 2 -
+            conn->error_length - 1 >= key_name_length &&
+            *(conn->error_str + conn->error_length - 2 -
               key_name_length) == '\'' &&
-            !strncasecmp(spider->conn->error_str +
-              spider->conn->error_length - 1 - key_name_length,
+            !strncasecmp(conn->error_str +
+              conn->error_length - 1 - key_name_length,
               key_name, key_name_length)
           ) {
             max_length = key_name_length;
@@ -3065,7 +3379,7 @@ int spider_db_bulk_insert(
       (error_num = spider_db_update_auto_increment(spider)) ||
       (table->next_number_field &&
       (error_num = table->next_number_field->store(
-        spider->db_conn->last_used_con->insert_id, TRUE)))
+        conn->db_conn->last_used_con->insert_id, TRUE)))
     )
       DBUG_RETURN(error_num);
   }
@@ -3076,10 +3390,11 @@ int spider_db_update_auto_increment(
   ha_spider *spider
 ) {
   ulonglong last_insert_id;
+  SPIDER_DB_CONN *last_used_con = spider->conn->db_conn->last_used_con;
   DBUG_ENTER("spider_db_update_auto_increment");
-  last_insert_id = spider->db_conn->last_used_con->insert_id;
+  last_insert_id = last_used_con->insert_id;
   spider->share->auto_increment_value =
-    last_insert_id + spider->db_conn->last_used_con->affected_rows - 1;
+    last_insert_id + last_used_con->affected_rows - 1;
   spider->trx->thd->record_first_successful_insert_id_in_cur_stmt(
     last_insert_id);
   DBUG_RETURN(0);

@@ -41,7 +41,6 @@ ha_spider::ha_spider(
   share = NULL;
   trx = NULL;
   conn = NULL;
-  db_conn = NULL;
   DBUG_VOID_RETURN;
 }
 
@@ -55,7 +54,6 @@ ha_spider::ha_spider(
   share = NULL;
   trx = NULL;
   conn = NULL;
-  db_conn = NULL;
   ref_length = sizeof(my_off_t);
   DBUG_VOID_RETURN;
 }
@@ -128,7 +126,6 @@ int ha_spider::close()
   share = NULL;
   trx = NULL;
   conn = NULL;
-  db_conn = NULL;
 
   DBUG_RETURN(0);
 }
@@ -401,7 +398,6 @@ int ha_spider::reset()
       DBUG_PRINT("info",("spider get conn error"));
       DBUG_RETURN(error_num);
     }
-    db_conn = conn->db_conn;
   }
   quick_mode = FALSE;
   keyread = FALSE;
@@ -460,26 +456,8 @@ int ha_spider::index_init(
   DBUG_PRINT("info",("spider idx=%u", idx));
   active_index = idx;
   result_list.sorted = sorted;
-  result_list.internal_offset =
-    THDVAR(trx->thd, internal_offset) < 0 ?
-    share->internal_offset :
-    THDVAR(trx->thd, internal_offset);
-  result_list.internal_limit =
-    THDVAR(trx->thd, internal_limit) < 0 ?
-    share->internal_limit :
-    THDVAR(trx->thd, internal_limit);
-  result_list.split_read =
-    THDVAR(trx->thd, split_read) < 0 ?
-    share->split_read :
-    THDVAR(trx->thd, split_read);
-  result_list.multi_split_read =
-    THDVAR(trx->thd, multi_split_read) < 0 ?
-    share->multi_split_read :
-    THDVAR(trx->thd, multi_split_read);
-  result_list.max_order =
-    THDVAR(trx->thd, max_order) < 0 ?
-    share->max_order :
-    THDVAR(trx->thd, max_order);
+  spider_set_result_list_param(this);
+
   result_list.sql.length(0);
   if (
     result_list.current &&
@@ -522,6 +500,7 @@ int ha_spider::index_read_map(
   )
     DBUG_RETURN(error_num);
 */
+  spider_set_result_list_param(this);
   start_key.key = key;
   start_key.keypart_map = keypart_map;
   start_key.flag = find_flag;
@@ -556,14 +535,16 @@ int ha_spider::index_read_map(
   result_list.desc_flg = FALSE;
   result_list.sorted = TRUE;
   result_list.key_info = &table->key_info[active_index];
+  result_list.limit_num =
+    result_list.internal_limit >= result_list.split_read ?
+    result_list.split_read : result_list.internal_limit;
   if (
     (error_num = spider_db_append_key_where(
       &start_key, NULL, this)) ||
     (error_num = spider_db_append_key_order(this)) ||
     (error_num = spider_db_append_limit(
       &result_list.sql, result_list.internal_offset,
-      result_list.internal_limit >= result_list.split_read ?
-      result_list.split_read : result_list.internal_limit)) ||
+      result_list.limit_num)) ||
     (error_num = spider_db_append_select_lock(this))
   )
     DBUG_RETURN(error_num);
@@ -631,14 +612,16 @@ int ha_spider::index_read_last_map(
   result_list.desc_flg = TRUE;
   result_list.sorted = TRUE;
   result_list.key_info = &table->key_info[active_index];
+  result_list.limit_num =
+    result_list.internal_limit >= result_list.split_read ?
+    result_list.split_read : result_list.internal_limit;
   if (
     (error_num = spider_db_append_key_where(
       &start_key, NULL, this)) ||
     (error_num = spider_db_append_key_order(this)) ||
     (error_num = spider_db_append_limit(
       &result_list.sql, result_list.internal_offset,
-      result_list.internal_limit >= result_list.split_read ?
-      result_list.split_read : result_list.internal_limit)) ||
+      result_list.limit_num)) ||
     (error_num = spider_db_append_select_lock(this))
   )
     DBUG_RETURN(error_num);
@@ -722,12 +705,14 @@ int ha_spider::index_first(
     result_list.sorted = TRUE;
     result_list.key_info = &table->key_info[active_index];
     result_list.key_order = 0;
+    result_list.limit_num =
+      result_list.internal_limit >= result_list.split_read ?
+      result_list.split_read : result_list.internal_limit;
     if (
       (error_num = spider_db_append_key_order(this)) ||
       (error_num = spider_db_append_limit(
         &result_list.sql, result_list.internal_offset,
-        result_list.internal_limit >= result_list.split_read ?
-        result_list.split_read : result_list.internal_limit)) ||
+        result_list.limit_num)) ||
       (error_num = spider_db_append_select_lock(this))
     )
       DBUG_RETURN(error_num);
@@ -791,12 +776,14 @@ int ha_spider::index_last(
     result_list.sorted = TRUE;
     result_list.key_info = &table->key_info[active_index];
     result_list.key_order = 0;
+    result_list.limit_num =
+      result_list.internal_limit >= result_list.split_read ?
+      result_list.split_read : result_list.internal_limit;
     if (
       (error_num = spider_db_append_key_order(this)) ||
       (error_num = spider_db_append_limit(
         &result_list.sql, result_list.internal_offset,
-        result_list.internal_limit >= result_list.split_read ?
-        result_list.split_read : result_list.internal_limit)) ||
+        result_list.limit_num)) ||
       (error_num = spider_db_append_select_lock(this))
     )
       DBUG_RETURN(error_num);
@@ -882,14 +869,16 @@ int ha_spider::read_range_first(
   result_list.desc_flg = FALSE;
   result_list.sorted = sorted;
   result_list.key_info = &table->key_info[active_index];
+  result_list.limit_num =
+    result_list.internal_limit >= result_list.split_read ?
+    result_list.split_read : result_list.internal_limit;
   if (
     (error_num = spider_db_append_key_where(
       start_key, eq_range ? NULL : end_key, this)) ||
     (error_num = spider_db_append_key_order(this)) ||
     (error_num = spider_db_append_limit(
       &result_list.sql, result_list.internal_offset,
-      result_list.internal_limit >= result_list.split_read ?
-      result_list.split_read : result_list.internal_limit)) ||
+      result_list.limit_num)) ||
     (error_num = spider_db_append_select_lock(this))
   )
     DBUG_RETURN(error_num);
@@ -977,6 +966,11 @@ int ha_spider::read_multi_range_first(
       multi_range_curr < multi_range_end;
       multi_range_curr++
     ) {
+      result_list.limit_num =
+        result_list.internal_limit - result_list.record_num >=
+        result_list.split_read ?
+        result_list.split_read :
+        result_list.internal_limit - result_list.record_num;
       if (
         (error_num = spider_db_append_key_where(
           &multi_range_curr->start_key,
@@ -986,10 +980,7 @@ int ha_spider::read_multi_range_first(
         (error_num = spider_db_append_limit(
           &result_list.sql,
           result_list.internal_offset + result_list.record_num,
-          result_list.internal_limit - result_list.record_num >=
-          result_list.split_read ?
-          result_list.split_read :
-          result_list.internal_limit - result_list.record_num)) ||
+          result_list.limit_num)) ||
         (error_num = spider_db_append_select_lock(this))
       )
         DBUG_RETURN(error_num);
@@ -1077,11 +1068,13 @@ int ha_spider::read_multi_range_first(
     high_priority = tmp_high_priority;
     result_list.sql.length(result_list.sql.length() -
       SPIDER_SQL_UNION_ALL_LEN + SPIDER_SQL_CLOSE_PAREN_LEN);
+    result_list.limit_num =
+      result_list.internal_limit >= result_list.split_read ?
+      result_list.split_read : result_list.internal_limit;
     if (
       (error_num = spider_db_append_limit(
         &result_list.sql, result_list.internal_offset,
-        result_list.internal_limit >= result_list.split_read ?
-        result_list.split_read : result_list.internal_limit))
+        result_list.limit_num))
     )
       DBUG_RETURN(error_num);
 
@@ -1131,6 +1124,11 @@ int ha_spider::read_multi_range_next(
       multi_range_curr++
     ) {
       result_list.sql.length(result_list.where_pos);
+      result_list.limit_num =
+        result_list.internal_limit - result_list.record_num >=
+        result_list.split_read ?
+        result_list.split_read :
+        result_list.internal_limit - result_list.record_num;
       if (
         (error_num = spider_db_append_key_where(
           &multi_range_curr->start_key,
@@ -1140,10 +1138,7 @@ int ha_spider::read_multi_range_next(
         (error_num = spider_db_append_limit(
           &result_list.sql,
           result_list.internal_offset + result_list.record_num,
-          result_list.internal_limit - result_list.record_num >=
-          result_list.split_read ?
-          result_list.split_read :
-          result_list.internal_limit - result_list.record_num)) ||
+          result_list.limit_num)) ||
         (error_num = spider_db_append_select_lock(this))
       )
         DBUG_RETURN(error_num);
@@ -1192,32 +1187,19 @@ int ha_spider::rnd_init(
   DBUG_PRINT("info",("spider this=%x", this));
   if (scan)
   {
-/* for later
     if (
       result_list.current &&
+      result_list.low_mem_read &&
       (error_num = spider_db_free_result(this, FALSE))
     )
       DBUG_RETURN(error_num);
-*/
+
     if (result_list.current)
     {
       result_list.current = result_list.first;
-      result_list.current_row_num = 0;
-      result_list.current->result->data_cursor =
-        result_list.current->first_row;
+      spider_db_set_pos_to_first_row(&result_list);
     } else {
-      result_list.internal_offset =
-        THDVAR(trx->thd, internal_offset) < 0 ?
-        share->internal_offset :
-        THDVAR(trx->thd, internal_offset);
-      result_list.internal_limit =
-        THDVAR(trx->thd, internal_limit) < 0 ?
-        share->internal_limit :
-        THDVAR(trx->thd, internal_limit);
-      result_list.split_read =
-        THDVAR(trx->thd, split_read) < 0 ?
-        share->split_read :
-        THDVAR(trx->thd, split_read);
+      spider_set_result_list_param(this);
 
       result_list.sql.length(0);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -1239,11 +1221,13 @@ int ha_spider::rnd_init(
       result_list.desc_flg = FALSE;
       result_list.sorted = FALSE;
       result_list.key_info = NULL;
+      result_list.limit_num =
+        result_list.internal_limit >= result_list.split_read ?
+        result_list.split_read : result_list.internal_limit;
       if (
         (error_num = spider_db_append_limit(
           &result_list.sql, result_list.internal_offset,
-          result_list.internal_limit >= result_list.split_read ?
-          result_list.split_read : result_list.internal_limit)) ||
+          result_list.limit_num)) ||
         (error_num = spider_db_append_select_lock(this))
       )
         DBUG_RETURN(error_num);

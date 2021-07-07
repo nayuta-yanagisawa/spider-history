@@ -508,6 +508,9 @@ int spider_parse_connect_info(
   share->read_rate = -1;
   share->priority = -1;
   share->net_timeout = -1;
+  share->quick_mode = -1;
+  share->quick_page_size = -1;
+  share->low_mem_read = -1;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   share->bgs_mode = -1;
   share->bgs_first_read = -1;
@@ -620,7 +623,7 @@ int spider_parse_connect_info(
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           SPIDER_PARAM_LONGLONG("bfr", bgs_first_read, 0);
           SPIDER_PARAM_INT("bmd", bgs_mode, 0);
-          SPIDER_PARAM_LONGLONG("bsd", bgs_second_read, 0);
+          SPIDER_PARAM_LONGLONG("bsr", bgs_second_read, 0);
 #endif
           SPIDER_PARAM_INT("bsz", bulk_size, 0);
           SPIDER_PARAM_DOUBLE("civ", crd_interval, 0);
@@ -636,11 +639,14 @@ int spider_parse_connect_info(
           SPIDER_PARAM_LONGLONG("ios", internal_offset, 0);
           SPIDER_PARAM_INT_WITH_MAX("iom", internal_optimize, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX("iol", internal_optimize_local, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX("lmr", low_mem_read, 0, 1);
           SPIDER_PARAM_INT("mod", max_order, 0);
           SPIDER_PARAM_INT_WITH_MAX("msr", multi_split_read, 0, 1);
           SPIDER_PARAM_INT("nto", net_timeout, 0);
           SPIDER_PARAM_LONGLONG("prt", priority, 0);
           SPIDER_PARAM_INT_WITH_MAX("qch", query_cache, 0, 2);
+          SPIDER_PARAM_INT_WITH_MAX("qmd", quick_mode, 0, 2);
+          SPIDER_PARAM_LONGLONG("qps", quick_page_size, 0);
           SPIDER_PARAM_DOUBLE("rrt", read_rate, 0);
           SPIDER_PARAM_INT_WITH_MAX("rsa", reset_sql_alloc, 0, 1);
           SPIDER_PARAM_INT("srt", scan_rate, 0);
@@ -714,6 +720,7 @@ int spider_parse_connect_info(
         case 10:
           SPIDER_PARAM_DOUBLE("crd_weight", crd_weight, 1);
           SPIDER_PARAM_LONGLONG("split_read", split_read, 0);
+          SPIDER_PARAM_INT_WITH_MAX("quick_mode", quick_mode, 0, 2);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -728,6 +735,7 @@ int spider_parse_connect_info(
         case 12:
           SPIDER_PARAM_DOUBLE("sts_interval", sts_interval, 0);
           SPIDER_PARAM_DOUBLE("crd_interval", crd_interval, 0);
+          SPIDER_PARAM_INT_WITH_MAX("low_mem_read", low_mem_read, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -745,6 +753,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_LONGLONG("internal_offset", internal_offset, 0);
           SPIDER_PARAM_INT_WITH_MAX("reset_sql_alloc", reset_sql_alloc, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX("semi_table_lock", semi_table_lock, 0, 1);
+          SPIDER_PARAM_LONGLONG("quick_page_size", quick_page_size, 0);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           SPIDER_PARAM_LONGLONG("bgs_second_read", bgs_second_read, 0);
 #endif
@@ -1083,6 +1092,12 @@ int spider_set_connect_info_default(
     share->priority = 1000000;
   if (share->net_timeout == -1)
     share->net_timeout = 600;
+  if (share->quick_mode == -1)
+    share->quick_mode = 0;
+  if (share->quick_page_size == -1)
+    share->quick_page_size = 100;
+  if (share->low_mem_read == -1)
+    share->low_mem_read = 1;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   if (share->bgs_mode == -1)
     share->bgs_mode = 0;
@@ -1275,7 +1290,6 @@ SPIDER_SHARE *spider_get_share(
       spider_free_share(share);
       goto error_but_no_delete;
     }
-    spider->db_conn = spider->conn->db_conn;
 
     time_t tmp_time = (time_t) time((time_t*) 0);
     if (
@@ -1305,7 +1319,6 @@ SPIDER_SHARE *spider_get_share(
         spider_get_conn(share, spider->trx, spider, FALSE, TRUE, error_num))
     )
       goto error_but_no_delete;
-    spider->db_conn = spider->conn->db_conn;
     if (share->init_error)
     {
       pthread_mutex_lock(&share->sts_mutex);
@@ -2095,4 +2108,46 @@ int spider_get_crd(
 #endif
   share->crd_get_time = tmp_time;
   DBUG_RETURN(0);
+}
+
+void spider_set_result_list_param(
+  ha_spider *spider
+) {
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  SPIDER_SHARE *share = spider->share;
+  THD *thd = spider->trx->thd;
+  DBUG_ENTER("spider_set_result_list_param");
+  result_list->internal_offset =
+    THDVAR(thd, internal_offset) < 0 ?
+    share->internal_offset :
+    THDVAR(thd, internal_offset);
+  result_list->internal_limit =
+    THDVAR(thd, internal_limit) < 0 ?
+    share->internal_limit :
+    THDVAR(thd, internal_limit);
+  result_list->split_read =
+    THDVAR(thd, split_read) < 0 ?
+    share->split_read :
+    THDVAR(thd, split_read);
+  result_list->multi_split_read =
+    THDVAR(thd, multi_split_read) < 0 ?
+    share->multi_split_read :
+    THDVAR(thd, multi_split_read);
+  result_list->max_order =
+    THDVAR(thd, max_order) < 0 ?
+    share->max_order :
+    THDVAR(thd, max_order);
+  result_list->quick_mode =
+    THDVAR(thd, quick_mode) < 0 ?
+    share->quick_mode :
+    THDVAR(thd, quick_mode);
+  result_list->quick_page_size =
+    THDVAR(thd, quick_page_size) < 0 ?
+    share->quick_page_size :
+    THDVAR(thd, quick_page_size);
+  result_list->low_mem_read =
+    THDVAR(thd, low_mem_read) < 0 ?
+    share->low_mem_read :
+    THDVAR(thd, low_mem_read);
+  DBUG_VOID_RETURN;
 }

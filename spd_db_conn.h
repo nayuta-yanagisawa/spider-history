@@ -281,14 +281,19 @@ void spider_db_fetch_row(
 int spider_db_fetch_table(
   uchar *buf,
   TABLE *table,
-  SPIDER_DB_RESULT *result
+  SPIDER_RESULT_LIST *result_list
 );
 
 int spider_db_fetch_key(
   uchar *buf,
   TABLE *table,
   const KEY *key_info,
-  SPIDER_DB_RESULT *result
+  SPIDER_RESULT_LIST *result_list
+);
+
+void spider_db_free_one_result(
+  SPIDER_RESULT_LIST *result_list,
+  SPIDER_RESULT *result
 );
 
 int spider_db_free_result(
@@ -329,6 +334,10 @@ int spider_db_seek_first(
   uchar *buf,
   ha_spider *spider,
   TABLE *table
+);
+
+void spider_db_set_pos_to_first_row(
+  SPIDER_RESULT_LIST *result_list
 );
 
 SPIDER_POSITION *spider_db_create_position(

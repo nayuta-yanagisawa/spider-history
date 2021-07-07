@@ -35,6 +35,8 @@
 #define ER_SPIDER_XA_MEMBER_NOT_EXISTS_STR "This xid member is not exist"
 #define ER_SPIDER_RENAME_WITH_OTHER_NUM 12611
 #define ER_SPIDER_RENAME_WITH_OTHER_STR "Can't rename with other alter specifications"
+#define ER_SPIDER_LOW_MEM_READ_PREV_NUM 12621
+#define ER_SPIDER_LOW_MEM_READ_PREV_STR "Can't use this operation at low mem read mode"
 #define ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM 12701
 #define ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR "Remote MySQL server has gone away"
 #define ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM 12702

@@ -21,6 +21,13 @@
 #define SPIDER_DB_ROW MYSQL_ROW
 #define SPIDER_DB_ROW_OFFSET MYSQL_ROW_OFFSET
 
+typedef struct st_spider_position
+{
+  SPIDER_DB_ROW          row;
+  ulong                  *lengths;
+  bool                   use_position;
+} SPIDER_POSITION;
+
 typedef struct st_spider_result
 {
   SPIDER_DB_RESULT     *result;
@@ -33,8 +40,10 @@ typedef struct st_spider_result
 #endif
     st_spider_result   *next;
   SPIDER_DB_ROW_OFFSET first_row;
+  SPIDER_POSITION      *first_position; /* for quick mode */
   longlong             record_num;
   bool                 finish_flg;
+  bool                 use_position;
 } SPIDER_RESULT;
 
 typedef struct st_spider_result_list
@@ -64,11 +73,20 @@ typedef struct st_spider_result_list
   longlong               current_row_num;
   longlong               record_num;
   bool                   finish_flg;
+  longlong               limit_num;
   longlong               internal_offset;
   longlong               internal_limit;
   longlong               split_read;
   int                    multi_split_read;
   int                    max_order;
+  int                    quick_mode;
+  longlong               quick_page_size;
+  int                    low_mem_read;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  /* 0:nomal 1:store 2:store end */
+  volatile
+#endif
+    int                  quick_phase;
   bool                   keyread;
   int                    lock_type;
   TABLE                  *table;
@@ -80,12 +98,7 @@ typedef struct st_spider_result_list
   volatile longlong      bgs_first_read;
   volatile longlong      bgs_second_read;
   volatile longlong      bgs_split_read;
-  volatile SPIDER_RESULT *bgs_current;
+  volatile
 #endif
+    SPIDER_RESULT        *bgs_current;
 } SPIDER_RESULT_LIST;
-
-typedef struct st_spider_position
-{
-  SPIDER_DB_ROW        row;
-  ulong                *lengths;
-} SPIDER_POSITION;

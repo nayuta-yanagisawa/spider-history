@@ -497,6 +497,59 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+/*
+ -1 :use table parameter
+  0 :It acquires it collectively.
+  1 :Acquisition one by one.If it discontinues once, and it will need
+     it later, it retrieves it again when there is interrupt on the way.
+  2 :Acquisition one by one.Interrupt is waited for until end of getting
+     result when there is interrupt on the way.
+ */
+MYSQL_THDVAR_INT(
+  quick_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "The retrieval result from a remote server is acquired by acquisition one by one", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0-:number of records
+ */
+MYSQL_THDVAR_LONGLONG(
+  quick_page_size, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Number of records in a page when acquisition one by one", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :It doesn't use low memory mode.
+  1 :It uses low memory mode.
+ */
+MYSQL_THDVAR_INT(
+  low_mem_read, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Use low memory mode when SQL(SELECT) internally issued to a remote server is executed and get a result list", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 /*
  -1 :use table parameter
@@ -587,6 +640,9 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(internal_unlock),
   MYSQL_SYSVAR(semi_trx),
   MYSQL_SYSVAR(net_timeout),
+  MYSQL_SYSVAR(quick_mode),
+  MYSQL_SYSVAR(quick_page_size),
+  MYSQL_SYSVAR(low_mem_read),
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   MYSQL_SYSVAR(bgs_mode),
   MYSQL_SYSVAR(bgs_first_read),
@@ -605,7 +661,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0009,
+  0x000a,
   NULL,
   spider_system_variables,
   NULL
