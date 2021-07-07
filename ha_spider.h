@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -59,6 +59,10 @@ public:
   ulonglong          trx_hs_r_conn_adjustment;
   ulonglong          trx_hs_w_conn_adjustment;
 #endif
+  uint               mem_calc_id;
+  const char         *mem_calc_func_name;
+  const char         *mem_calc_file_name;
+  ulong              mem_calc_line_no;
   uint               sql_kinds;
   uint               *sql_kind;
   uint               conn_kinds;
@@ -84,10 +88,12 @@ public:
   int                result_link_idx;
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;
-  String             *blob_buff;
+  spider_string      *blob_buff;
   uchar              *searched_bitmap;
   bool               position_bitmap_init;
   uchar              *position_bitmap;
+  SPIDER_POSITION    *pushed_pos;
+  SPIDER_POSITION    pushed_pos_buf;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
   ha_spider          *pt_handler_share_creator;
@@ -128,6 +134,7 @@ public:
   bool               low_priority;
   bool               high_priority;
   bool               insert_delayed;
+  bool               use_pre_call;
   enum thr_lock_type lock_type;
   int                lock_mode;
   uint               sql_command;
@@ -193,6 +200,7 @@ public:
     handlerton *hton,
     TABLE_SHARE *table_arg
   );
+  virtual ~ha_spider();
   handler *clone(
     const char *name,
     MEM_ROOT *mem_root
@@ -328,6 +336,36 @@ public:
   int ft_read(
     uchar *buf
   );
+  int pre_index_read_map(
+    const uchar *key,
+    key_part_map keypart_map,
+    enum ha_rkey_function find_flag,
+    bool use_parallel
+  );
+  int pre_index_first(bool use_parallel);
+  int pre_index_last(bool use_parallel);
+  int pre_index_read_last_map(
+    const uchar *key,
+    key_part_map keypart_map,
+    bool use_parallel
+  );
+  int pre_read_multi_range_first(
+    KEY_MULTI_RANGE **found_range_p,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    HANDLER_BUFFER *buffer,
+    bool use_parallel
+  );
+  int pre_read_range_first(
+    const key_range *start_key,
+    const key_range *end_key,
+    bool eq_range,
+    bool sorted,
+    bool use_parallel
+  );
+  int pre_ft_read(bool use_parallel);
+  int pre_rnd_next(bool use_parallel);
   int info(
     uint flag
   );
@@ -535,5 +573,38 @@ public:
   );
   int check_error_mode_eof(
     int error_num
+  );
+  int index_read_map_internal(
+    uchar *buf,
+    const uchar *key,
+    key_part_map keypart_map,
+    enum ha_rkey_function find_flag
+  );
+  int index_read_last_map_internal(
+    uchar *buf,
+    const uchar *key,
+    key_part_map keypart_map
+  );
+  int index_first_internal(uchar *buf);
+  int index_last_internal(uchar *buf);
+  int read_range_first_internal(
+    uchar *buf,
+    const key_range *start_key,
+    const key_range *end_key,
+    bool eq_range,
+    bool sorted
+  );
+  int read_multi_range_first_internal(
+    uchar *buf,
+    KEY_MULTI_RANGE **found_range_p,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    HANDLER_BUFFER *buffer
+  );
+  int ft_read_internal(uchar *buf);
+  int rnd_next_internal(uchar *buf);
+  void check_pre_call(
+    bool use_parallel
   );
 };

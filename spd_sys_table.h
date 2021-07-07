@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -388,6 +388,21 @@ TABLE *spider_mk_sys_tmp_table(
 );
 
 void spider_rm_sys_tmp_table(
+  THD *thd,
+  TABLE *tmp_table,
+  TMP_TABLE_PARAM *tmp_tbl_prm
+);
+
+TABLE *spider_mk_sys_tmp_table_for_result(
+  THD *thd,
+  TABLE *table,
+  TMP_TABLE_PARAM *tmp_tbl_prm,
+  const char *field_name1,
+  const char *field_name2,
+  CHARSET_INFO *cs
+);
+
+void spider_rm_sys_tmp_table_for_result(
   THD *thd,
   TABLE *tmp_table,
   TMP_TABLE_PARAM *tmp_tbl_prm

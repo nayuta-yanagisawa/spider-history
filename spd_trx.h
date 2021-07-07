@@ -73,6 +73,7 @@ bool spider_cmp_trx_alter_table(
 
 SPIDER_TRX *spider_get_trx(
   THD *thd,
+  bool regist_allocated_thds,
   int *error_num
 );
 
@@ -226,7 +227,8 @@ void spider_free_tmp_thd(
 
 int spider_create_trx_ha(
   SPIDER_TRX *trx,
-  ha_spider *spider
+  ha_spider *spider,
+  SPIDER_TRX_HA *trx_ha
 );
 
 SPIDER_TRX_HA *spider_check_trx_ha(

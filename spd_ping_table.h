@@ -16,7 +16,7 @@
 SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
   SPIDER_TRX *trx,
   THD *thd,
-  String *str,
+  spider_string *str,
   uint conv_name_length,
   int link_idx,
   uint32 server_id,
@@ -56,7 +56,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
   uint name_length,
   int link_idx,
   uint32 server_id,
-  String *str,
+  spider_string *str,
   bool need_lock,
   int *error_num
 );

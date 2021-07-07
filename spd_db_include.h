@@ -52,6 +52,296 @@ enum spider_bulk_upd_start {
 };
 
 struct st_spider_ft_info;
+struct st_spider_result;
+
+class spider_string
+{
+public:
+  bool mem_calc_inited;
+  String str;
+  uint id;
+  const char *func_name;
+  const char *file_name;
+  ulong line_no;
+  uint32 current_alloc_mem;
+
+  spider_string();
+  spider_string(
+    uint32 length_arg
+  );
+  spider_string(
+    const char *str,
+    CHARSET_INFO *cs
+  );
+  spider_string(
+    const char *str,
+    uint32 len,
+    CHARSET_INFO *cs
+  );
+  spider_string(
+    char *str,
+    uint32 len,
+    CHARSET_INFO *cs
+  );
+  spider_string(
+    const String &str
+  );
+  ~spider_string();
+  void init_mem_calc(
+    uint id,
+    const char *func_name,
+    const char *file_name,
+    ulong line_no
+  );
+  void mem_calc();
+  String *get_str();
+  void set_charset(
+    CHARSET_INFO *charset_arg
+  );
+  CHARSET_INFO *charset() const;
+  uint32 length() const;
+  uint32 alloced_length() const;
+  char &operator [] (
+    uint32 i
+  ) const;
+  void length(
+    uint32 len
+  );
+  bool is_empty() const;
+  const char *ptr() const;
+  char *c_ptr();
+  char *c_ptr_quick();
+  char *c_ptr_safe();
+  LEX_STRING lex_string() const;
+  void set(
+    String &str,
+    uint32 offset,
+    uint32 arg_length
+  );
+  void set(
+    char *str,
+    uint32 arg_length,
+    CHARSET_INFO *cs
+  );
+  void set(
+    const char *str,
+    uint32 arg_length,
+    CHARSET_INFO *cs
+  );
+  bool set_ascii(
+    const char *str,
+    uint32 arg_length
+  );
+  void set_quick(
+    char *str,
+    uint32 arg_length,
+    CHARSET_INFO *cs
+  );
+  bool set_int(
+    longlong num,
+    bool unsigned_flag,
+    CHARSET_INFO *cs
+  );
+  bool set(
+    longlong num,
+    CHARSET_INFO *cs
+  );
+  bool set(
+    ulonglong num,
+    CHARSET_INFO *cs
+  );
+  bool set_real(
+    double num,
+    uint decimals,
+    CHARSET_INFO *cs
+  );
+  void chop();
+  void free();
+  bool alloc(
+    uint32 arg_length
+  );
+  bool real_alloc(
+    uint32 arg_length
+  );
+  bool realloc(
+    uint32 arg_length
+  );
+  void shrink(
+    uint32 arg_length
+  );
+  bool is_alloced();
+  spider_string& operator = (
+    const String &s
+  );
+  bool copy();
+  bool copy(
+    const spider_string &s
+  );
+  bool copy(
+    const String &s
+  );
+  bool copy(
+    const char *s,
+    uint32 arg_length,
+    CHARSET_INFO *cs
+  );
+  bool needs_conversion(
+    uint32 arg_length,
+    CHARSET_INFO *cs_from,
+    CHARSET_INFO *cs_to,
+    uint32 *offset
+  );
+  bool copy_aligned(
+    const char *s,
+    uint32 arg_length,
+    uint32 offset,
+    CHARSET_INFO *cs
+  );
+  bool set_or_copy_aligned(
+    const char *s,
+    uint32 arg_length,
+    CHARSET_INFO *cs
+  );
+  bool copy(
+    const char *s,
+    uint32 arg_length,
+    CHARSET_INFO *csfrom,
+    CHARSET_INFO *csto,
+    uint *errors
+  );
+  bool append(
+    const spider_string &s
+  );
+  bool append(
+    const String &s
+  );
+  bool append(
+    const char *s
+  );
+  bool append(
+    LEX_STRING *ls
+  );
+  bool append(
+    const char *s,
+    uint32 arg_length
+  );
+  bool append(
+    const char *s,
+    uint32 arg_length,
+    CHARSET_INFO *cs
+  );
+  bool append_ulonglong(
+    ulonglong val
+  );
+  bool append(
+    IO_CACHE *file,
+    uint32 arg_length
+  );
+  bool append_with_prefill(
+    const char *s,
+    uint32 arg_length,
+    uint32 full_length,
+    char fill_char
+  );
+  int strstr(
+    const String &search,
+    uint32 offset = 0
+  );
+  int strrstr(
+    const String &search,
+    uint32 offset = 0
+  );
+  bool replace(
+    uint32 offset,
+    uint32 arg_length,
+    const char *to,
+    uint32 length
+  );
+  bool replace(
+    uint32 offset,
+    uint32 arg_length,
+    const String &to
+  );
+  inline bool append(
+    char chr
+  );
+  bool fill(
+    uint32 max_length,
+    char fill
+  );
+  void strip_sp();
+  uint32 numchars();
+  int charpos(
+    int i,
+    uint32 offset=0
+  );
+  int reserve(
+    uint32 space_needed
+  );
+  int reserve(
+    uint32 space_needed,
+    uint32 grow_by
+  );
+  void q_append(
+    const char c
+  );
+  void q_append(
+    const uint32 n
+  );
+  void q_append(
+    double d
+  );
+  void q_append(
+    double *d
+  );
+  void q_append(
+    const char *data,
+    uint32 data_len
+  );
+  void write_at_position(
+    int position,
+    uint32 value
+  );
+  void qs_append(
+    const char *str,
+    uint32 len
+  );
+  void qs_append(
+    double d
+  );
+  void qs_append(
+    double *d
+  );
+  void qs_append(
+    const char c
+  );
+  void qs_append(
+    int i
+  );
+  void qs_append(
+    uint i
+  );
+  char *prep_append(
+    uint32 arg_length,
+    uint32 step_alloc
+  );
+  bool append(
+    const char *s,
+    uint32 arg_length,
+    uint32 step_alloc
+  );
+  void print(
+    String *print
+  );
+  void swap(
+    spider_string &s
+  );
+  bool uses_buffer_owned_by(
+    const String *s
+  ) const;
+  bool is_ascii() const;
+};
+
 typedef struct st_spider_position
 {
   SPIDER_DB_ROW          row;
@@ -62,6 +352,8 @@ typedef struct st_spider_position
   uchar                  *position_bitmap;
   st_spider_ft_info      *ft_first;
   st_spider_ft_info      *ft_current;
+  my_off_t               tmp_tbl_pos;
+  st_spider_result       *result;
 } SPIDER_POSITION;
 
 typedef struct st_spider_condition
@@ -83,9 +375,16 @@ typedef struct st_spider_result
     st_spider_result   *next;
   SPIDER_DB_ROW_OFFSET first_row;
   SPIDER_POSITION      *first_position; /* for quick mode */
+  int                  pos_page_size; /* for quick mode */
   longlong             record_num;
   bool                 finish_flg;
   bool                 use_position;
+  uint                 field_count; /* for quick mode */
+  TABLE                *result_tmp_tbl;
+  TMP_TABLE_PARAM      result_tmp_tbl_prm;
+  THD                  *result_tmp_tbl_thd;
+  uint                 result_tmp_tbl_inited;
+  SPIDER_DB_ROW        tmp_tbl_row;
 } SPIDER_RESULT;
 
 typedef struct st_spider_result_list
@@ -104,12 +403,12 @@ typedef struct st_spider_result_list
     SPIDER_RESULT        *current;
   KEY                    *key_info;
   int                    key_order;
-  String                 sql;
-  String                 sql_part;
-  String                 sql_part2;
-  String                 ha_sql;
+  spider_string          sql;
+  spider_string          sql_part;
+  spider_string          sql_part2;
+  spider_string          ha_sql;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
-  String                 hs_sql;
+  spider_string          hs_sql;
   bool                   hs_adding_keys;
 #ifndef HANDLERSOCKET_MYSQL_UTIL
   SPIDER_HS_VECTOR<SPIDER_HS_STRING_REF> hs_keys;
@@ -117,9 +416,21 @@ typedef struct st_spider_result_list
 #else
   bool                   hs_da_init;
   DYNAMIC_ARRAY          hs_keys;
+  uint                   hs_keys_id;
+  const char             *hs_keys_func_name;
+  const char             *hs_keys_file_name;
+  ulong                  hs_keys_line_no;
   DYNAMIC_ARRAY          hs_upds;
+  uint                   hs_upds_id;
+  const char             *hs_upds_func_name;
+  const char             *hs_upds_file_name;
+  ulong                  hs_upds_line_no;
 #endif
   DYNAMIC_ARRAY          hs_strs;
+  uint                   hs_strs_id;
+  const char             *hs_strs_func_name;
+  const char             *hs_strs_file_name;
+  ulong                  hs_strs_line_no;
   uint                   hs_strs_pos;
   int                    hs_limit;
   int                    hs_skip;
@@ -128,11 +439,12 @@ typedef struct st_spider_result_list
   bool                   hs_has_result;
   SPIDER_HS_CONN         *hs_conn;
 #endif
-  String                 *sqls;
+  spider_string          *sqls;
   int                    where_pos;
   int                    order_pos;
   int                    limit_pos;
   int                    table_name_pos;
+  int                    ha_read_kind;
   int                    ha_read_pos;
   int                    ha_next_pos;
   int                    ha_where_pos;
@@ -143,12 +455,12 @@ typedef struct st_spider_result_list
   uint                   *sql_kind_backup;
   uint                   sql_kinds_backup;
   bool                   use_union;
-  String                 insert_sql;
-  String                 *insert_sqls;
+  spider_string          insert_sql;
+  spider_string          *insert_sqls;
   int                    insert_pos;
   int                    insert_table_name_pos;
-  String                 update_sql;
-  String                 *update_sqls;
+  spider_string          update_sql;
+  spider_string          *update_sqls;
   TABLE                  *upd_tmp_tbl;
   TABLE                  **upd_tmp_tbls;
   TMP_TABLE_PARAM        upd_tmp_tbl_prm;
@@ -159,8 +471,8 @@ typedef struct st_spider_result_list
   uchar                  *tmp_table_created;
   bool                   tmp_table_join_break_after_get_next;
   key_part_map           tmp_table_join_key_part_map;
-  String                 tmp_sql;
-  String                 *tmp_sqls;
+  spider_string          tmp_sql;
+  spider_string          *tmp_sqls;
   bool                   tmp_reuse_sql;
   int                    tmp_sql_pos1; /* drop db nm pos at tmp_table_join */
   int                    tmp_sql_pos2; /* create db nm pos at tmp_table_join */

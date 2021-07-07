@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -78,8 +78,10 @@
 
 #define SPIDER_TMP_SHARE_CHAR_PTR_COUNT     17
 #define SPIDER_TMP_SHARE_UINT_COUNT         17
-#define SPIDER_TMP_SHARE_LONG_COUNT         14
+#define SPIDER_TMP_SHARE_LONG_COUNT         15
 #define SPIDER_TMP_SHARE_LONGLONG_COUNT      3
+
+#define SPIDER_MEM_CALC_LIST_NUM           166
 
 #define SPIDER_BACKUP_DASTATUS \
   bool da_status; if (thd) da_status = thd->is_error(); else da_status = FALSE;
@@ -92,14 +94,27 @@
 #define SPIDER_CONN_RESTORE_DASTATUS_AND_RESET_TMP_ERROR_NUM \
   if (thd && conn->error_mode) {SPIDER_RESTORE_DASTATUS; tmp_error_num = 0;}
 
+#define SPIDER_SET_FILE_POS(A) \
+  {(A)->thd = current_thd; (A)->func_name = __func__; (A)->file_name = __FILE__; (A)->line_no = __LINE__;}
+#define SPIDER_CLEAR_FILE_POS(A) \
+  {(A)->thd = NULL; (A)->func_name = NULL; (A)->file_name = NULL; (A)->line_no = 0;}
+
 class ha_spider;
 typedef struct st_spider_share SPIDER_SHARE;
+
+typedef struct st_spider_file_pos
+{
+  THD                *thd;
+  const char         *func_name;
+  const char         *file_name;
+  ulong              line_no;
+} SPIDER_FILE_POS;
 
 typedef struct st_spider_link_for_hash
 {
   ha_spider          *spider;
   int                link_idx;
-  String             *db_table_str;
+  spider_string      *db_table_str;
 } SPIDER_LINK_FOR_HASH;
 
 /* alter table */
@@ -202,6 +217,7 @@ typedef struct st_spider_conn
   pthread_mutex_t    mta_conn_mutex;
   volatile bool      mta_conn_mutex_lock_already;
   volatile bool      mta_conn_mutex_unlock_later;
+  SPIDER_FILE_POS    mta_conn_mutex_file_pos;
   uint               join_trx;
   int                trx_isolation;
   bool               semi_trx_isolation_chk;
@@ -217,7 +233,15 @@ typedef struct st_spider_conn
   int                sql_log_off;
   THD                *thd;
   HASH               lock_table_hash;
+  uint               lock_table_hash_id;
+  const char         *lock_table_hash_func_name;
+  const char         *lock_table_hash_file_name;
+  ulong              lock_table_hash_line_no;
   DYNAMIC_ARRAY      handler_open_array;
+  uint               handler_open_array_id;
+  const char         *handler_open_array_func_name;
+  const char         *handler_open_array_file_name;
+  ulong              handler_open_array_line_no;
   void               *another_ha_first;
   void               *another_ha_last;
   st_spider_conn     *p_small;
@@ -236,6 +260,7 @@ typedef struct st_spider_conn
   uint               net_read_timeout;
   uint               net_write_timeout;
   int                error_mode;
+  spider_string      default_database;
 
   char               *tgt_host;
   char               *tgt_username;
@@ -294,11 +319,17 @@ typedef struct st_spider_conn
   pthread_mutex_t    bg_conn_mutex;
   pthread_cond_t     bg_conn_sync_cond;
   pthread_mutex_t    bg_conn_sync_mutex;
+  pthread_mutex_t    bg_conn_chain_mutex;
+  pthread_mutex_t    *bg_conn_chain_mutex_ptr;
   volatile void      *bg_target;
   volatile int       *bg_error_num;
-  volatile String    *bg_sql;
+  volatile spider_string *bg_sql;
   pthread_mutex_t    bg_job_stack_mutex;
   DYNAMIC_ARRAY      bg_job_stack;
+  uint               bg_job_stack_id;
+  const char         *bg_job_stack_func_name;
+  const char         *bg_job_stack_file_name;
+  ulong              bg_job_stack_line_no;
   uint               bg_job_stack_cur_pos;
 #endif
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -357,6 +388,10 @@ typedef struct st_spider_patition_share
   pthread_mutex_t    crd_mutex;
   pthread_mutex_t    pt_handler_mutex;
   HASH               pt_handler_hash;
+  uint               pt_handler_hash_id;
+  const char         *pt_handler_hash_func_name;
+  const char         *pt_handler_hash_file_name;
+  ulong              pt_handler_hash_line_no;
 
   volatile bool      sts_init;
   volatile bool      crd_init;
@@ -391,21 +426,54 @@ typedef struct st_spider_transaction
 
   query_id_t         query_id;
   bool               tmp_flg;
+  bool               registed_allocated_thds;
 
   THD                *thd;
   XID                xid;
   HASH               trx_conn_hash;
+  uint               trx_conn_hash_id;
+  const char         *trx_conn_hash_func_name;
+  const char         *trx_conn_hash_file_name;
+  ulong              trx_conn_hash_line_no;
   HASH               trx_another_conn_hash;
+  uint               trx_another_conn_hash_id;
+  const char         *trx_another_conn_hash_func_name;
+  const char         *trx_another_conn_hash_file_name;
+  ulong              trx_another_conn_hash_line_no;
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   HASH               trx_hs_r_conn_hash;
+  uint               trx_hs_r_conn_hash_id;
+  const char         *trx_hs_r_conn_hash_func_name;
+  const char         *trx_hs_r_conn_hash_file_name;
+  ulong              trx_hs_r_conn_hash_line_no;
   HASH               trx_hs_w_conn_hash;
+  uint               trx_hs_w_conn_hash_id;
+  const char         *trx_hs_w_conn_hash_func_name;
+  const char         *trx_hs_w_conn_hash_file_name;
+  ulong              trx_hs_w_conn_hash_line_no;
 #endif
 #ifdef HAVE_HANDLERSOCKET
   HASH               trx_direct_hs_r_conn_hash;
+  uint               trx_direct_hs_r_conn_hash_id;
+  const char         *trx_direct_hs_r_conn_hash_func_name;
+  const char         *trx_direct_hs_r_conn_hash_file_name;
+  ulong              trx_direct_hs_r_conn_hash_line_no;
   HASH               trx_direct_hs_w_conn_hash;
+  uint               trx_direct_hs_w_conn_hash_id;
+  const char         *trx_direct_hs_w_conn_hash_func_name;
+  const char         *trx_direct_hs_w_conn_hash_file_name;
+  ulong              trx_direct_hs_w_conn_hash_line_no;
 #endif
   HASH               trx_alter_table_hash;
+  uint               trx_alter_table_hash_id;
+  const char         *trx_alter_table_hash_func_name;
+  const char         *trx_alter_table_hash_file_name;
+  ulong              trx_alter_table_hash_line_no;
   HASH               trx_ha_hash;
+  uint               trx_ha_hash_id;
+  const char         *trx_ha_hash_func_name;
+  const char         *trx_ha_hash_file_name;
+  ulong              trx_ha_hash_line_no;
   XID_STATE          internal_xid_state;
   SPIDER_CONN        *join_trx_top;
   ulonglong          spider_thread_id;
@@ -426,7 +494,19 @@ typedef struct st_spider_transaction
 
   pthread_mutex_t    *udf_table_mutexes;
   CHARSET_INFO       *udf_access_charset;
-  String             *udf_set_names;
+  spider_string      *udf_set_names;
+
+  const char         *alloc_func_name[SPIDER_MEM_CALC_LIST_NUM];
+  const char         *alloc_file_name[SPIDER_MEM_CALC_LIST_NUM];
+  ulong              alloc_line_no[SPIDER_MEM_CALC_LIST_NUM];
+  ulonglong          total_alloc_mem[SPIDER_MEM_CALC_LIST_NUM];
+  longlong           current_alloc_mem[SPIDER_MEM_CALC_LIST_NUM];
+  ulonglong          alloc_mem_count[SPIDER_MEM_CALC_LIST_NUM];
+  ulonglong          free_mem_count[SPIDER_MEM_CALC_LIST_NUM];
+  ulonglong          total_alloc_mem_buffer[SPIDER_MEM_CALC_LIST_NUM];
+  longlong           current_alloc_mem_buffer[SPIDER_MEM_CALC_LIST_NUM];
+  ulonglong          alloc_mem_count_buffer[SPIDER_MEM_CALC_LIST_NUM];
+  ulonglong          free_mem_count_buffer[SPIDER_MEM_CALC_LIST_NUM];
 } SPIDER_TRX;
 
 typedef struct st_spider_share
@@ -502,22 +582,22 @@ typedef struct st_spider_share
   time_t             update_time;
 
   int                bitmap_size;
-  String             *table_select;
+  spider_string      *table_select;
   int                table_select_pos;
-  String             *key_select;
+  spider_string      *key_select;
   int                *key_select_pos;
-  String             *key_hint;
-  String             *show_table_status;
-  String             *show_records;
-  String             *show_index;
-  String             *set_names;
-  String             *table_names_str;
-  String             *db_names_str;
-  String             *db_table_str;
+  spider_string      *key_hint;
+  spider_string      *show_table_status;
+  spider_string      *show_records;
+  spider_string      *show_index;
+  spider_string      *set_names;
+  spider_string      *table_names_str;
+  spider_string      *db_names_str;
+  spider_string      *db_table_str;
   uint               table_nm_max_length;
   uint               db_nm_max_length;
   bool               same_db_table_name;
-  String             *column_name_str;
+  spider_string      *column_name_str;
   CHARSET_INFO       *access_charset;
   longlong           *cardinality;
   uchar              *cardinality_upd;
@@ -639,6 +719,7 @@ typedef struct st_spider_share
   long               *connect_timeouts;
   long               *net_read_timeouts;
   long               *net_write_timeouts;
+  long               *access_balances;
 
   uint               *server_names_lengths;
   uint               *tgt_table_names_lengths;
@@ -731,6 +812,7 @@ typedef struct st_spider_share
   uint               connect_timeouts_length;
   uint               net_read_timeouts_length;
   uint               net_write_timeouts_length;
+  uint               access_balances_length;
 
   SPIDER_ALTER_TABLE alter_table;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -880,9 +962,9 @@ typedef struct st_spider_copy_table_conn
   SPIDER_SHARE               *share;
   int                        link_idx;
   SPIDER_CONN                *conn;
-  String                     select_sql;
+  spider_string              select_sql;
   int                        where_pos;
-  String                     insert_sql;
+  spider_string              insert_sql;
   int                        values_pos;
   void                       *spider;
   int                        need_mon;
@@ -934,6 +1016,8 @@ typedef struct st_spider_trx_ha
   uint                       table_name_length;
   SPIDER_TRX                 *trx;
   SPIDER_SHARE               *share;
+  uint                       link_count;
+  uint                       link_bitmap_size;
   uint                       *conn_link_idx;
   uchar                      *conn_can_fo;
 } SPIDER_TRX_HA;

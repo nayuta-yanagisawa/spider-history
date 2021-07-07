@@ -72,6 +72,15 @@ struct string_ref_list_wrap {
     return; }
   size_t size() {
     return string_ref_list_init ? string_ref_list.elements : 0; }
+  bool resize(size_t new_size) {
+    if (string_ref_list_init) {
+      if (string_ref_list.max_element < new_size && allocate_dynamic(
+        &string_ref_list, new_size)) return TRUE;
+      string_ref_list.elements = new_size;
+      return FALSE;
+    }
+    return TRUE;
+  }
   bool empty() {
     return string_ref_list_init ? string_ref_list.elements ?
       FALSE : TRUE : TRUE; }

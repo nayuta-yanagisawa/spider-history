@@ -100,6 +100,7 @@ am_libspider_a_OBJECTS = libspider_a-spd_param.$(OBJEXT) \
 	libspider_a-spd_udf.$(OBJEXT) \
 	libspider_a-spd_ping_table.$(OBJEXT) \
 	libspider_a-spd_copy_tables.$(OBJEXT) \
+	libspider_a-spd_i_s.$(OBJEXT) libspider_a-spd_malloc.$(OBJEXT) \
 	libspider_a-ha_spider.$(OBJEXT) libspider_a-config.$(OBJEXT) \
 	libspider_a-escape.$(OBJEXT) libspider_a-fatal.$(OBJEXT) \
 	libspider_a-hstcpcli.$(OBJEXT) libspider_a-socket.$(OBJEXT) \
@@ -112,7 +113,8 @@ am_ha_spider_la_OBJECTS = ha_spider_la-spd_param.lo \
 	ha_spider_la-spd_db_conn.lo ha_spider_la-spd_conn.lo \
 	ha_spider_la-spd_table.lo ha_spider_la-spd_direct_sql.lo \
 	ha_spider_la-spd_udf.lo ha_spider_la-spd_ping_table.lo \
-	ha_spider_la-spd_copy_tables.lo ha_spider_la-ha_spider.lo \
+	ha_spider_la-spd_copy_tables.lo ha_spider_la-spd_i_s.lo \
+	ha_spider_la-spd_malloc.lo ha_spider_la-ha_spider.lo \
 	ha_spider_la-config.lo ha_spider_la-escape.lo \
 	ha_spider_la-fatal.lo ha_spider_la-hstcpcli.lo \
 	ha_spider_la-socket.lo ha_spider_la-string_util.lo
@@ -452,10 +454,10 @@ yassl_taocrypt_extra_cxxflags = @yassl_taocrypt_extra_cxxflags@
 zlib_dir = @zlib_dir@
 HAVE_HANDLERSOCKET = "-DHAVE_HANDLERSOCKET"
 pkgplugindir = $(pkglibdir)/plugin
-INCLUDES = -I$(MYSQL_INC)$(top_srcdir)/include \
-                 -I$(MYSQL_INC)$(top_srcdir)/regex \
-                 -I$(MYSQL_INC)$(top_srcdir)/sql \
-                 -I$(MYSQL_INC)$(top_srcdir)/extra/yassl/include \
+INCLUDES = -I$(SPD_MYSQL_INC)$(top_srcdir)/include \
+                 -I$(SPD_MYSQL_INC)$(top_srcdir)/regex \
+                 -I$(SPD_MYSQL_INC)$(top_srcdir)/sql \
+                 -I$(SPD_MYSQL_INC)$(top_srcdir)/extra/yassl/include \
                  -I./hs_client \
                  $(MYSQL_INCLUDE_PATH) \
                  $(HANDLERSOCKET_INCLUDE_PATH)
@@ -464,7 +466,7 @@ noinst_HEADERS = ha_spider.h spd_conn.h spd_db_conn.h \
                  spd_db_include.h spd_err.h spd_sys_table.h \
                  spd_table.h spd_trx.h spd_include.h spd_param.h \
                  spd_direct_sql.h spd_udf.h spd_ping_table.h \
-                 spd_copy_tables.h \
+                 spd_copy_tables.h spd_malloc.h \
                  hs_client/allocator.hpp hs_client/config.hpp \
                  hs_client/mutex.hpp hs_client/string_util.hpp \
                  hs_client/auto_addrinfo.hpp hs_client/escape.hpp \
@@ -478,7 +480,7 @@ lib_LTLIBRARIES = $(PLUGIN_SPIDER_LTLIBRARIES_TARGET)
 EXTRA_LTLIBRARIES = ha_spider.la
 pkgplugin_LTLIBRARIES = @plugin_spider_shared_target@
 ha_spider_la_LDFLAGS = -shared -module -rpath $(pkgplugindir)
-ha_spider_la_CXXFLAGS = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN \
+ha_spider_la_CXXFLAGS = $(AM_CXXFLAGS) -DMYSQL_DYNAMIC_PLUGIN \
                         $(HAVE_HANDLERSOCKET)
 
 ha_spider_la_CFLAGS = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN \
@@ -495,6 +497,8 @@ ha_spider_la_SOURCES = \
                    spd_udf.cc \
                    spd_ping_table.cc \
                    spd_copy_tables.cc \
+                   spd_i_s.cc \
+                   spd_malloc.cc \
                    ha_spider.cc \
                    hs_client/config.cpp \
                    hs_client/escape.cpp \
@@ -506,7 +510,7 @@ ha_spider_la_SOURCES = \
 lib_LIBRARIES = $(PLUGIN_SPIDER_LIBRARIES_TARGET)
 EXTRA_LIBRARIES = libspider.a
 noinst_LIBRARIES = @plugin_spider_static_target@
-libspider_a_CXXFLAGS = $(AM_CFLAGS) $(HAVE_HANDLERSOCKET)
+libspider_a_CXXFLAGS = $(AM_CXXFLAGS) $(HAVE_HANDLERSOCKET)
 libspider_a_CFLAGS = $(AM_CFLAGS) $(HAVE_HANDLERSOCKET)
 libspider_a_SOURCES = \
                    spd_param.cc \
@@ -519,6 +523,8 @@ libspider_a_SOURCES = \
                    spd_udf.cc \
                    spd_ping_table.cc \
                    spd_copy_tables.cc \
+                   spd_i_s.cc \
+                   spd_malloc.cc \
                    ha_spider.cc \
                    hs_client/config.cpp \
                    hs_client/escape.cpp \
@@ -682,6 +688,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_copy_tables.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_db_conn.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_direct_sql.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_i_s.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_malloc.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_param.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_ping_table.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_sys_table.Plo@am__quote@
@@ -699,6 +707,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_copy_tables.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_db_conn.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_direct_sql.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_i_s.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_malloc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_param.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_ping_table.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_sys_table.Po@am__quote@
@@ -891,6 +901,38 @@ libspider_a-spd_copy_tables.obj: spd_copy_tables.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-spd_copy_tables.obj `if test -f 'spd_copy_tables.cc'; then $(CYGPATH_W) 'spd_copy_tables.cc'; else $(CYGPATH_W) '$(srcdir)/spd_copy_tables.cc'; fi`
 
+libspider_a-spd_i_s.o: spd_i_s.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-spd_i_s.o -MD -MP -MF $(DEPDIR)/libspider_a-spd_i_s.Tpo -c -o libspider_a-spd_i_s.o `test -f 'spd_i_s.cc' || echo '$(srcdir)/'`spd_i_s.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-spd_i_s.Tpo $(DEPDIR)/libspider_a-spd_i_s.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_i_s.cc' object='libspider_a-spd_i_s.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-spd_i_s.o `test -f 'spd_i_s.cc' || echo '$(srcdir)/'`spd_i_s.cc
+
+libspider_a-spd_i_s.obj: spd_i_s.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-spd_i_s.obj -MD -MP -MF $(DEPDIR)/libspider_a-spd_i_s.Tpo -c -o libspider_a-spd_i_s.obj `if test -f 'spd_i_s.cc'; then $(CYGPATH_W) 'spd_i_s.cc'; else $(CYGPATH_W) '$(srcdir)/spd_i_s.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-spd_i_s.Tpo $(DEPDIR)/libspider_a-spd_i_s.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_i_s.cc' object='libspider_a-spd_i_s.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-spd_i_s.obj `if test -f 'spd_i_s.cc'; then $(CYGPATH_W) 'spd_i_s.cc'; else $(CYGPATH_W) '$(srcdir)/spd_i_s.cc'; fi`
+
+libspider_a-spd_malloc.o: spd_malloc.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-spd_malloc.o -MD -MP -MF $(DEPDIR)/libspider_a-spd_malloc.Tpo -c -o libspider_a-spd_malloc.o `test -f 'spd_malloc.cc' || echo '$(srcdir)/'`spd_malloc.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-spd_malloc.Tpo $(DEPDIR)/libspider_a-spd_malloc.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_malloc.cc' object='libspider_a-spd_malloc.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-spd_malloc.o `test -f 'spd_malloc.cc' || echo '$(srcdir)/'`spd_malloc.cc
+
+libspider_a-spd_malloc.obj: spd_malloc.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-spd_malloc.obj -MD -MP -MF $(DEPDIR)/libspider_a-spd_malloc.Tpo -c -o libspider_a-spd_malloc.obj `if test -f 'spd_malloc.cc'; then $(CYGPATH_W) 'spd_malloc.cc'; else $(CYGPATH_W) '$(srcdir)/spd_malloc.cc'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-spd_malloc.Tpo $(DEPDIR)/libspider_a-spd_malloc.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_malloc.cc' object='libspider_a-spd_malloc.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-spd_malloc.obj `if test -f 'spd_malloc.cc'; then $(CYGPATH_W) 'spd_malloc.cc'; else $(CYGPATH_W) '$(srcdir)/spd_malloc.cc'; fi`
+
 libspider_a-ha_spider.o: ha_spider.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-ha_spider.o -MD -MP -MF $(DEPDIR)/libspider_a-ha_spider.Tpo -c -o libspider_a-ha_spider.o `test -f 'ha_spider.cc' || echo '$(srcdir)/'`ha_spider.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-ha_spider.Tpo $(DEPDIR)/libspider_a-ha_spider.Po
@@ -1082,6 +1124,22 @@ ha_spider_la-spd_copy_tables.lo: spd_copy_tables.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_copy_tables.cc' object='ha_spider_la-spd_copy_tables.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-spd_copy_tables.lo `test -f 'spd_copy_tables.cc' || echo '$(srcdir)/'`spd_copy_tables.cc
+
+ha_spider_la-spd_i_s.lo: spd_i_s.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-spd_i_s.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-spd_i_s.Tpo -c -o ha_spider_la-spd_i_s.lo `test -f 'spd_i_s.cc' || echo '$(srcdir)/'`spd_i_s.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-spd_i_s.Tpo $(DEPDIR)/ha_spider_la-spd_i_s.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_i_s.cc' object='ha_spider_la-spd_i_s.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-spd_i_s.lo `test -f 'spd_i_s.cc' || echo '$(srcdir)/'`spd_i_s.cc
+
+ha_spider_la-spd_malloc.lo: spd_malloc.cc
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-spd_malloc.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-spd_malloc.Tpo -c -o ha_spider_la-spd_malloc.lo `test -f 'spd_malloc.cc' || echo '$(srcdir)/'`spd_malloc.cc
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-spd_malloc.Tpo $(DEPDIR)/ha_spider_la-spd_malloc.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='spd_malloc.cc' object='ha_spider_la-spd_malloc.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-spd_malloc.lo `test -f 'spd_malloc.cc' || echo '$(srcdir)/'`spd_malloc.cc
 
 ha_spider_la-ha_spider.lo: ha_spider.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-ha_spider.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-ha_spider.Tpo -c -o ha_spider_la-ha_spider.lo `test -f 'ha_spider.cc' || echo '$(srcdir)/'`ha_spider.cc

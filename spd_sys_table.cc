@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -34,6 +34,9 @@
 #include "spd_db_include.h"
 #include "spd_include.h"
 #include "spd_sys_table.h"
+#include "spd_malloc.h"
+
+extern handlerton *spider_hton_ptr;
 
 #if MYSQL_VERSION_ID < 50500
 TABLE *spider_open_sys_table(
@@ -97,7 +100,8 @@ TABLE *spider_open_sys_table(
   } else {
     thd->reset_n_backup_open_tables_state(open_tables_backup);
 
-    if (!(table = (TABLE*) my_malloc(sizeof(*table), MYF(MY_WME))))
+    if (!(table = (TABLE*) spider_malloc(spider_current_trx, 12,
+      sizeof(*table), MYF(MY_WME))))
     {
       *error_num = HA_ERR_OUT_OF_MEM;
       goto error_malloc;
@@ -129,7 +133,7 @@ TABLE *spider_open_sys_table(
       table->s->fields != SPIDER_SYS_XA_COL_CNT
     ) {
       spider_close_sys_table(thd, table, open_tables_backup, need_lock);
-      my_free(table, MYF(0));
+      spider_free(spider_current_trx, table, MYF(0));
       my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
         ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
         SPIDER_SYS_XA_TABLE_NAME_STR);
@@ -145,7 +149,7 @@ TABLE *spider_open_sys_table(
       table->s->fields != SPIDER_SYS_XA_MEMBER_COL_CNT
     ) {
       spider_close_sys_table(thd, table, open_tables_backup, need_lock);
-      my_free(table, MYF(0));
+      spider_free(spider_current_trx, table, MYF(0));
       my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
         ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
         SPIDER_SYS_XA_MEMBER_TABLE_NAME_STR);
@@ -161,7 +165,7 @@ TABLE *spider_open_sys_table(
       table->s->fields != SPIDER_SYS_TABLES_COL_CNT
     ) {
       spider_close_sys_table(thd, table, open_tables_backup, need_lock);
-      my_free(table, MYF(0));
+      spider_free(spider_current_trx, table, MYF(0));
       my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
         ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
         SPIDER_SYS_TABLES_TABLE_NAME_STR);
@@ -177,7 +181,7 @@ TABLE *spider_open_sys_table(
       table->s->fields != SPIDER_SYS_LINK_MON_TABLE_COL_CNT
     ) {
       spider_close_sys_table(thd, table, open_tables_backup, need_lock);
-      my_free(table, MYF(0));
+      spider_free(spider_current_trx, table, MYF(0));
       my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
         ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
         SPIDER_SYS_LINK_MON_TABLE_NAME_STR);
@@ -189,7 +193,7 @@ TABLE *spider_open_sys_table(
 
 #if MYSQL_VERSION_ID < 50500
 error:
-  my_free(table, MYF(0));
+  spider_free(spider_current_trx, table, MYF(0));
 error_malloc:
   thd->restore_backup_open_tables_state(open_tables_backup);
 #endif
@@ -221,7 +225,7 @@ void spider_close_sys_table(
   } else {
     table->file->ha_reset();
     closefrm(table, TRUE);
-    my_free(table, MYF(0));
+    spider_free(spider_current_trx, table, MYF(0));
     thd->restore_backup_open_tables_state(open_tables_backup);
   }
 #else
@@ -1745,7 +1749,7 @@ int spider_get_sys_tables_link_status(
   if ((ptr = get_field(mem_root, table->field[21])))
   {
     share->link_statuses[link_idx] =
-      my_strtoll10(ptr, (char**) NULL, &error_num);
+      (long) my_strtoll10(ptr, (char**) NULL, &error_num);
   } else
     share->link_statuses[link_idx] = 1;
   DBUG_PRINT("info",("spider link_statuses[%d]=%ld",
@@ -1762,7 +1766,7 @@ int spider_get_sys_tables_link_idx(
   int error_num = 0;
   DBUG_ENTER("spider_get_sys_tables_link_status");
   if ((ptr = get_field(mem_root, table->field[2])))
-    *link_idx = my_strtoll10(ptr, (char**) NULL, &error_num);
+    *link_idx = (int) my_strtoll10(ptr, (char**) NULL, &error_num);
   else
     *link_idx = 1;
   DBUG_PRINT("info",("spider link_idx=%d", *link_idx));
@@ -1923,7 +1927,7 @@ int spider_get_sys_link_mon_server_id(
   int error_num = 0;
   DBUG_ENTER("spider_get_sys_link_mon_server_id");
   if ((ptr = get_field(mem_root, table->field[3])))
-    *server_id = my_strtoll10(ptr, (char**) NULL, &error_num);
+    *server_id = (uint32) my_strtoll10(ptr, (char**) NULL, &error_num);
   else
     *server_id = ~(uint32) 0;
   DBUG_RETURN(error_num);
@@ -2221,7 +2225,7 @@ TABLE *spider_mk_sys_tmp_table(
   Item_field *i_field;
   List<Item> i_list;
   TABLE *tmp_table;
-  DBUG_ENTER("spider_create_sys_tmp_table");
+  DBUG_ENTER("spider_mk_sys_tmp_table");
 
   if (!(field = new Field_blob(
     4294967295U, FALSE, field_name, cs, TRUE)))
@@ -2258,5 +2262,73 @@ void spider_rm_sys_tmp_table(
   free_tmp_table(thd, tmp_table);
   tmp_tbl_prm->cleanup();
   tmp_tbl_prm->field_count = 1;
+  DBUG_VOID_RETURN;
+}
+
+TABLE *spider_mk_sys_tmp_table_for_result(
+  THD *thd,
+  TABLE *table,
+  TMP_TABLE_PARAM *tmp_tbl_prm,
+  const char *field_name1,
+  const char *field_name2,
+  CHARSET_INFO *cs
+) {
+  Field_blob *field1, *field2;
+  Item_field *i_field1, *i_field2;
+  List<Item> i_list;
+  TABLE *tmp_table;
+  DBUG_ENTER("spider_mk_sys_tmp_table_for_result");
+
+  if (!(field1 = new Field_blob(
+    4294967295U, FALSE, field_name1, cs, TRUE)))
+    goto error_alloc_field1;
+  field1->init(table);
+
+  if (!(i_field1 = new Item_field((Field *) field1)))
+    goto error_alloc_item_field1;
+
+  if (i_list.push_back(i_field1))
+    goto error_push_item1;
+
+  if (!(field2 = new Field_blob(
+    4294967295U, FALSE, field_name2, cs, TRUE)))
+    goto error_alloc_field2;
+  field2->init(table);
+
+  if (!(i_field2 = new Item_field((Field *) field2)))
+    goto error_alloc_item_field2;
+
+  if (i_list.push_back(i_field2))
+    goto error_push_item2;
+
+  if (!(tmp_table = create_tmp_table(thd, tmp_tbl_prm,
+    i_list, (ORDER*) NULL, FALSE, FALSE, TMP_TABLE_FORCE_MYISAM,
+    HA_POS_ERROR, (char *) "")))
+    goto error_create_tmp_table;
+  DBUG_RETURN(tmp_table);
+
+error_create_tmp_table:
+error_push_item2:
+  delete i_field2;
+error_alloc_item_field2:
+  delete field2;
+error_alloc_field2:
+error_push_item1:
+  delete i_field1;
+error_alloc_item_field1:
+  delete field1;
+error_alloc_field1:
+  DBUG_RETURN(NULL);
+}
+
+void spider_rm_sys_tmp_table_for_result(
+  THD *thd,
+  TABLE *tmp_table,
+  TMP_TABLE_PARAM *tmp_tbl_prm
+) {
+  DBUG_ENTER("spider_rm_sys_tmp_table_for_result");
+  free_tmp_table(thd, tmp_table);
+  tmp_tbl_prm->cleanup();
+  tmp_tbl_prm->field_count = 2;
   DBUG_VOID_RETURN;
 }

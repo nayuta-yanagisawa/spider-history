@@ -4,7 +4,7 @@ SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DHAVE_HANDLERSOCKET")
 SET(SPIDER_SOURCES
   spd_param.cc spd_sys_table.cc spd_trx.cc spd_db_conn.cc spd_conn.cc
   spd_table.cc spd_direct_sql.cc spd_udf.cc spd_ping_table.cc
-  spd_copy_tables.cc ha_spider.cc spd_udf.def
+  spd_copy_tables.cc spd_i_s.cc spd_malloc.cc ha_spider.cc spd_udf.def
   hs_client/config.cpp hs_client/escape.cpp hs_client/fatal.cpp
   hs_client/hstcpcli.cpp hs_client/socket.cpp hs_client/string_util.cpp
 )

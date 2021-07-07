@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -288,6 +288,7 @@ void spider_set_result_list_param(
 );
 
 SPIDER_INIT_ERROR_TABLE *spider_get_init_error_table(
+  SPIDER_TRX *trx,
   SPIDER_SHARE *share,
   bool create
 );
@@ -348,4 +349,8 @@ int spider_compare_for_sort(
 ulong spider_calc_for_sort(
   uint count,
   ...
+);
+
+double spider_rand(
+  uint32 rand_source
 );

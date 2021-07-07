@@ -51,21 +51,12 @@ struct hstcpcli : public hstcpcli_i, private noncopyable {
   virtual bool stable_point();
   virtual void request_buf_open_index(size_t pst_id, const char *dbn,
     const char *tbl, const char *idx, const char *retflds, const char *filflds);
-  #if 0
-  virtual void request_buf_find(size_t pst_id, const string_ref& op,
-    const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip);
-  virtual void request_buf_insert(size_t pst_id, const string_ref *fvs,
-    size_t fvslen);
-  virtual void request_buf_update(size_t pst_id, const string_ref& op,
-    const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip,
-    const string_ref *mvs, size_t mvslen);
-  virtual void request_buf_delete(size_t pst_id, const string_ref& op,
-    const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip);
-  #endif
+  virtual void request_buf_auth(const char *secret, const char *typ);
   virtual void request_buf_exec_generic(size_t pst_id, const string_ref& op,
     const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip,
     const string_ref& mod_op, const string_ref *mvs, size_t mvslen,
-    const hstcpcli_filter *fils, size_t filslen);
+    const hstcpcli_filter *fils, size_t filslen, int invalues_keypart,
+    const string_ref *invalues, size_t invalueslen);
   virtual void request_buf_append(const char *start, const char *finish);
   virtual int request_send();
   virtual int response_recv(size_t& num_flds_r);
@@ -76,6 +67,9 @@ struct hstcpcli : public hstcpcli_i, private noncopyable {
   virtual int get_error_code();
   virtual String get_error();
   virtual int set_timeout(int send_timeout, int recv_timeout);
+  virtual size_t get_response_end_offset() { return response_end_offset; }
+  virtual const char *get_readbuf_begin() { return readbuf.begin(); }
+  virtual const char *get_readbuf_end() { return readbuf.end(); }
  private:
   int read_more();
   void clear_error();
@@ -176,7 +170,7 @@ hstcpcli::read_more()
 {
   const size_t block_size = 4096; // FIXME
   char *const wp = readbuf.make_space(block_size);
-  ssize_t rlen;
+  int rlen;
   while ((rlen = read(fd.get(), wp, block_size)) <= 0) {
     if (rlen < 0) {
       if (errno == EINTR)
@@ -254,6 +248,27 @@ hstcpcli::request_buf_open_index(size_t pst_id, const char *dbn,
   ++num_req_bufd;
 }
 
+void
+hstcpcli::request_buf_auth(const char *secret, const char *typ)
+{
+  if (num_req_sent > 0 || num_req_rcvd > 0) {
+    close();
+    set_error(-1, "request_buf_auth: protocol out of sync");
+    return;
+  }
+  if (typ == 0) {
+    typ = "1";
+  }
+  const string_ref typ_ref(typ, strlen(typ));
+  const string_ref secret_ref(secret, strlen(secret));
+  writebuf.append_literal("A\t");
+  writebuf.append(typ_ref.begin(), typ_ref.end());
+  writebuf.append_literal("\t");
+  writebuf.append(secret_ref.begin(), secret_ref.end());
+  writebuf.append_literal("\n");
+  ++num_req_bufd;
+}
+
 namespace {
 
 void
@@ -276,7 +291,8 @@ void
 hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
   const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip,
   const string_ref& mod_op, const string_ref *mvs, size_t mvslen,
-  const hstcpcli_filter *fils, size_t filslen)
+  const hstcpcli_filter *fils, size_t filslen, int invalues_keypart,
+  const string_ref *invalues, size_t invalueslen)
 {
   if (num_req_sent > 0 || num_req_rcvd > 0) {
     close();
@@ -292,12 +308,25 @@ hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
     const string_ref& kv = kvs[i];
     append_delim_value(writebuf, kv.begin(), kv.end());
   }
-  if (limit != 0 || skip != 0 || mod_op.size() != 0 || filslen != 0) {
+  if (limit != 0 || skip != 0 || invalues_keypart >= 0 ||
+    mod_op.size() != 0 || filslen != 0) {
+    /* has more option */
     writebuf.append_literal("\t");
     append_uint32(writebuf, limit); // FIXME size_t ?
-    if (skip != 0 || mod_op.size() != 0 || filslen != 0) {
+    if (skip != 0 || invalues_keypart >= 0 ||
+      mod_op.size() != 0 || filslen != 0) {
       writebuf.append_literal("\t");
       append_uint32(writebuf, skip); // FIXME size_t ?
+    }
+    if (invalues_keypart >= 0) {
+      writebuf.append_literal("\t@\t");
+      append_uint32(writebuf, invalues_keypart);
+      writebuf.append_literal("\t");
+      append_uint32(writebuf, invalueslen);
+      for (size_t i = 0; i < invalueslen; ++i) {
+        const string_ref& s = invalues[i];
+        append_delim_value(writebuf, s.begin(), s.end());
+      }
     }
     for (size_t i = 0; i < filslen; ++i) {
       const hstcpcli_filter& f = fils[i];
@@ -340,48 +369,10 @@ hstcpcli::request_buf_append(const char *start, const char *finish)
   }
   num_req++;
   writebuf.append(start, finish);
-  if (*finish != '\n')
+  if (*(finish - 1) != '\n')
     writebuf.append_literal("\n");
   num_req_bufd += num_req;
 }
-
-#if 0
-void
-hstcpcli::request_buf_find(size_t pst_id, const string_ref& op,
-  const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip)
-{
-  return request_buf_exec_generic(pst_id, op, kvs, kvslen, limit, skip,
-    0, 0, 0);
-}
-
-void
-hstcpcli::request_buf_insert(size_t pst_id, const string_ref *fvs,
-  size_t fvslen)
-{
-  const string_ref insert_op("+", 1);
-  return request_buf_exec_generic(pst_id, insert_op, fvs, fvslen,
-    0, 0, string_ref(), 0, 0);
-}
-
-void
-hstcpcli::request_buf_update(size_t pst_id, const string_ref& op,
-  const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip,
-  const string_ref *mvs, size_t mvslen)
-{
-  const string_ref modop_update("U", 1);
-  return request_buf_exec_generic(pst_id, op, kvs, kvslen, limit, skip,
-    modop_update, mvs, mvslen);
-}
-
-void
-hstcpcli::request_buf_delete(size_t pst_id, const string_ref& op,
-  const string_ref *kvs, size_t kvslen, uint32 limit, uint32 skip)
-{
-  const string_ref modop_delete("D", 1);
-  return request_buf_exec_generic(pst_id, op, kvs, kvslen, limit, skip,
-    modop_delete, 0, 0);
-}
-#endif
 
 int
 hstcpcli::request_send()
@@ -436,10 +427,14 @@ hstcpcli::response_recv(size_t& num_flds_r)
   while (true) {
     const char *const lbegin = readbuf.begin() + offset;
     const char *const lend = readbuf.end();
-    const char *const nl = memchr_char(lbegin, '\n', lend - lbegin);
-    if (nl != 0) {
-      offset = (nl + 1) - readbuf.begin();
-      break;
+    if (lbegin < lend)
+    {
+      const char *const nl = memchr_char(lbegin, '\n', lend - lbegin);
+      if (nl != 0) {
+        offset += (nl + 1) - lbegin;
+        break;
+      }
+      offset += lend - lbegin;
     }
     if (read_more() <= 0) {
       close();
@@ -483,7 +478,12 @@ hstcpcli::response_recv(size_t& num_flds_r)
 int
 hstcpcli::get_result(hstresult& result)
 {
+/*
   readbuf.swap(result.readbuf);
+*/
+  char *const wp = result.readbuf.make_space(response_end_offset);
+  memcpy(wp, readbuf.begin(), response_end_offset);
+  result.readbuf.space_wrote(response_end_offset);
   result.response_end_offset = response_end_offset;
   result.num_flds = num_flds;
   result.cur_row_offset = cur_row_offset;

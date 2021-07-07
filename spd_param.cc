@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -35,6 +35,8 @@
 #include "spd_table.h"
 #include "spd_trx.h"
 
+extern struct st_mysql_plugin spider_i_s_alloc_mem;
+
 extern volatile ulonglong spider_mon_table_cache_version;
 extern volatile ulonglong spider_mon_table_cache_version_req;
 
@@ -45,7 +47,7 @@ static int spider_direct_update(THD *thd, SHOW_VAR *var, char *buff)
   SPIDER_TRX *trx;
   DBUG_ENTER("spider_direct_update");
   var->type = SHOW_LONGLONG;
-  if ((trx = spider_get_trx(thd, &error_num)))
+  if ((trx = spider_get_trx(thd, TRUE, &error_num)))
     var->value = (char *) &trx->direct_update_count;
   DBUG_RETURN(error_num);
 }
@@ -56,7 +58,7 @@ static int spider_direct_delete(THD *thd, SHOW_VAR *var, char *buff)
   SPIDER_TRX *trx;
   DBUG_ENTER("spider_direct_delete");
   var->type = SHOW_LONGLONG;
-  if ((trx = spider_get_trx(thd, &error_num)))
+  if ((trx = spider_get_trx(thd, TRUE, &error_num)))
     var->value = (char *) &trx->direct_delete_count;
   DBUG_RETURN(error_num);
 }
@@ -68,7 +70,7 @@ static int spider_direct_order_limit(THD *thd, SHOW_VAR *var, char *buff)
   SPIDER_TRX *trx;
   DBUG_ENTER("spider_direct_order_limit");
   var->type = SHOW_LONGLONG;
-  if ((trx = spider_get_trx(thd, &error_num)))
+  if ((trx = spider_get_trx(thd, TRUE, &error_num)))
     var->value = (char *) &trx->direct_order_limit_count;
   DBUG_RETURN(error_num);
 }
@@ -79,7 +81,7 @@ static int spider_direct_aggregate(THD *thd, SHOW_VAR *var, char *buff)
   SPIDER_TRX *trx;
   DBUG_ENTER("spider_direct_aggregate");
   var->type = SHOW_LONGLONG;
-  if ((trx = spider_get_trx(thd, &error_num)))
+  if ((trx = spider_get_trx(thd, TRUE, &error_num)))
     var->value = (char *) &trx->direct_aggregate_count;
   DBUG_RETURN(error_num);
 }
@@ -91,7 +93,7 @@ static int spider_hs_result_free(THD *thd, SHOW_VAR *var, char *buff)
   SPIDER_TRX *trx;
   DBUG_ENTER("spider_hs_result_free");
   var->type = SHOW_LONGLONG;
-  if ((trx = spider_get_trx(thd, &error_num)))
+  if ((trx = spider_get_trx(thd, TRUE, &error_num)))
     var->value = (char *) &trx->hs_result_free_count;
   DBUG_RETURN(error_num);
 }
@@ -660,7 +662,7 @@ static int spider_param_semi_table_lock_check(
   long long tmp;
   struct my_option options;
   DBUG_ENTER("spider_param_semi_table_lock_check");
-  if (!(trx = spider_get_trx((THD *) thd, &error_num)))
+  if (!(trx = spider_get_trx((THD *) thd, TRUE, &error_num)))
     DBUG_RETURN(error_num);
   if (trx->locked_connections)
   {
@@ -724,7 +726,7 @@ static int spider_param_semi_table_lock_connection_check(
   long long tmp;
   struct my_option options;
   DBUG_ENTER("spider_param_semi_table_lock_connection_check");
-  if (!(trx = spider_get_trx((THD *) thd, &error_num)))
+  if (!(trx = spider_get_trx((THD *) thd, TRUE, &error_num)))
     DBUG_RETURN(error_num);
   if (trx->locked_connections)
   {
@@ -865,6 +867,26 @@ bool spider_param_sync_time_zone(
 ) {
   DBUG_ENTER("spider_param_sync_time_zone");
   DBUG_RETURN(THDVAR(thd, sync_time_zone));
+}
+
+/*
+  FALSE: not use
+  TRUE:  use
+ */
+static MYSQL_THDVAR_BOOL(
+  use_default_database, /* name */
+  PLUGIN_VAR_OPCMDARG, /* opt */
+  "Use default database", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  TRUE /* def */
+);
+
+bool spider_param_use_default_database(
+  THD *thd
+) {
+  DBUG_ENTER("spider_param_use_default_database");
+  DBUG_RETURN(THDVAR(thd, use_default_database));
 }
 
 /*
@@ -1239,7 +1261,7 @@ static MYSQL_THDVAR_INT(
   NULL, /* update */
   -1, /* def */
   -1, /* min */
-  2, /* max */
+  3, /* max */
   0 /* blk */
 );
 
@@ -1268,9 +1290,9 @@ static MYSQL_THDVAR_LONGLONG(
   0 /* blk */
 );
 
-int spider_param_quick_page_size(
+longlong spider_param_quick_page_size(
   THD *thd,
-  int quick_page_size
+  longlong quick_page_size
 ) {
   DBUG_ENTER("spider_param_quick_page_size");
   DBUG_RETURN(THDVAR(thd, quick_page_size) < 0 ?
@@ -2145,6 +2167,38 @@ int spider_param_remote_trx_isolation()
   DBUG_RETURN(spider_remote_trx_isolation);
 }
 
+static char *spider_remote_default_database;
+/*
+ */
+#ifdef PLUGIN_VAR_CAN_MEMALLOC
+static MYSQL_SYSVAR_STR(
+  remote_default_database,
+  spider_remote_default_database,
+  PLUGIN_VAR_MEMALLOC |
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote database at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+#else
+static MYSQL_SYSVAR_STR(
+  remote_default_database,
+  spider_remote_default_database,
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote database at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+#endif
+
+char *spider_param_remote_default_database()
+{
+  DBUG_ENTER("spider_param_remote_default_database");
+  DBUG_RETURN(spider_remote_default_database);
+}
+
 /*
   0-:connect retry interval (micro second)
  */
@@ -2640,6 +2694,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(selupd_lock_mode),
   MYSQL_SYSVAR(sync_autocommit),
   MYSQL_SYSVAR(sync_time_zone),
+  MYSQL_SYSVAR(use_default_database),
   MYSQL_SYSVAR(internal_sql_log_off),
   MYSQL_SYSVAR(bulk_size),
   MYSQL_SYSVAR(bulk_update_mode),
@@ -2702,6 +2757,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(remote_time_zone),
   MYSQL_SYSVAR(remote_sql_log_off),
   MYSQL_SYSVAR(remote_trx_isolation),
+  MYSQL_SYSVAR(remote_default_database),
   MYSQL_SYSVAR(connect_retry_interval),
   MYSQL_SYSVAR(connect_retry_count),
   MYSQL_SYSVAR(connect_mutex),
@@ -2736,9 +2792,10 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x021b,
+  0x021c,
   spider_status_variables,
   spider_system_variables,
   NULL
-}
+},
+spider_i_s_alloc_mem
 mysql_declare_plugin_end;

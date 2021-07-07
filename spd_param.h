@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software); you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -106,6 +106,9 @@ bool spider_param_sync_autocommit(
 bool spider_param_sync_time_zone(
   THD *thd
 );
+bool spider_param_use_default_database(
+  THD *thd
+);
 bool spider_param_internal_sql_log_off(
   THD *thd
 );
@@ -163,9 +166,9 @@ int spider_param_quick_mode(
   THD *thd,
   int quick_mode
 );
-int spider_param_quick_page_size(
+longlong spider_param_quick_page_size(
   THD *thd,
-  int quick_page_size
+  longlong quick_page_size
 );
 int spider_param_low_mem_read(
   THD *thd,
@@ -286,6 +289,7 @@ int spider_param_remote_autocommit();
 char *spider_param_remote_time_zone();
 int spider_param_remote_sql_log_off();
 int spider_param_remote_trx_isolation();
+char *spider_param_remote_default_database();
 longlong spider_param_connect_retry_interval(
   THD *thd
 );

@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -175,6 +175,19 @@ void spider_free_conn_thread(
   SPIDER_CONN *conn
 );
 
+void spider_bg_conn_wait(
+  SPIDER_CONN *conn
+);
+
+void spider_bg_all_conn_wait(
+  ha_spider *spider
+);
+
+int spider_bg_all_conn_pre_next(
+  ha_spider *spider,
+  int link_idx
+);
+
 void spider_bg_conn_break(
   SPIDER_CONN *conn,
   ha_spider *spider
@@ -191,7 +204,9 @@ bool spider_bg_conn_get_job(
 int spider_bg_conn_search(
   ha_spider *spider,
   int link_idx,
+  int first_link_idx,
   bool first,
+  bool pre_next,
   bool discard_result
 );
 
@@ -240,6 +255,7 @@ void *spider_bg_mon_action(
 int spider_conn_first_link_idx(
   THD *thd,
   long *link_statuses,
+  long *access_balances,
   uint *conn_link_idx,
   int link_count,
   int link_status
@@ -248,6 +264,7 @@ int spider_conn_first_link_idx(
 int spider_conn_next_link_idx(
   THD *thd,
   long *link_statuses,
+  long *access_balances,
   uint *conn_link_idx,
   int link_idx,
   int link_count,

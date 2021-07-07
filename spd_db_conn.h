@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2012 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -99,25 +99,25 @@ int spider_db_set_trx_isolation(
 );
 
 int spider_db_append_trx_isolation(
-  String *str,
+  spider_string *str,
   SPIDER_CONN *conn,
   int trx_isolation
 );
 
 int spider_db_append_autocommit(
-  String *str,
+  spider_string *str,
   SPIDER_CONN *conn,
   bool autocommit
 );
 
 int spider_db_append_sql_log_off(
-  String *str,
+  spider_string *str,
   SPIDER_CONN *conn,
   bool sql_log_off
 );
 
 int spider_db_append_time_zone(
-  String *str,
+  spider_string *str,
   SPIDER_CONN *conn,
   Time_zone *time_zone
 );
@@ -129,14 +129,14 @@ int spider_db_set_names(
 );
 
 int spider_db_query_with_set_names(
-  String *sql,
+  spider_string *sql,
   ha_spider *spider,
   SPIDER_CONN *conn,
   int link_idx
 );
 
 int spider_db_query_for_bulk_update(
-  String *sql,
+  spider_string *sql,
   ha_spider *spider,
   SPIDER_CONN *conn,
   int link_idx
@@ -160,7 +160,7 @@ int spider_db_start_transaction(
 );
 
 int spider_db_append_start_transaction(
-  String *str,
+  spider_string *str,
   SPIDER_CONN *conn
 );
 
@@ -173,18 +173,18 @@ int spider_db_rollback(
 );
 
 int spider_db_append_hex_string(
-  String *str,
+  spider_string *str,
   uchar *hex_ptr,
   int hex_ptr_length
 );
 
 void spider_db_append_xid_str(
-  String *tmp_str,
+  spider_string *tmp_str,
   XID *xid
 );
 
 int spider_db_append_xa_start(
-  String *str,
+  spider_string *str,
   SPIDER_CONN *conn,
   XID *xid
 );
@@ -220,7 +220,7 @@ int spider_db_unlock_tables(
 );
 
 int spider_db_append_name_with_quote_str(
-  String *str,
+  spider_string *str,
   char *name
 );
 
@@ -247,20 +247,20 @@ int spider_db_convert_key_hint_str(
 );
 
 int spider_db_append_table_name_with_reserve(
-  String *str,
+  spider_string *str,
   SPIDER_SHARE *share,
   int link_idx
 );
 
 void spider_db_append_table_name(
-  String *str,
+  spider_string *str,
   SPIDER_SHARE *share,
   int link_idx
 );
 
 void spider_db_append_table_name_with_adjusting(
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   SPIDER_SHARE *share,
   int link_idx,
   uint sql_kind
@@ -268,14 +268,14 @@ void spider_db_append_table_name_with_adjusting(
 
 void spider_db_append_column_name(
   SPIDER_SHARE *share,
-  String *str,
+  spider_string *str,
   int field_index
 );
 
 int spider_db_append_column_value(
   ha_spider *spider,
   SPIDER_SHARE *share,
-  String *str,
+  spider_string *str,
   Field *field,
   const uchar *new_ptr
 );
@@ -283,11 +283,11 @@ int spider_db_append_column_value(
 int spider_db_append_column_values(
   const key_range *start_key,
   ha_spider *spider,
-  String *str
+  spider_string *str
 );
 
 int spider_db_append_select_str(
-  String *str
+  spider_string *str
 );
 
 int spider_db_append_select(
@@ -295,7 +295,7 @@ int spider_db_append_select(
 );
 
 int spider_db_append_insert_str(
-  String *str,
+  spider_string *str,
   int insert_flg
 );
 
@@ -304,20 +304,20 @@ int spider_db_append_insert(
 );
 
 int spider_db_append_insert_for_recovery(
-  String *insert_sql,
+  spider_string *insert_sql,
   ha_spider *spider,
   const TABLE *table,
   int link_idx
 );
 
 int spider_db_append_update(
-  String *str,
+  spider_string *str,
   ha_spider *spider,
   int link_idx
 );
 
 int spider_db_append_delete(
-  String *str,
+  spider_string *str,
   ha_spider *spider
 );
 
@@ -327,17 +327,17 @@ int spider_db_append_truncate(
 );
 
 int spider_db_append_from_str(
-  String *str
+  spider_string *str
 );
 
 int spider_db_append_from(
-  String *str,
+  spider_string *str,
   ha_spider *spider,
   int link_idx
 );
 
 int spider_db_append_from_with_alias(
-  String *str,
+  spider_string *str,
   const char **table_names,
   uint *table_name_lengths,
   const char **table_aliases,
@@ -348,15 +348,15 @@ int spider_db_append_from_with_alias(
 );
 
 int spider_db_append_open_paren_str(
-  String *str
+  spider_string *str
 );
 
 int spider_db_append_into_str(
-  String *str
+  spider_string *str
 );
 
 int spider_db_append_values_str(
-  String *str
+  spider_string *str
 );
 
 int spider_db_append_into(
@@ -366,7 +366,7 @@ int spider_db_append_into(
 );
 
 int spider_db_append_update_set(
-  String *str,
+  spider_string *str,
   ha_spider *spider,
   TABLE *table
 );
@@ -374,7 +374,7 @@ int spider_db_append_update_set(
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
 int spider_db_append_increment_update_set(
-  String *str,
+  spider_string *str,
   ha_spider *spider,
   TABLE *table
 );
@@ -382,32 +382,32 @@ int spider_db_append_increment_update_set(
 #endif
 
 int spider_db_append_update_where(
-  String *str,
+  spider_string *str,
   ha_spider *spider,
   const TABLE *table,
   my_ptrdiff_t ptr_diff
 );
 
 int spider_db_append_table_select(
-  String *str,
+  spider_string *str,
   const TABLE *table,
   ha_spider *spider
 );
 
 int spider_db_append_key_select(
-  String *str,
+  spider_string *str,
   const KEY *key_info,
   ha_spider *spider
 );
 
 int spider_db_append_minimum_select(
-  String *str,
+  spider_string *str,
   const TABLE *table,
   ha_spider *spider
 );
 
 int spider_db_append_minimum_select_without_quote(
-  String *str,
+  spider_string *str,
   const TABLE *table,
   ha_spider *spider
 );
@@ -415,7 +415,7 @@ int spider_db_append_minimum_select_without_quote(
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
 int spider_db_append_minimum_select_by_field_idx_list(
-  String *str,
+  spider_string *str,
   const TABLE *table,
   ha_spider *spider,
   uint32 *field_idxs,
@@ -429,7 +429,7 @@ int spider_db_append_select_columns(
 );
 
 int spider_db_append_table_select_with_alias(
-  String *str,
+  spider_string *str,
   const TABLE *table,
   ha_spider *spider,
   const char *alias,
@@ -437,7 +437,7 @@ int spider_db_append_table_select_with_alias(
 );
 
 int spider_db_append_key_select_with_alias(
-  String *str,
+  spider_string *str,
   const KEY *key_info,
   ha_spider *spider,
   const char *alias,
@@ -445,7 +445,7 @@ int spider_db_append_key_select_with_alias(
 );
 
 int spider_db_append_minimum_select_with_alias(
-  String *str,
+  spider_string *str,
   const TABLE *table,
   ha_spider *spider,
   const char *alias,
@@ -461,7 +461,7 @@ int spider_db_append_select_columns_with_alias(
 int spider_db_append_null(
   ha_spider *spider,
   SPIDER_SHARE *share,
-  String *str,
+  spider_string *str,
   KEY_PART_INFO *key_part,
   const key_range *key,
   const uchar **ptr,
@@ -469,7 +469,7 @@ int spider_db_append_null(
 );
 
 int spider_db_append_null_value(
-  String *str,
+  spider_string *str,
   KEY_PART_INFO *key_part,
   const uchar **ptr
 );
@@ -477,30 +477,30 @@ int spider_db_append_null_value(
 int spider_db_append_key_column_types(
   const key_range *start_key,
   ha_spider *spider,
-  String *str
+  spider_string *str
 );
 
 int spider_db_append_table_columns(
-  String *str,
+  spider_string *str,
   TABLE_SHARE *table_share
 );
 
 int spider_db_append_key_columns(
   const key_range *start_key,
   ha_spider *spider,
-  String *str
+  spider_string *str
 );
 
 int spider_db_append_key_join_columns_for_bka(
   const key_range *start_key,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char **table_aliases,
   uint *table_alias_lengths
 );
 
 int spider_db_append_key_hint(
-  String *str,
+  spider_string *str,
   char *hint_str
 );
 
@@ -519,7 +519,7 @@ int spider_db_append_key_where(
 );
 
 int spider_db_append_match_against(
-  String *str,
+  spider_string *str,
   ha_spider *spider,
   st_spider_ft_info  *ft_info,
   const char *alias,
@@ -527,7 +527,7 @@ int spider_db_append_match_against(
 );
 
 int spider_db_append_match_select(
-  String *str,
+  spider_string *str,
   ha_spider *spider,
   const char *alias,
   uint alias_length
@@ -547,15 +547,22 @@ int spider_db_append_match_where(
 
 int spider_db_append_hint_after_table(
   ha_spider *spider,
-  String *str,
-  String *hint
+  spider_string *str,
+  spider_string *hint
 );
 
 int spider_db_append_key_order_str(
-  String *str,
+  spider_string *str,
   KEY *key_info,
   int start_pos,
   bool desc_flg
+);
+
+int spider_db_append_key_order_with_alias(
+  ha_spider *spider,
+  bool update_sql,
+  const char *alias,
+  uint alias_length
 );
 
 int spider_db_append_key_order(
@@ -565,7 +572,7 @@ int spider_db_append_key_order(
 
 int spider_db_append_limit_internal(
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   longlong offset,
   longlong limit,
   uint sql_kind
@@ -573,13 +580,13 @@ int spider_db_append_limit_internal(
 
 int spider_db_append_limit(
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   longlong offset,
   longlong limit
 );
 
 int spider_db_append_select_lock_str(
-  String *str,
+  spider_string *str,
   int lock_mode
 );
 
@@ -666,7 +673,7 @@ void spider_db_create_tmp_bka_table_name(
 int spider_db_append_create_tmp_bka_table(
   const key_range *start_key,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   char *tmp_table_name,
   int tmp_table_name_length,
   int *db_name_pos,
@@ -675,7 +682,7 @@ int spider_db_append_create_tmp_bka_table(
 
 int spider_db_append_drop_tmp_bka_table(
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   char *tmp_table_name,
   int tmp_table_name_length,
   int *db_name_pos,
@@ -686,7 +693,7 @@ int spider_db_append_drop_tmp_bka_table(
 int spider_db_append_insert_tmp_bka_table(
   const key_range *start_key,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   char *tmp_table_name,
   int tmp_table_name_length,
   int *db_name_pos
@@ -694,6 +701,24 @@ int spider_db_append_insert_tmp_bka_table(
 
 void spider_db_append_handler_next(
   ha_spider *spider
+);
+
+void spider_db_get_row_and_lengths_from_tmp_tbl_rec(
+  SPIDER_RESULT *current,
+  SPIDER_DB_ROW *row,
+  ulong **lengths
+);
+
+int spider_db_get_row_and_lengths_from_tmp_tbl(
+  SPIDER_RESULT *current,
+  SPIDER_DB_ROW *row,
+  ulong **lengths
+);
+
+int spider_db_get_row_and_lengths_from_tmp_tbl_pos(
+  SPIDER_POSITION *pos,
+  SPIDER_DB_ROW *row,
+  ulong **lengths
 );
 
 int spider_db_fetch_row(
@@ -803,8 +828,9 @@ void spider_db_set_pos_to_first_row(
   SPIDER_RESULT_LIST *result_list
 );
 
-SPIDER_POSITION *spider_db_create_position(
-  ha_spider *spider
+void spider_db_create_position(
+  ha_spider *spider,
+  SPIDER_POSITION *pos
 );
 
 int spider_db_seek_tmp(
@@ -977,7 +1003,7 @@ int spider_db_flush_logs(
 int spider_db_print_item_type(
   Item *item,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -985,7 +1011,7 @@ int spider_db_print_item_type(
 int spider_db_open_item_cond(
   Item_cond *item_cond,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -993,7 +1019,7 @@ int spider_db_open_item_cond(
 int spider_db_open_item_func(
   Item_func *item_func,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -1001,7 +1027,7 @@ int spider_db_open_item_func(
 int spider_db_open_item_ident(
   Item_ident *item_ident,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -1009,7 +1035,7 @@ int spider_db_open_item_ident(
 int spider_db_open_item_field(
   Item_field *item_field,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -1017,7 +1043,7 @@ int spider_db_open_item_field(
 int spider_db_open_item_ref(
   Item_ref *item_ref,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -1025,7 +1051,7 @@ int spider_db_open_item_ref(
 int spider_db_open_item_row(
   Item_row *item_row,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -1033,7 +1059,7 @@ int spider_db_open_item_row(
 int spider_db_open_item_string(
   Item *item,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -1041,7 +1067,7 @@ int spider_db_open_item_string(
 int spider_db_open_item_int(
   Item *item,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -1049,14 +1075,14 @@ int spider_db_open_item_int(
 int spider_db_open_item_cache(
   Item_cache *item_cache,
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
 
 int spider_db_append_condition_internal(
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length,
   uint sql_kind
@@ -1064,14 +1090,14 @@ int spider_db_append_condition_internal(
 
 int spider_db_append_condition(
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
 
 int spider_db_append_update_columns(
   ha_spider *spider,
-  String *str,
+  spider_string *str,
   const char *alias,
   uint alias_length
 );
@@ -1154,7 +1180,7 @@ int spider_db_udf_ping_table(
 );
 
 int spider_db_udf_ping_table_append_mon_next(
-  String *str,
+  spider_string *str,
   char *child_table_name,
   uint child_table_name_length,
   int link_id,
@@ -1170,10 +1196,10 @@ int spider_db_udf_ping_table_append_mon_next(
 );
 
 int spider_db_udf_ping_table_append_select(
-  String *str,
+  spider_string *str,
   SPIDER_SHARE *share,
   SPIDER_TRX *trx,
-  String *where_str,
+  spider_string *where_str,
   bool use_where,
   longlong limit
 );
@@ -1198,8 +1224,8 @@ int spider_db_udf_ping_table_mon_next(
 );
 
 int spider_db_udf_copy_key_row(
-  String *str,
-  String *source_str,
+  spider_string *str,
+  spider_string *source_str,
   Field *field,
   ulong *row_pos,
   ulong *length,
@@ -1208,14 +1234,14 @@ int spider_db_udf_copy_key_row(
 );
 
 int spider_db_udf_copy_row(
-  String *str,
+  spider_string *str,
   Field *field,
   SPIDER_DB_ROW row,
   ulong *length
 );
 
 int spider_db_udf_copy_rows(
-  String *str,
+  spider_string *str,
   TABLE *table,
   SPIDER_DB_RESULT *result,
   ulong **last_row_pos,
@@ -1268,8 +1294,12 @@ int spider_db_hs_request_buf_delete(
 );
 #endif
 
-String *spider_db_add_str_dynamic(
+spider_string *spider_db_add_str_dynamic(
   DYNAMIC_ARRAY *array,
+  uint array_id,
+  const char *array_func_name,
+  const char *array_file_name,
+  ulong array_line_no,
   uint *strs_pos,
   const char *str,
   uint str_len
