@@ -524,8 +524,10 @@ int spider_db_set_names(
   SPIDER_CONN *conn
 ) {
   DBUG_ENTER("spider_db_set_names");
-  if (share->access_charset != conn->access_charset)
-  {
+  if (
+    !conn->access_charset ||
+    share->access_charset->cset != conn->access_charset->cset
+  ) {
     if (spider_db_query(
       conn,
       share->set_names->ptr(),
