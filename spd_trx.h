@@ -27,7 +27,15 @@ int spider_trx_another_lock_tables(
   SPIDER_TRX *trx
 );
 
+int spider_trx_another_flush_tables(
+  SPIDER_TRX *trx
+);
+
 int spider_trx_all_flush_tables(
+  SPIDER_TRX *trx
+);
+
+int spider_trx_all_unlock_tables(
   SPIDER_TRX *trx
 );
 
@@ -55,6 +63,11 @@ int spider_free_trx_alter_table(
 int spider_create_trx_alter_table(
   SPIDER_TRX *trx,
   SPIDER_SHARE *share
+);
+
+bool spider_cmp_trx_alter_table(
+  SPIDER_ALTER_TABLE *cmp1,
+  SPIDER_ALTER_TABLE *cmp2
 );
 
 SPIDER_TRX *spider_get_trx(

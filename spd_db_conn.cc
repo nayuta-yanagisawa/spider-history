@@ -448,6 +448,7 @@ int spider_db_consistent_snapshot(
     SPIDER_SQL_START_CONSISTENT_SNAPSHOT_LEN)
   )
     DBUG_RETURN(spider_db_errorno(conn));
+  conn->trx_start = TRUE;
   DBUG_RETURN(0);
 }
 
@@ -461,6 +462,7 @@ int spider_db_start_transaction(
     SPIDER_SQL_START_TRANSACTION_LEN)
   )
     DBUG_RETURN(spider_db_errorno(conn));
+  conn->trx_start = TRUE;
   DBUG_RETURN(0);
 }
 
@@ -474,6 +476,7 @@ int spider_db_commit(
     SPIDER_SQL_COMMIT_LEN)
   )
     DBUG_RETURN(spider_db_errorno(conn));
+  conn->trx_start = FALSE;
   DBUG_RETURN(0);
 }
 
@@ -487,6 +490,7 @@ int spider_db_rollback(
     SPIDER_SQL_ROLLBACK_LEN)
   )
     DBUG_RETURN(spider_db_errorno(conn));
+  conn->trx_start = FALSE;
   DBUG_RETURN(0);
 }
 

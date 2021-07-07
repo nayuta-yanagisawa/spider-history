@@ -78,6 +78,12 @@ void spider_free_conn_from_trx(
       hash_delete(&conn->user_ha_hash, (uchar*) spider);
       spider->conn = NULL;
       spider->db_conn = NULL;
+      if (another)
+      {
+        spider_free_tmp_share_alloc(spider->share);
+        my_free(spider->share, MYF(0));
+        delete spider;
+      }
     }
 
     if(
@@ -129,6 +135,9 @@ SPIDER_CONN *spider_create_conn(
   conn->table_lock = 0;
   conn->autocommit = -1;
   conn->sql_log_off = -1;
+  conn->semi_trx_isolation = -2;
+  conn->semi_trx_isolation_chk = FALSE;
+  conn->semi_trx_chk = FALSE;
 
   if(
     hash_init(&conn->user_ha_hash, system_charset_info, 32, 0, 0,

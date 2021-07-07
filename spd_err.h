@@ -18,7 +18,7 @@
 #define ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM 12502
 #define ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR "The connect info '%-.64s' for %s is too long"
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_NUM 12601
-#define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_STR "Can't use both spider_use_consistent_snapshot = 1 and spider_inner_xa = 1"
+#define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_STR "Can't use both spider_use_consistent_snapshot = 1 and spider_internal_xa = 1"
 #define ER_SPIDER_XA_LOCKED_NUM 12602
 #define ER_SPIDER_XA_LOCKED_STR "This xid is now locked"
 #define ER_SPIDER_XA_NOT_PREPARED_NUM 12603

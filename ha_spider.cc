@@ -371,12 +371,6 @@ int ha_spider::external_lock(
       {
         DBUG_RETURN(error_num);
       }
-    } else if (trx->trx_another_conn_hash.records)
-    {
-      if ((error_num = spider_free_trx_another_conn(trx, TRUE)))
-      {
-        DBUG_RETURN(error_num);
-      }
     }
   }
   DBUG_RETURN(0);
@@ -1719,8 +1713,8 @@ int ha_spider::rename_table(
         my_message(error_num, ER_SPIDER_RENAME_WITH_OTHER_STR, MYF(0));
         goto error;
       } else if (
-        alter_table_to->tmp_priority != alter_table_from->tmp_priority)
-      {
+        spider_cmp_trx_alter_table(alter_table_to, alter_table_from)
+      ) {
         Open_tables_state open_tables_backup;
         VOID(pthread_mutex_unlock(&LOCK_open));
         if (
@@ -1735,7 +1729,7 @@ int ha_spider::rename_table(
         VOID(pthread_mutex_lock(&LOCK_open));
         if (
           (error_num = spider_update_tables_priority(
-            table_tables, alter_table_from->tmp_priority,
+            table_tables, alter_table_from,
             alter_table_to->tmp_char))
         )
           goto error;

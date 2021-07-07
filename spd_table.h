@@ -48,6 +48,15 @@ int spider_parse_connect_info(
   uint create_table
 );
 
+int spider_set_connect_info_default(
+  SPIDER_SHARE *share,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  partition_element *part_elem,
+  partition_element *sub_elem,
+#endif
+  TABLE *table
+);
+
 int spider_create_conn_key(
   SPIDER_SHARE *share
 );

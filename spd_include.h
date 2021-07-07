@@ -20,6 +20,25 @@ typedef struct st_spider_alter_table
   uint               table_name_length;
   char               *tmp_char;
   longlong           tmp_priority;
+
+  char               *tmp_server_name;
+  char               *tmp_tgt_table_name;
+  char               *tmp_tgt_db;
+  char               *tmp_tgt_host;
+  char               *tmp_tgt_username;
+  char               *tmp_tgt_password;
+  char               *tmp_tgt_socket;
+  char               *tmp_tgt_wrapper;
+  long               tmp_tgt_port;
+
+  uint               tmp_server_name_length;
+  uint               tmp_tgt_table_name_length;
+  uint               tmp_tgt_db_length;
+  uint               tmp_tgt_host_length;
+  uint               tmp_tgt_username_length;
+  uint               tmp_tgt_password_length;
+  uint               tmp_tgt_socket_length;
+  uint               tmp_tgt_wrapper_length;
 } SPIDER_ALTER_TABLE;
 
 /* database connection */
@@ -34,6 +53,7 @@ typedef struct st_spider_conn
   int                semi_trx_isolation;
   bool               semi_trx_chk;
   bool               semi_trx;
+  bool               trx_start;
   int                table_lock;
   bool               disable_xa;
   int                autocommit;
@@ -150,6 +170,8 @@ typedef struct st_spider_share
   uint               tgt_wrapper_length;
   uint               csname_length;
   uint               conn_key_length;
+
+  SPIDER_ALTER_TABLE alter_table;
 } SPIDER_SHARE;
 
 char *spider_create_string(

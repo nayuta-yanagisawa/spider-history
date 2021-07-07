@@ -197,23 +197,50 @@ void spider_free_tmp_share_alloc(
 ) {
   DBUG_ENTER("spider_free_tmp_share_alloc");
   if (share->server_name)
+  {
     my_free(share->server_name, MYF(0));
+    share->server_name = NULL;
+  }
   if (share->tgt_table_name)
+  {
     my_free(share->tgt_table_name, MYF(0));
+    share->tgt_table_name = NULL;
+  }
   if (share->tgt_db)
+  {
     my_free(share->tgt_db, MYF(0));
+    share->tgt_db = NULL;
+  }
   if (share->tgt_host)
+  {
     my_free(share->tgt_host, MYF(0));
+    share->tgt_host = NULL;
+  }
   if (share->tgt_username)
+  {
     my_free(share->tgt_username, MYF(0));
+    share->tgt_username = NULL;
+  }
   if (share->tgt_password)
+  {
     my_free(share->tgt_password, MYF(0));
+    share->tgt_password = NULL;
+  }
   if (share->tgt_socket)
+  {
     my_free(share->tgt_socket, MYF(0));
+    share->tgt_socket = NULL;
+  }
   if (share->tgt_wrapper)
+  {
     my_free(share->tgt_wrapper, MYF(0));
+    share->tgt_wrapper = NULL;
+  }
   if (share->conn_key)
+  {
     my_free(share->conn_key, MYF(0));
+    share->conn_key = NULL;
+  }
   DBUG_VOID_RETURN;
 }
 
@@ -367,6 +394,7 @@ int spider_parse_connect_info(
   char *tmp_ptr, *tmp_ptr2, *start_ptr;
   int roop_count;
   int title_length;
+  SPIDER_ALTER_TABLE *share_alter;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   partition_element *part_elem;
   partition_element *sub_elem;
@@ -630,148 +658,36 @@ int spider_parse_connect_info(
     }
   }
 
-  if (share->server_name)
-  {
-    if ((error_num = spider_get_server(share)))
-      goto error_get_server;
-  }
+  /* copy for tables start */
+  share_alter = &share->alter_table;
+  share_alter->tmp_server_name = share->server_name;
+  share_alter->tmp_tgt_table_name = share->tgt_table_name;
+  share_alter->tmp_tgt_db = share->tgt_db;
+  share_alter->tmp_tgt_host = share->tgt_host;
+  share_alter->tmp_tgt_username = share->tgt_username;
+  share_alter->tmp_tgt_password = share->tgt_password;
+  share_alter->tmp_tgt_socket = share->tgt_socket;
+  share_alter->tmp_tgt_wrapper = share->tgt_wrapper;
+  share_alter->tmp_tgt_port = share->tgt_port;
+  share_alter->tmp_server_name_length = share->server_name_length;
+  share_alter->tmp_tgt_table_name_length = share->tgt_table_name_length;
+  share_alter->tmp_tgt_db_length = share->tgt_db_length;
+  share_alter->tmp_tgt_host_length = share->tgt_host_length;
+  share_alter->tmp_tgt_username_length = share->tgt_username_length;
+  share_alter->tmp_tgt_password_length = share->tgt_password_length;
+  share_alter->tmp_tgt_socket_length = share->tgt_socket_length;
+  share_alter->tmp_tgt_wrapper_length = share->tgt_wrapper_length;
+  /* copy for tables end */
 
-  if (!share->tgt_wrapper)
-  {
-    DBUG_PRINT("info",("spider create default tgt_wrapper"));
-    share->tgt_wrapper_length = SPIDER_DB_WRAPPER_LEN;
-    if (
-      !(share->tgt_wrapper = spider_create_string(
-        SPIDER_DB_WRAPPER_STR,
-        share->tgt_wrapper_length))
-    ) {
-      error_num = HA_ERR_OUT_OF_MEM;
-      goto error;
-    }
-  }
-
-  if (!share->tgt_host)
-  {
-    DBUG_PRINT("info",("spider create default tgt_host"));
-    share->tgt_host_length = strlen(my_localhost);
-    if (
-      !(share->tgt_host = spider_create_string(
-        my_localhost,
-        share->tgt_host_length))
-    ) {
-      error_num = HA_ERR_OUT_OF_MEM;
-      goto error;
-    }
-  }
-
-  if (!share->tgt_db)
-  {
-    DBUG_PRINT("info",("spider create default tgt_db"));
-    share->tgt_db_length = table->s->db.length;
-    if (
-      !(share->tgt_db = spider_create_string(
-        table->s->db.str,
-        table->s->db.length))
-    ) {
-      error_num = HA_ERR_OUT_OF_MEM;
-      goto error;
-    }
-  }
-
-  if (!share->tgt_table_name)
-  {
-    DBUG_PRINT("info",("spider create default tgt_table_name"));
-    share->tgt_table_name_length = share->table_name_length;
-    if (
-      !(share->tgt_table_name = spider_create_table_name_string(
-        table->s->table_name.str,
+  if ((error_num = spider_set_connect_info_default(
+    share,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-        (part_elem ? part_elem->partition_name : NULL),
-        (sub_elem ? sub_elem->partition_name : NULL)
-#else
-        NULL,
-        NULL
+    part_elem,
+    sub_elem,
 #endif
-      ))
-    ) {
-      error_num = HA_ERR_OUT_OF_MEM;
-      goto error;
-    }
-  }
-
-  if (share->tgt_port == -1)
-  {
-    share->tgt_port = MYSQL_PORT;
-  } else if (share->tgt_port < 0)
-  {
-    share->tgt_port = 0;
-  } else if (share->tgt_port > 65535)
-  {
-    share->tgt_port = 65535;
-  }
-
-  if (
-    !share->tgt_socket &&
-    !strcmp(share->tgt_host, my_localhost)
-  ) {
-    DBUG_PRINT("info",("spider create default tgt_socket"));
-    share->tgt_socket_length = strlen((char *) MYSQL_UNIX_ADDR);
-    if (
-      !(share->tgt_socket = spider_create_string(
-        (char *) MYSQL_UNIX_ADDR,
-        share->tgt_socket_length))
-    ) {
-      error_num = HA_ERR_OUT_OF_MEM;
-      goto error;
-    }
-  }
-
-  if (share->sts_interval == -1)
-    share->sts_interval = 10;
-  if (share->sts_mode == -1)
-    share->sts_mode = 1;
-  if (share->crd_interval == -1)
-    share->crd_interval = 51;
-  if (share->crd_mode == -1)
-    share->crd_mode = 1;
-  if (share->crd_type == -1)
-    share->crd_type = 2;
-  if (share->crd_weight == -1)
-    share->crd_weight = 2;
-  if (share->internal_offset == -1)
-    share->internal_offset = 0;
-  if (share->internal_limit == -1)
-    share->internal_limit = 9223372036854775807LL;
-  if (share->split_read == -1)
-    share->split_read = 9223372036854775807LL;
-  if (share->init_sql_alloc_size == -1)
-    share->init_sql_alloc_size = 1024;
-  if (share->reset_sql_alloc == -1)
-    share->reset_sql_alloc = 1;
-  if (share->multi_split_read == -1)
-    share->multi_split_read = 0;
-  if (share->max_order == -1)
-    share->max_order = 32767;
-  if (share->semi_table_lock == -1)
-    share->semi_table_lock = 0;
-  if (share->selupd_lock_mode == -1)
-    share->selupd_lock_mode = 1;
-  if (share->query_cache == -1)
-    share->query_cache = 0;
-  if (share->internal_delayed == -1)
-    share->internal_delayed = 0;
-  if (share->bulk_size == -1)
-    share->bulk_size = 16000;
-  if (share->internal_optimize == -1)
-    share->internal_optimize = 0;
-  if (share->internal_optimize_local == -1)
-    share->internal_optimize_local = 0;
-  if (share->scan_rate == -1)
-    share->scan_rate = 0.0001;
-  if (share->read_rate == -1)
-    share->read_rate = 0.0002;
-  if (share->priority == -1)
-    share->priority = 1000000;
+    table
+  )))
+    goto error;
 
   if (strcmp(share->tgt_wrapper, SPIDER_DB_WRAPPER_MYSQL))
   {
@@ -870,11 +786,160 @@ int spider_parse_connect_info(
   DBUG_RETURN(0);
 
 error:
-error_get_server:
   if (connect_string)
     my_free(connect_string, MYF(0));
 error_alloc_conn_string:
   DBUG_RETURN(error_num);
+}
+
+int spider_set_connect_info_default(
+  SPIDER_SHARE *share,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  partition_element *part_elem,
+  partition_element *sub_elem,
+#endif
+  TABLE *table
+) {
+  int error_num;
+  DBUG_ENTER("spider_set_connect_info_default");
+  if (share->server_name)
+  {
+    if ((error_num = spider_get_server(share)))
+      DBUG_RETURN(error_num);
+  }
+
+  if (!share->tgt_wrapper)
+  {
+    DBUG_PRINT("info",("spider create default tgt_wrapper"));
+    share->tgt_wrapper_length = SPIDER_DB_WRAPPER_LEN;
+    if (
+      !(share->tgt_wrapper = spider_create_string(
+        SPIDER_DB_WRAPPER_STR,
+        share->tgt_wrapper_length))
+    ) {
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+  }
+
+  if (!share->tgt_host)
+  {
+    DBUG_PRINT("info",("spider create default tgt_host"));
+    share->tgt_host_length = strlen(my_localhost);
+    if (
+      !(share->tgt_host = spider_create_string(
+        my_localhost,
+        share->tgt_host_length))
+    ) {
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+  }
+
+  if (!share->tgt_db && table)
+  {
+    DBUG_PRINT("info",("spider create default tgt_db"));
+    share->tgt_db_length = table->s->db.length;
+    if (
+      !(share->tgt_db = spider_create_string(
+        table->s->db.str,
+        table->s->db.length))
+    ) {
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+  }
+
+  if (!share->tgt_table_name && table)
+  {
+    DBUG_PRINT("info",("spider create default tgt_table_name"));
+    share->tgt_table_name_length = share->table_name_length;
+    if (
+      !(share->tgt_table_name = spider_create_table_name_string(
+        table->s->table_name.str,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+        (part_elem ? part_elem->partition_name : NULL),
+        (sub_elem ? sub_elem->partition_name : NULL)
+#else
+        NULL,
+        NULL
+#endif
+      ))
+    ) {
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+  }
+
+  if (share->tgt_port == -1)
+  {
+    share->tgt_port = MYSQL_PORT;
+  } else if (share->tgt_port < 0)
+  {
+    share->tgt_port = 0;
+  } else if (share->tgt_port > 65535)
+  {
+    share->tgt_port = 65535;
+  }
+
+  if (
+    !share->tgt_socket &&
+    !strcmp(share->tgt_host, my_localhost)
+  ) {
+    DBUG_PRINT("info",("spider create default tgt_socket"));
+    share->tgt_socket_length = strlen((char *) MYSQL_UNIX_ADDR);
+    if (
+      !(share->tgt_socket = spider_create_string(
+        (char *) MYSQL_UNIX_ADDR,
+        share->tgt_socket_length))
+    ) {
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+    }
+  }
+
+  if (share->sts_interval == -1)
+    share->sts_interval = 10;
+  if (share->sts_mode == -1)
+    share->sts_mode = 1;
+  if (share->crd_interval == -1)
+    share->crd_interval = 51;
+  if (share->crd_mode == -1)
+    share->crd_mode = 1;
+  if (share->crd_type == -1)
+    share->crd_type = 2;
+  if (share->crd_weight == -1)
+    share->crd_weight = 2;
+  if (share->internal_offset == -1)
+    share->internal_offset = 0;
+  if (share->internal_limit == -1)
+    share->internal_limit = 9223372036854775807LL;
+  if (share->split_read == -1)
+    share->split_read = 9223372036854775807LL;
+  if (share->init_sql_alloc_size == -1)
+    share->init_sql_alloc_size = 1024;
+  if (share->reset_sql_alloc == -1)
+    share->reset_sql_alloc = 1;
+  if (share->multi_split_read == -1)
+    share->multi_split_read = 0;
+  if (share->max_order == -1)
+    share->max_order = 32767;
+  if (share->semi_table_lock == -1)
+    share->semi_table_lock = 0;
+  if (share->selupd_lock_mode == -1)
+    share->selupd_lock_mode = 1;
+  if (share->query_cache == -1)
+    share->query_cache = 0;
+  if (share->internal_delayed == -1)
+    share->internal_delayed = 0;
+  if (share->bulk_size == -1)
+    share->bulk_size = 16000;
+  if (share->internal_optimize == -1)
+    share->internal_optimize = 0;
+  if (share->internal_optimize_local == -1)
+    share->internal_optimize_local = 0;
+  if (share->scan_rate == -1)
+    share->scan_rate = 0.0001;
+  if (share->read_rate == -1)
+    share->read_rate = 0.0002;
+  if (share->priority == -1)
+    share->priority = 1000000;
+  DBUG_RETURN(0);
 }
 
 int spider_create_conn_key(
@@ -1146,14 +1211,12 @@ int spider_open_all_tables(
   bool lock
 ) {
   TABLE *table_tables;
-  TABLE *table;
   int error_num;
-  char *db_name;
-  char *table_name;
   char tables_key[MAX_KEY_LENGTH];
-  TABLE_LIST tables;
   SPIDER_SHARE tmp_share;
   SPIDER_CONN *conn;
+  ha_spider *spider;
+  SPIDER_SHARE *share;
   MEM_ROOT mem_root;
   Open_tables_state open_tables_backup;
   DBUG_ENTER("spider_open_all_tables");
@@ -1165,8 +1228,7 @@ int spider_open_all_tables(
   )
     DBUG_RETURN(error_num);
   if (
-    (error_num = spider_get_sys_table_by_idx(table_tables, tables_key, 1,
-      SPIDER_SYS_TABLES_IDX1_COL_CNT))
+    (error_num = spider_sys_index_first(table_tables, 1))
   ) {
     if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
     {
@@ -1180,54 +1242,104 @@ int spider_open_all_tables(
   }
 
   init_alloc_root(&mem_root, 4096, 0);
-  memset(&tables, 0, sizeof(TABLE_LIST));
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
   tmp_share.csname = (char*) system_charset_info->csname;
   tmp_share.csname_length = strlen(tmp_share.csname);
   do {
-    spider_get_sys_tables(table_tables, &db_name, &table_name, &mem_root);
-    tables.db = db_name;
-    tables.alias = tables.table_name = table_name;
-    if (!(table = open_ltable(trx->thd, &tables, TL_READ, 0)))
-    {
-      error_num = my_errno;
-      my_free(db_name, MYF(0));
-      my_free(table_name, MYF(0));
-      free_root(&mem_root, MYF(0));
+    if (
+      (error_num = spider_get_sys_tables_connect_info(
+        table_tables, &tmp_share, &mem_root)) ||
+      (error_num = spider_set_connect_info_default(
+        &tmp_share,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+        NULL,
+        NULL,
+#endif
+        NULL
+      )) ||
+      (error_num = spider_create_conn_key(&tmp_share))
+    ) {
+      spider_sys_index_end(table_tables);
       spider_close_sys_table(trx->thd, &open_tables_backup);
+      spider_free_tmp_share_alloc(&tmp_share);
+      free_root(&mem_root, MYF(0));
       DBUG_RETURN(error_num);
     }
-    my_free(db_name, MYF(0));
-    my_free(table_name, MYF(0));
+
+    /* create conn */
+    if (
+      !(conn = spider_get_conn(
+        &tmp_share, trx, NULL, FALSE, FALSE, &error_num))
+    ) {
+      spider_sys_index_end(table_tables);
+      spider_close_sys_table(trx->thd, &open_tables_backup);
+      spider_free_tmp_share_alloc(&tmp_share);
+      free_root(&mem_root, MYF(0));
+      DBUG_RETURN(error_num);
+    }
 
     if (lock && THDVAR(trx->thd, use_snapshot_with_flush_tables) == 2)
     {
-      tmp_share.conn_key = ((ha_spider*) table->file)->share->conn_key;
-      tmp_share.conn_key_length = ((ha_spider*) table->file)->share->conn_key_length;
+      if (!(spider = new ha_spider()))
+      {
+        spider_sys_index_end(table_tables);
+        spider_close_sys_table(trx->thd, &open_tables_backup);
+        spider_free_tmp_share_alloc(&tmp_share);
+        free_root(&mem_root, MYF(0));
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      }
+      spider->lock_type = TL_READ_NO_INSERT;
+
+      if (!(share = (SPIDER_SHARE *)
+        my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
+          &share, sizeof(*share),
+          NullS))
+      ) {
+        delete spider;
+        spider_sys_index_end(table_tables);
+        spider_close_sys_table(trx->thd, &open_tables_backup);
+        spider_free_tmp_share_alloc(&tmp_share);
+        free_root(&mem_root, MYF(0));
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+      }
+      memcpy(share, &tmp_share, sizeof(*share));
+      spider->share = share;
+
+      /* create another conn */
       if (
         (!(conn = spider_get_conn(
-        &tmp_share, trx, NULL, TRUE, FALSE, &error_num)))
+        &tmp_share, trx, spider, TRUE, FALSE, &error_num)))
       ) {
-        free_root(&mem_root, MYF(0));
+        my_free(share, MYF(0));
+        delete spider;
+        spider_sys_index_end(table_tables);
         spider_close_sys_table(trx->thd, &open_tables_backup);
+        spider_free_tmp_share_alloc(&tmp_share);
+        free_root(&mem_root, MYF(0));
         DBUG_RETURN(error_num);
       }
 
-      if (lock)
+      if (my_hash_insert(&conn->lock_table_hash, (uchar*) spider))
       {
-        ((ha_spider*) table->file)->lock_type = TL_READ_NO_INSERT;
-        if (my_hash_insert(&conn->lock_table_hash, (uchar*) table->file))
-        {
-          free_root(&mem_root, MYF(0));
-          spider_close_sys_table(trx->thd, &open_tables_backup);
-          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-        }
+        hash_delete(&spider->conn->user_ha_hash, (uchar*) spider);
+        if (!spider->conn->user_ha_hash.records && !spider->conn->join_trx)
+          spider_free_conn_from_trx(spider->trx, spider->conn,
+            FALSE, FALSE, NULL);
+        my_free(share, MYF(0));
+        delete spider;
+        spider_sys_index_end(table_tables);
+        spider_close_sys_table(trx->thd, &open_tables_backup);
+        spider_free_tmp_share_alloc(&tmp_share);
+        free_root(&mem_root, MYF(0));
+        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
       }
-    }
+    } else
+      spider_free_tmp_share_alloc(&tmp_share);
     error_num = spider_sys_index_next(table_tables);
   } while (error_num == 0);
   free_root(&mem_root, MYF(0));
 
+  spider_sys_index_end(table_tables);
   spider_close_sys_table(trx->thd, &open_tables_backup);
   DBUG_RETURN(0);
 }
@@ -1245,20 +1357,18 @@ bool spider_flush_logs(
     my_errno = error_num;
     DBUG_RETURN(TRUE);
   }
-  if (THDVAR(trx->thd, use_flash_logs))
-  {
+  if (
+    THDVAR(trx->thd, use_flash_logs) &&
+    (
+      !trx->trx_consistent_snapshot ||
+      !THDVAR(trx->thd, use_all_conns_snapshot) ||
+      !THDVAR(trx->thd, use_snapshot_with_flush_tables)
+    )
+  ) {
     if (
-      !trx->trx_another_conn_hash.records &&
-      THDVAR(trx->thd, use_all_conns_snapshot)
+      (error_num = spider_open_all_tables(trx, FALSE)) ||
+      (error_num = spider_trx_all_flush_logs(trx))
     ) {
-      if ((error_num = spider_open_all_tables(trx, FALSE)))
-      {
-        my_errno = error_num;
-        DBUG_RETURN(TRUE);
-      }
-    }
-    if ((error_num = spider_trx_all_flush_logs(trx)))
-    {
       my_errno = error_num;
       DBUG_RETURN(TRUE);
     }

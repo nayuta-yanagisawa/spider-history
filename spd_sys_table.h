@@ -72,6 +72,11 @@ int spider_sys_index_next_same(
   char *table_key
 );
 
+int spider_sys_index_first(
+  TABLE *table,
+  const int idx
+);
+
 int spider_sys_index_next(
   TABLE *table
 );
@@ -114,6 +119,11 @@ void spider_store_tables_priority(
   longlong priority
 );
 
+void spider_store_tables_connect_info(
+  TABLE *table,
+  SPIDER_ALTER_TABLE *alter_table
+);
+
 int spider_insert_xa(
   TABLE *table,
   XID *xid,
@@ -145,7 +155,7 @@ int spider_update_tables_name(
 
 int spider_update_tables_priority(
   TABLE *table,
-  longlong priority,
+  SPIDER_ALTER_TABLE *alter_table,
   const char *name
 );
 
@@ -189,5 +199,11 @@ int spider_get_sys_tables(
   TABLE *table,
   char **db_name,
   char **table_name,
+  MEM_ROOT *mem_root
+);
+
+int spider_get_sys_tables_connect_info(
+  TABLE *table,
+  SPIDER_SHARE *share,
   MEM_ROOT *mem_root
 );
