@@ -107,6 +107,7 @@ typedef struct st_spider_conn
   volatile bool      bg_caller_wait;
   volatile bool      bg_caller_sync_wait;
   volatile bool      bg_search;
+  volatile bool      bg_direct_sql;
   THD                *bg_thd;
   pthread_t          bg_thread;
   pthread_cond_t     bg_conn_cond;
@@ -167,6 +168,13 @@ typedef struct st_spider_transaction
   ulonglong          spider_thread_id;
   ulonglong          trx_conn_adjustment;
   uint               locked_connections;
+  pthread_mutex_t    direct_sql_mutex;
+  volatile int       direct_sql_bg_count;
+  volatile char      direct_sql_error[MYSQL_ERRMSG_SIZE];
+  query_id_t         udf_query_id;
+  pthread_mutex_t    *udf_table_mutexes;
+  CHARSET_INFO       *udf_access_charset;
+  String             *udf_set_names;
 } SPIDER_TRX;
 
 typedef struct st_spider_share
@@ -330,6 +338,58 @@ typedef struct st_spider_init_error_table
   volatile int       init_error;
   volatile time_t    init_error_time;
 } SPIDER_INIT_ERROR_TABLE;
+
+typedef struct st_spider_direct_sql
+{
+  int                  table_count;
+  char                 **db_names;
+  char                 **table_names;
+  TABLE                **tables;
+
+  char                 *sql;
+  ulong                sql_length;
+
+  SPIDER_TRX           *trx;
+  SPIDER_CONN          *conn;
+
+  int                  table_loop_mode;
+  longlong             priority;
+  int                  net_timeout;
+  longlong             bulk_insert_rows;
+
+  char                 *server_name;
+  char                 *tgt_default_db_name;
+  char                 *tgt_host;
+  char                 *tgt_username;
+  char                 *tgt_password;
+  char                 *tgt_socket;
+  char                 *tgt_wrapper;
+  char                 *conn_key;
+  long                 tgt_port;
+
+  uint                 server_name_length;
+  uint                 tgt_default_db_name_length;
+  uint                 tgt_host_length;
+  uint                 tgt_username_length;
+  uint                 tgt_password_length;
+  uint                 tgt_socket_length;
+  uint                 tgt_wrapper_length;
+  uint                 conn_key_length;
+
+  pthread_mutex_t               *bg_mutex;
+  pthread_cond_t                *bg_cond;
+  volatile st_spider_direct_sql *prev;
+  volatile st_spider_direct_sql *next;
+  void                          *parent;
+} SPIDER_DIRECT_SQL;
+
+typedef struct st_spider_bg_direct_sql
+{
+  longlong                   called_cnt;
+  pthread_mutex_t            bg_mutex;
+  pthread_cond_t             bg_cond;
+  volatile SPIDER_DIRECT_SQL *direct_sql;
+} SPIDER_BG_DIRECT_SQL;
 
 char *spider_create_string(
   const char *str,

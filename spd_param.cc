@@ -31,6 +31,7 @@ extern bool throw_bounds_warning(THD *thd, bool fixed, bool unsignd,
 my_bool spider_support_xa;
 uint spider_table_init_error_interval;
 int spider_use_table_charset;
+uint spider_udf_table_lock_mutex_count;
 
 static MYSQL_SYSVAR_BOOL(
   support_xa,
@@ -1014,6 +1015,55 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+/*
+  1-: mutex count
+ */
+static MYSQL_SYSVAR_UINT(
+  udf_table_lock_mutex_count,
+  spider_udf_table_lock_mutex_count,
+  PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+  "Mutex count of table lock for Spider UDFs",
+  NULL,
+  NULL,
+  20,
+  1,
+  4294967295U,
+  0
+);
+
+/*
+  1-:number of rows
+ */
+MYSQL_THDVAR_LONGLONG(
+  udf_ds_bulk_insert_rows, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Number of rows for bulk inserting", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :drop records
+  1 :insert last table
+  2 :insert first table and loop again
+ */
+MYSQL_THDVAR_INT(
+  udf_ds_table_loop_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Table loop mode if the number of tables in table list are less than the number of result sets", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2, /* max */
+  0 /* blk */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -1084,6 +1134,9 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(same_server_link),
   MYSQL_SYSVAR(local_lock_table),
   MYSQL_SYSVAR(use_pushdown_udf),
+  MYSQL_SYSVAR(udf_table_lock_mutex_count),
+  MYSQL_SYSVAR(udf_ds_bulk_insert_rows),
+  MYSQL_SYSVAR(udf_ds_table_loop_mode),
   NULL
 };
 
@@ -1097,7 +1150,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0200,
+  0x0201,
   NULL,
   spider_system_variables,
   NULL

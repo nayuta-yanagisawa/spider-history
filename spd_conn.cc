@@ -23,6 +23,7 @@
 #include "spd_db_conn.h"
 #include "spd_conn.h"
 #include "spd_table.h"
+#include "spd_direct_sql.h"
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 extern pthread_attr_t spider_pt_attr;
@@ -796,6 +797,27 @@ void *spider_bg_conn_action(
       result_list->bgs_working = FALSE;
       if (conn->bg_caller_wait)
         pthread_cond_signal(&conn->bg_conn_cond);
+      continue;
+    }
+    if (conn->bg_direct_sql)
+    {
+      DBUG_PRINT("info",("spider bg direct sql start"));
+      SPIDER_DIRECT_SQL *direct_sql = (SPIDER_DIRECT_SQL *) conn->bg_target;
+      SPIDER_TRX *trx = direct_sql->trx;
+      if (
+        spider_db_udf_direct_sql(direct_sql)
+      ) {
+        pthread_mutex_lock(&trx->direct_sql_mutex);
+        if (thd->main_da.is_error())
+        {
+          strmov((char *) trx->direct_sql_error,
+            thd->main_da.message());
+          thd->clear_error();
+        }
+        pthread_mutex_unlock(&trx->direct_sql_mutex);
+      }
+      spider_udf_free_direct_sql_alloc(direct_sql, TRUE);
+      conn->bg_direct_sql = FALSE;
       continue;
     }
     if (conn->bg_break)

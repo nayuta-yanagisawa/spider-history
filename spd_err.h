@@ -17,6 +17,8 @@
 #define ER_SPIDER_INVALID_CONNECT_INFO_STR "The connect info '%-.64s' is invalid"
 #define ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM 12502
 #define ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR "The connect info '%-.64s' for %s is too long"
+#define ER_SPIDER_INVALID_UDF_PARAM_NUM 12503
+#define ER_SPIDER_INVALID_UDF_PARAM_STR "The UDF parameter '%-.64s' is invalid"
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_NUM 12601
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_STR "Can't use both spider_use_consistent_snapshot = 1 and spider_internal_xa = 1"
 #define ER_SPIDER_XA_LOCKED_NUM 12602
@@ -44,7 +46,10 @@
 #define ER_SPIDER_REMOTE_SERVER_GONE_AWAY_LEN (sizeof(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR) - 1)
 #define ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM 12702
 #define ER_SPIDER_REMOTE_TABLE_NOT_FOUND_STR "Remote table '%s.%s' is not found"
+#define ER_SPIDER_UDF_TMP_TABLE_NOT_FOUND_NUM 12703
+#define ER_SPIDER_UDF_TMP_TABLE_NOT_FOUND_STR "Temporary table '%s.%s' is not found"
 #define ER_SPIDER_COND_SKIP_NUM 12801
 
+#define ER_SPIDER_UNKNOWN_NUM 12500
 #define ER_SPIDER_UNKNOWN_STR "unknown"
 #define ER_SPIDER_UNKNOWN_LEN (sizeof(ER_SPIDER_UNKNOWN_STR) - 1)

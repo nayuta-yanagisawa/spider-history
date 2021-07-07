@@ -71,6 +71,13 @@ int spider_db_set_names(
   SPIDER_CONN *conn
 );
 
+size_t spider_db_real_escape_string(
+  SPIDER_CONN *conn,
+  char *to,
+  const char *from,
+  size_t from_length
+);
+
 int spider_db_consistent_snapshot(
   SPIDER_CONN *conn
 );
@@ -372,6 +379,10 @@ int spider_db_store_result(
   TABLE *table
 );
 
+int spider_db_next_result(
+  SPIDER_CONN *conn
+);
+
 int spider_db_fetch(
   uchar *buf,
   ha_spider *spider,
@@ -572,4 +583,55 @@ int spider_db_open_item_row(
 int spider_db_append_condition(
   ha_spider *spider,
   String *str
+);
+
+int spider_db_udf_fetch_row(
+  SPIDER_TRX *trx,
+  Field *field,
+  SPIDER_DB_ROW row,
+  ulong *length
+);
+
+int spider_db_udf_fetch_table(
+  SPIDER_TRX *trx,
+  TABLE *table,
+  SPIDER_DB_RESULT *result,
+  uint set_on,
+  uint set_off
+);
+
+int spider_db_udf_direct_sql_connect(
+  const SPIDER_DIRECT_SQL *direct_sql,
+  SPIDER_CONN *conn
+);
+
+int spider_db_udf_direct_sql_ping(
+  SPIDER_DIRECT_SQL *direct_sql
+);
+
+int spider_db_udf_direct_sql(
+  SPIDER_DIRECT_SQL *direct_sql
+);
+
+int spider_db_udf_direct_sql_select_db(
+  SPIDER_DIRECT_SQL *direct_sql,
+  SPIDER_CONN *conn
+);
+
+int spider_db_udf_direct_sql_set_names(
+  SPIDER_DIRECT_SQL *direct_sql,
+  SPIDER_TRX *trx,
+  SPIDER_CONN *conn
+);
+
+int spider_db_udf_check_and_set_set_names(
+  SPIDER_TRX *trx
+);
+
+int spider_db_udf_append_set_names(
+  SPIDER_TRX *trx
+);
+
+void spider_db_udf_free_set_names(
+  SPIDER_TRX *trx
 );

@@ -5,12 +5,13 @@ INCLUDES       = -I$(MYSQL_INC)$(top_srcdir)/include \
 
 noinst_HEADERS = ha_spider.h spd_conn.h spd_db_conn.h \
                  spd_db_include.h spd_err.h spd_sys_table.h \
-                 spd_table.h spd_trx.h spd_include.h spd_param.h
+                 spd_table.h spd_trx.h spd_include.h spd_param.h \
+                 spd_direct_sql.h spd_udf.h
 
 lib_LTLIBRARIES       = $(PLUGIN_SPIDER_LTLIBRARIES_TARGET)
 EXTRA_LTLIBRARIES     = ha_spider.la
 pkgplugin_LTLIBRARIES = @plugin_spider_shared_target@
-ha_spider_la_LDFLAGS  = -module -rpath $(pkgplugindir)
+ha_spider_la_LDFLAGS  = -shared -module -rpath $(pkgplugindir)
 ha_spider_la_CXXFLAGS = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_spider_la_CFLAGS   = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
 ha_spider_la_SOURCES  = \
@@ -20,6 +21,8 @@ ha_spider_la_SOURCES  = \
                    spd_db_conn.cc \
                    spd_conn.cc \
                    spd_table.cc \
+                   spd_direct_sql.cc \
+                   spd_udf.cc \
                    ha_spider.cc
 
 lib_LIBRARIES        = $(PLUGIN_SPIDER_LIBRARIES_TARGET)
@@ -34,6 +37,8 @@ libspider_a_SOURCES  = \
                    spd_db_conn.cc \
                    spd_conn.cc \
                    spd_table.cc \
+                   spd_direct_sql.cc \
+                   spd_udf.cc \
                    ha_spider.cc
 
 EXTRA_DIST = plug.in

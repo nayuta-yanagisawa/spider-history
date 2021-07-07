@@ -25,6 +25,7 @@
 #include "ha_spider.h"
 #include "spd_db_conn.h"
 #include "spd_conn.h"
+#include "spd_direct_sql.h"
 
 #define SPIDER_SQL_NAME_QUOTE_STR "`"
 #define SPIDER_SQL_NAME_QUOTE_LEN (sizeof(SPIDER_SQL_NAME_QUOTE_STR) - 1)
@@ -253,7 +254,7 @@ int spider_db_connect(
 ) {
   uint net_timeout;
   THD* thd = current_thd;
-  DBUG_ENTER("spider_mysql_real_connect");
+  DBUG_ENTER("spider_db_connect");
 
   if (thd)
     net_timeout = THDVAR(thd, net_timeout) == -1 ?
@@ -279,7 +280,7 @@ int spider_db_connect(
                           NULL,
                           share->tgt_port,
                           share->tgt_socket,
-                          0)
+                          CLIENT_MULTI_STATEMENTS)
   ) {
     spider_db_disconnect(conn);
     my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0), share->server_name);
@@ -528,15 +529,29 @@ int spider_db_set_names(
     !conn->access_charset ||
     share->access_charset->cset != conn->access_charset->cset
   ) {
-    if (spider_db_query(
-      conn,
-      share->set_names->ptr(),
-      share->set_names->length())
+    if (mysql_set_character_set(
+      conn->db_conn,
+      share->access_charset->csname)
     )
       DBUG_RETURN(spider_db_errorno(conn));
     conn->access_charset = share->access_charset;
   }
   DBUG_RETURN(0);
+}
+
+size_t spider_db_real_escape_string(
+  SPIDER_CONN *conn,
+  char *to,
+  const char *from,
+  size_t from_length
+) {
+  SPIDER_DB_CONN *db_conn = conn->db_conn;
+  DBUG_ENTER("spider_db_real_escape_string");
+  if (db_conn->server_status & SERVER_STATUS_NO_BACKSLASH_ESCAPES)
+    DBUG_RETURN(escape_quotes_for_mysql(db_conn->charset, to, 0,
+      from, from_length));
+  DBUG_RETURN(escape_string_for_mysql(db_conn->charset, to, 0,
+    from, from_length));
 }
 
 int spider_db_consistent_snapshot(
@@ -2223,41 +2238,14 @@ void spider_db_free_show_index(
 int spider_db_append_set_names(
   SPIDER_SHARE *share
 ) {
-  String *str;
-  char *csname = (char *) share->access_charset->csname;
-  int csname_length = strlen(csname);
   DBUG_ENTER("spider_db_append_set_names");
-  if (
-    !(share->set_names = new String[1]) ||
-    share->set_names->reserve(
-      SPIDER_SQL_SET_NAMES_LEN +
-      csname_length)
-  )
-    goto error;
-  str = share->set_names;
-  str->q_append(
-    SPIDER_SQL_SET_NAMES_STR, SPIDER_SQL_SET_NAMES_LEN);
-  str->q_append(csname, csname_length);
   DBUG_RETURN(0);
-
-error:
-  if (share->set_names)
-  {
-    delete [] share->set_names;
-    share->set_names = NULL;
-  }
-  DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 }
 
 void spider_db_free_set_names(
   SPIDER_SHARE *share
 ) {
   DBUG_ENTER("spider_db_free_set_names");
-  if (share->set_names)
-  {
-    delete [] share->set_names;
-    share->set_names = NULL;
-  }
   DBUG_VOID_RETURN;
 }
 
@@ -3094,6 +3082,29 @@ int spider_db_store_result(
     }
   }
   DBUG_RETURN(0);
+}
+
+int spider_db_next_result(
+  SPIDER_CONN *conn
+) {
+  SPIDER_DB_CONN *db_conn = conn->db_conn;
+  DBUG_ENTER("spider_db_next_result");
+
+  if (db_conn->status != MYSQL_STATUS_READY)
+  {
+    my_message(ER_SPIDER_UNKNOWN_NUM, ER_SPIDER_UNKNOWN_STR, MYF(0));
+    DBUG_RETURN(ER_SPIDER_UNKNOWN_NUM);
+  }
+
+  db_conn->net.last_errno = 0;
+  db_conn->net.last_error[0] = '\0';
+  strmov(db_conn->net.sqlstate, "00000");
+  db_conn->affected_rows = ~(my_ulonglong) 0;
+
+  if (db_conn->last_used_con->server_status & SERVER_MORE_RESULTS_EXISTS)
+    DBUG_RETURN(db_conn->methods->read_query_result(db_conn));
+
+  DBUG_RETURN(-1);
 }
 
 int spider_db_fetch(
@@ -5030,4 +5041,400 @@ int spider_db_append_condition(
     tmp_cond = tmp_cond->next;
   }
   DBUG_RETURN(0);
+}
+
+int spider_db_udf_fetch_row(
+  SPIDER_TRX *trx,
+  Field *field,
+  SPIDER_DB_ROW row,
+  ulong *length
+) {
+  DBUG_ENTER("spider_db_udf_fetch_row");
+  if (!*row)
+  {
+    field->set_null();
+    field->reset();
+  } else {
+    field->set_notnull();
+    field->store(*row, *length, trx->udf_access_charset);
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_db_udf_fetch_table(
+  SPIDER_TRX *trx,
+  TABLE *table,
+  SPIDER_DB_RESULT *result,
+  uint set_on,
+  uint set_off
+) {
+  int error_num;
+  SPIDER_DB_ROW row;
+  ulong *lengths;
+  Field **field;
+  uint roop_count;
+  DBUG_ENTER("spider_db_udf_fetch_table");
+  if (!(row = mysql_fetch_row(result)))
+    DBUG_RETURN(HA_ERR_END_OF_FILE);
+  lengths = mysql_fetch_lengths(result);
+
+#ifndef DBUG_OFF
+  my_bitmap_map *tmp_map =
+    dbug_tmp_use_all_columns(table, table->write_set);
+#endif
+  for (
+    roop_count = 0,
+    field = table->field;
+    roop_count < set_on;
+    roop_count++,
+    field++,
+    lengths++
+  ) {
+    if ((error_num =
+      spider_db_udf_fetch_row(trx, *field, row, lengths)))
+    {
+#ifndef DBUG_OFF
+      dbug_tmp_restore_column_map(table->write_set, tmp_map);
+#endif
+      DBUG_RETURN(error_num);
+    }
+    row++;
+  }
+  for (; roop_count < set_off; roop_count++, field++)
+    (*field)->set_default();
+#ifndef DBUG_OFF
+  dbug_tmp_restore_column_map(table->write_set, tmp_map);
+#endif
+  table->status = 0;
+  DBUG_RETURN(0);
+}
+
+int spider_db_udf_direct_sql_connect(
+  const SPIDER_DIRECT_SQL *direct_sql,
+  SPIDER_CONN *conn
+) {
+  uint net_timeout;
+  THD* thd = current_thd;
+  DBUG_ENTER("spider_db_udf_direct_sql_connect");
+
+  if (thd)
+    net_timeout = THDVAR(thd, net_timeout) == -1 ?
+      direct_sql->net_timeout : THDVAR(thd, net_timeout);
+  else
+    net_timeout = direct_sql->net_timeout;
+  DBUG_PRINT("info",("spider net_timeout=%u", net_timeout));
+
+  if (!(conn->db_conn = mysql_init(NULL)))
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+
+  mysql_options(conn->db_conn, MYSQL_OPT_READ_TIMEOUT,
+    &net_timeout);
+  mysql_options(conn->db_conn, MYSQL_OPT_CONNECT_TIMEOUT,
+    &net_timeout);
+
+  if (!mysql_real_connect(conn->db_conn,
+                          direct_sql->tgt_host,
+                          direct_sql->tgt_username,
+                          direct_sql->tgt_password,
+                          NULL,
+                          direct_sql->tgt_port,
+                          direct_sql->tgt_socket,
+                          CLIENT_MULTI_STATEMENTS)
+  ) {
+    spider_db_disconnect(conn);
+    my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0),
+      direct_sql->server_name);
+    DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_db_udf_direct_sql_ping(
+  SPIDER_DIRECT_SQL *direct_sql
+) {
+  int error_num;
+  SPIDER_CONN *conn = direct_sql->conn;
+  DBUG_ENTER("spider_db_udf_direct_sql_ping");
+  if (conn->server_lost)
+  {
+    conn->trx_isolation = -1;
+    conn->autocommit = -1;
+    conn->sql_log_off = -1;
+    conn->access_charset = NULL;
+    if ((error_num = spider_db_udf_direct_sql_connect(direct_sql, conn)))
+      DBUG_RETURN(error_num);
+    conn->server_lost = FALSE;
+  }
+  if ((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
+  {
+    conn->trx_isolation = -1;
+    conn->autocommit = -1;
+    conn->sql_log_off = -1;
+    conn->access_charset = NULL;
+    spider_db_disconnect(conn);
+    if ((error_num = spider_db_udf_direct_sql_connect(direct_sql, conn)))
+    {
+      conn->server_lost = TRUE;
+      DBUG_RETURN(error_num);
+    }
+    if((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
+    {
+      spider_db_disconnect(conn);
+      conn->server_lost = TRUE;
+      DBUG_RETURN(error_num);
+    }
+  }
+  conn->ping_time = (time_t) time((time_t*) 0);
+  DBUG_RETURN(0);
+}
+
+int spider_db_udf_direct_sql(
+  SPIDER_DIRECT_SQL *direct_sql
+) {
+  int error_num = 0, status, roop_count = 0;
+  uint udf_table_mutex_index, field_num, set_on, set_off;
+  long long roop_count2;
+  bool end_of_file;
+  SPIDER_TRX *trx = direct_sql->trx;
+  THD *thd = trx->thd;
+  SPIDER_CONN *conn = direct_sql->conn;
+  SPIDER_DB_RESULT *result;
+  TABLE *table;
+  int bulk_insert_rows = THDVAR(thd, udf_ds_bulk_insert_rows) <= 0 ?
+    direct_sql->bulk_insert_rows : THDVAR(thd, udf_ds_bulk_insert_rows);
+  int table_loop_mode = THDVAR(thd, udf_ds_table_loop_mode) == -1 ?
+    direct_sql->table_loop_mode : THDVAR(thd, udf_ds_table_loop_mode);
+  double ping_interval_at_trx_start =
+    THDVAR(thd, ping_interval_at_trx_start);
+  time_t tmp_time = (time_t) time((time_t*) 0);
+  DBUG_ENTER("spider_db_udf_direct_sql");
+
+  if (!conn->disable_reconnect)
+  {
+    if (
+      (
+        conn->server_lost ||
+        difftime(tmp_time, conn->ping_time) >= ping_interval_at_trx_start
+      ) &&
+      (error_num = spider_db_udf_direct_sql_ping(direct_sql))
+    )
+      DBUG_RETURN(error_num);
+  } else if (conn->server_lost)
+  {
+    my_message(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM,
+      ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR, MYF(0));
+    DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
+  }
+
+  if (
+    !(error_num = spider_db_udf_direct_sql_set_names(direct_sql, trx, conn)) &&
+    !(error_num = spider_db_udf_direct_sql_select_db(direct_sql, conn))
+  ) {
+    if (spider_db_query(
+      conn,
+      direct_sql->sql,
+      direct_sql->sql_length)
+    ) {
+      error_num = spider_db_errorno(conn);
+      if (error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM)
+        my_message(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM,
+          ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR, MYF(0));
+    } else {
+      if (!direct_sql->table_count)
+        roop_count = -1;
+      do {
+        if (roop_count == direct_sql->table_count)
+        {
+          if (table_loop_mode == 1)
+            roop_count--;
+          else if (table_loop_mode == 2)
+            roop_count = 0;
+          else
+            roop_count = -1;
+        }
+        if ((result = conn->db_conn->methods->use_result(conn->db_conn)))
+        {
+          end_of_file = FALSE;
+          if (roop_count >= 0)
+          {
+            while (!error_num && !end_of_file)
+            {
+              udf_table_mutex_index = spider_udf_calc_hash(
+                direct_sql->db_names[roop_count],
+                spider_udf_table_lock_mutex_count);
+              udf_table_mutex_index += spider_udf_calc_hash(
+                direct_sql->table_names[roop_count],
+                spider_udf_table_lock_mutex_count);
+              udf_table_mutex_index %= spider_udf_table_lock_mutex_count;
+              pthread_mutex_lock(
+                &trx->udf_table_mutexes[udf_table_mutex_index]);
+              table = direct_sql->tables[roop_count];
+              table->in_use = current_thd;
+              if (table->field[0]->null_ptr)
+                *table->field[0]->null_ptr |= (uchar) 128;
+
+              field_num = mysql_num_fields(result);
+              if (field_num > table->s->fields)
+              {
+                set_on = table->s->fields;
+                set_off = table->s->fields;
+              } else {
+                set_on = field_num;
+                set_off = table->s->fields;
+              }
+              for (roop_count2 = 0; roop_count2 < set_on; roop_count2++)
+                bitmap_set_bit(table->write_set, roop_count2);
+              for (; roop_count2 < set_off; roop_count2++)
+                bitmap_clear_bit(table->write_set, roop_count2);
+
+              table->file->ha_start_bulk_insert(
+                (ha_rows) bulk_insert_rows);
+
+              for (roop_count2 = 0;
+                roop_count2 < bulk_insert_rows;
+                roop_count2++)
+              {
+                if ((error_num = spider_db_udf_fetch_table(
+                  trx, table, result, set_on, set_off)))
+                {
+                  if (error_num == HA_ERR_END_OF_FILE)
+                  {
+                    end_of_file = TRUE;
+                    error_num = 0;
+                  }
+                  break;
+                }
+                /* insert */
+                if ((error_num =
+                  table->file->ha_write_row(table->record[0])))
+                {
+                  table->file->print_error(error_num, MYF(0));
+                  break;
+                }
+              }
+
+              if (error_num)
+                VOID(table->file->ha_end_bulk_insert());
+              else
+                error_num = table->file->ha_end_bulk_insert();
+              table->file->ha_reset();
+              table->in_use = thd;
+              pthread_mutex_unlock(
+                &trx->udf_table_mutexes[udf_table_mutex_index]);
+            }
+            if (error_num)
+              roop_count = -1;
+          }
+          mysql_free_result(result);
+        } else {
+          if ((error_num = spider_db_errorno(conn)))
+          {
+            if (error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM)
+              my_message(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM,
+                ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR, MYF(0));
+            break;
+          }
+        }
+        if ((status = spider_db_next_result(conn)) > 0)
+        {
+          error_num = status;
+          break;
+        }
+        if (roop_count >= 0)
+          roop_count++;
+      } while (status == 0);
+    }
+  }
+  DBUG_RETURN(error_num);
+}
+
+int spider_db_udf_direct_sql_select_db(
+  SPIDER_DIRECT_SQL *direct_sql,
+  SPIDER_CONN *conn
+) {
+  int error_num;
+  SPIDER_DB_CONN *db_conn = conn->db_conn;
+  DBUG_ENTER("spider_db_udf_direct_sql_select_db");
+  if (
+   !db_conn->db ||
+   strcmp(direct_sql->tgt_default_db_name, db_conn->db)
+  ) {
+    if (
+      mysql_select_db(
+        db_conn,
+        direct_sql->tgt_default_db_name) &&
+      (error_num = spider_db_errorno(conn))
+    ) {
+      if (
+        error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+        !conn->disable_reconnect
+      )
+        my_message(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM,
+          ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR, MYF(0));
+      DBUG_RETURN(error_num);
+    }
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_db_udf_direct_sql_set_names(
+  SPIDER_DIRECT_SQL *direct_sql,
+  SPIDER_TRX *trx,
+  SPIDER_CONN *conn
+) {
+  int error_num;
+  DBUG_ENTER("spider_db_udf_direct_sql_set_names");
+  if (
+    !conn->access_charset ||
+    trx->udf_access_charset->cset != conn->access_charset->cset
+  ) {
+    if (
+      mysql_set_character_set(
+        conn->db_conn,
+        trx->udf_access_charset->csname) &&
+      (error_num = spider_db_errorno(conn))
+    ) {
+      if (
+        error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+        !conn->disable_reconnect
+      ) {
+        my_message(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM,
+          ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR, MYF(0));
+      }
+      DBUG_RETURN(error_num);
+    }
+    conn->access_charset = trx->udf_access_charset;
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_db_udf_check_and_set_set_names(
+  SPIDER_TRX *trx
+) {
+  int error_num;
+  DBUG_ENTER("spider_db_udf_check_and_set_set_names");
+  if (
+    !trx->udf_access_charset ||
+    trx->udf_access_charset->cset !=
+      trx->thd->variables.character_set_client->cset)
+  {
+    trx->udf_access_charset = trx->thd->variables.character_set_client;
+    if ((error_num = spider_db_udf_append_set_names(trx)))
+      DBUG_RETURN(error_num);
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_db_udf_append_set_names(
+  SPIDER_TRX *trx
+) {
+  DBUG_ENTER("spider_db_udf_append_set_names");
+  DBUG_RETURN(0);
+}
+
+void spider_db_udf_free_set_names(
+  SPIDER_TRX *trx
+) {
+  DBUG_ENTER("spider_db_udf_free_set_names");
+  DBUG_VOID_RETURN;
 }

@@ -460,7 +460,13 @@ bool spider_cmp_trx_alter_table(
 int spider_free_trx_alloc(
   SPIDER_TRX *trx
 ) {
+  int roop_count;
   DBUG_ENTER("spider_free_trx_alloc");
+  spider_db_udf_free_set_names(trx);
+  for (roop_count = spider_udf_table_lock_mutex_count - 1; roop_count >= 0;
+    roop_count--)
+    VOID(pthread_mutex_destroy(&trx->udf_table_mutexes[roop_count]));
+  VOID(pthread_mutex_destroy(&trx->direct_sql_mutex));
   spider_free_trx_conn(trx, TRUE);
   spider_free_trx_alter_table(trx);
   hash_free(&trx->trx_conn_hash);
@@ -473,7 +479,9 @@ SPIDER_TRX *spider_get_trx(
   const THD *thd,
   int *error_num
 ) {
+  int roop_count = 0;
   SPIDER_TRX *trx;
+  pthread_mutex_t *udf_table_mutexes;
   DBUG_ENTER("spider_get_trx");
 
   if (
@@ -482,9 +490,25 @@ SPIDER_TRX *spider_get_trx(
   ) {
     DBUG_PRINT("info",("spider create new trx"));
     if (!(trx = (SPIDER_TRX *)
-          my_malloc(sizeof(*trx), MYF(MY_WME | MY_ZEROFILL)))
+      my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
+        &trx, sizeof(*trx),
+        &udf_table_mutexes, sizeof(pthread_mutex_t) *
+          spider_udf_table_lock_mutex_count,
+        NullS))
     )
       goto error_alloc_trx;
+
+    trx->udf_table_mutexes = udf_table_mutexes;
+    if (pthread_mutex_init(&trx->direct_sql_mutex, MY_MUTEX_INIT_FAST))
+      goto error_init_direct_sql_mutex;
+
+    for (roop_count = 0; roop_count < spider_udf_table_lock_mutex_count;
+      roop_count++)
+    {
+      if (pthread_mutex_init(&trx->udf_table_mutexes[roop_count],
+        MY_MUTEX_INIT_FAST))
+        goto error_init_udf_table_mutex;
+    }
 
     if (
       hash_init(&trx->trx_conn_hash, system_charset_info, 32, 0, 0,
@@ -520,8 +544,15 @@ error_init_alter_hash:
 error_init_another_hash:
   hash_free(&trx->trx_conn_hash);
 error_init_hash:
+  if (roop_count > 0)
+  {
+    for (roop_count--; roop_count >= 0; roop_count--)
+      VOID(pthread_mutex_destroy(&trx->udf_table_mutexes[roop_count]));
+  }
+error_init_udf_table_mutex:
+  VOID(pthread_mutex_destroy(&trx->direct_sql_mutex));
+error_init_direct_sql_mutex:
   my_free(trx, MYF(0));
-
 error_alloc_trx:
   *error_num = HA_ERR_OUT_OF_MEM;
   DBUG_RETURN(NULL);
