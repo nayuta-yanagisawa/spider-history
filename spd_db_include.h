@@ -50,6 +50,7 @@ enum spider_bulk_upd_start {
   SPD_BU_START_BY_BULK_INIT
 };
 
+struct st_spider_ft_info;
 typedef struct st_spider_position
 {
   SPIDER_DB_ROW          row;
@@ -57,6 +58,8 @@ typedef struct st_spider_position
   bool                   use_position;
   bool                   mrr_with_cnt;
   uchar                  *position_bitmap;
+  st_spider_ft_info      *ft_first;
+  st_spider_ft_info      *ft_current;
 } SPIDER_POSITION;
 
 typedef struct st_spider_condition
@@ -177,6 +180,8 @@ typedef struct st_spider_result_list
   int                    bulk_update_mode;
   int                    bulk_update_size;
   spider_bulk_upd_start  bulk_update_start;
+  bool                   check_direct_order_limit;
+  bool                   direct_order_limit;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   /* 0:nomal 1:store 2:store end */
   volatile

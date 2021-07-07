@@ -104,21 +104,21 @@ socket_set_options(auto_file& fd, const socket_args& args, String& err_r)
   if (args.timeout != 0 && !args.nonblocking) {
 #if defined(SO_SNDTIMEO) && defined(SO_RCVTIMEO)
 #ifndef __WIN__
-    int tv = args.timeout * 1000;
-#else
     struct timeval tv = { };
     tv.tv_sec = args.timeout;
     tv.tv_usec = 0;
+#else
+    int tv = args.timeout * 1000;
 #endif
     if (setsockopt(fd.get(), SOL_SOCKET, SO_RCVTIMEO,
       IF_WIN((const char *), (const void *)) &tv, sizeof(tv)) != 0) {
       return errno_string("setsockopt SO_RCVTIMEO", errno, err_r);
     }
 #ifndef __WIN__
-    tv = args.timeout * 1000;
-#else
     tv.tv_sec = args.timeout;
     tv.tv_usec = 0;
+#else
+    tv = args.timeout * 1000;
 #endif
     if (setsockopt(fd.get(), SOL_SOCKET, SO_SNDTIMEO,
       IF_WIN((const char *), (const void *)) &tv, sizeof(tv)) != 0) {

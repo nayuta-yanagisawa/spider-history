@@ -35,6 +35,59 @@
 #include "spd_table.h"
 #include "spd_trx.h"
 
+extern volatile ulonglong spider_mon_table_cache_version;
+extern volatile ulonglong spider_mon_table_cache_version_req;
+
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+static int spider_direct_update(THD *thd, SHOW_VAR *var, char *buff)
+{
+  int error_num = 0;
+  SPIDER_TRX *trx;
+  DBUG_ENTER("spider_direct_update");
+  var->type = SHOW_LONGLONG;
+  if ((trx = spider_get_trx(thd, &error_num)))
+    var->value = (char *) &trx->direct_update_count;
+  DBUG_RETURN(error_num);
+}
+
+static int spider_direct_delete(THD *thd, SHOW_VAR *var, char *buff)
+{
+  int error_num = 0;
+  SPIDER_TRX *trx;
+  DBUG_ENTER("spider_direct_delete");
+  var->type = SHOW_LONGLONG;
+  if ((trx = spider_get_trx(thd, &error_num)))
+    var->value = (char *) &trx->direct_delete_count;
+  DBUG_RETURN(error_num);
+}
+#endif
+
+static int spider_direct_order_limit(THD *thd, SHOW_VAR *var, char *buff)
+{
+  int error_num = 0;
+  SPIDER_TRX *trx;
+  DBUG_ENTER("spider_direct_order_limit");
+  var->type = SHOW_LONGLONG;
+  if ((trx = spider_get_trx(thd, &error_num)))
+    var->value = (char *) &trx->direct_order_limit_count;
+  DBUG_RETURN(error_num);
+}
+
+struct st_mysql_show_var spider_status_variables[] =
+{
+  {"Spider_mon_table_cache_version",
+    (char *) &spider_mon_table_cache_version, SHOW_LONGLONG},
+  {"Spider_mon_table_cache_version_req",
+    (char *) &spider_mon_table_cache_version_req, SHOW_LONGLONG},
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  {"Spider_direct_update", (char *) &spider_direct_update, SHOW_FUNC},
+  {"Spider_direct_delete", (char *) &spider_direct_delete, SHOW_FUNC},
+#endif
+  {"Spider_direct_order_limit",
+    (char *) &spider_direct_order_limit, SHOW_FUNC},
+  {NullS, NullS, SHOW_LONG}
+};
+
 typedef DECLARE_MYSQL_THDVAR_SIMPLE(thdvar_int_t, int);
 #if MYSQL_VERSION_ID < 50500
 extern bool throw_bounds_warning(THD *thd, bool fixed, bool unsignd,
@@ -1516,6 +1569,40 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+/*
+ -1 :use table parameter
+  0 :not skip
+  1 :skip
+ */
+MYSQL_THDVAR_INT(
+  skip_default_condition, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Skip generating internal default condition", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :not send directly
+  1-:send directly
+ */
+MYSQL_THDVAR_LONGLONG(
+  direct_order_limit, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Send 'ORDER BY' and 'LIMIT' to remote server directly", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -1615,6 +1702,8 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(use_hs_write),
 #endif
   MYSQL_SYSVAR(use_handler),
+  MYSQL_SYSVAR(skip_default_condition),
+  MYSQL_SYSVAR(direct_order_limit),
   NULL
 };
 
@@ -1628,8 +1717,8 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0218,
-  NULL,
+  0x0219,
+  spider_status_variables,
   spider_system_variables,
   NULL
 }

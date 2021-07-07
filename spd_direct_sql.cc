@@ -384,6 +384,7 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
   conn->semi_trx_isolation = -2;
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
+  conn->conn_kind = SPIDER_CONN_KIND_MYSQL;
 
 #if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&conn->mta_conn_mutex, MY_MUTEX_INIT_FAST))

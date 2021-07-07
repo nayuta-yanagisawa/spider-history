@@ -27,6 +27,7 @@
 #include "sql_class.h"
 #include "sql_base.h"
 #include "sql_partition.h"
+#include "transaction.h"
 #endif
 #include "spd_err.h"
 #include "spd_param.h"
@@ -399,10 +400,10 @@ int spider_udf_get_copy_tgt_tables(
       my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
         &table_conn, sizeof(SPIDER_COPY_TABLE_CONN),
         &tmp_share, sizeof(SPIDER_SHARE),
-        &tmp_connect_info, sizeof(char *) * 15,
-        &tmp_connect_info_length, sizeof(uint) * 15,
-        &tmp_long, sizeof(long) * 5,
-        &tmp_longlong, sizeof(longlong) * 3,
+        &tmp_connect_info, sizeof(char *) * SPIDER_TMP_SHARE_CHAR_PTR_COUNT,
+        &tmp_connect_info_length, sizeof(uint) * SPIDER_TMP_SHARE_UINT_COUNT,
+        &tmp_long, sizeof(long) * SPIDER_TMP_SHARE_LONG_COUNT,
+        &tmp_longlong, sizeof(longlong) * SPIDER_TMP_SHARE_LONGLONG_COUNT,
         NullS))
     ) {
       spider_sys_index_end(table_tables);
@@ -790,7 +791,7 @@ long long spider_copy_tables_body(
   int error_num, roop_count, all_link_cnt, use_table_charset;
   SPIDER_COPY_TABLES *copy_tables = NULL;
   THD *thd = current_thd;
-  TABLE_LIST *table_list;
+  TABLE_LIST *table_list = NULL;
   TABLE *table;
   TABLE_SHARE *table_share;
   KEY *key_info;
@@ -899,6 +900,13 @@ long long spider_copy_tables_body(
 #if MYSQL_VERSION_ID < 50500
   if (open_and_lock_tables(thd, table_list))
 #else
+  table_list->mdl_request.init(
+    MDL_key::TABLE,
+    table_list->db,
+    table_list->table_name,
+    MDL_SHARED_READ,
+    MDL_TRANSACTION
+  );
   if (open_and_lock_tables(thd, table_list, FALSE, 0))
 #endif
   {
@@ -1046,6 +1054,15 @@ long long spider_copy_tables_body(
   for (table_conn = copy_tables->table_conn[1];
     table_conn; table_conn = table_conn->next)
     spider_db_free_set_names(table_conn->share);
+  if (table_list->table)
+  {
+#if MYSQL_VERSION_ID < 50500
+    ha_autocommit_or_rollback(thd, 0);
+#else
+    (thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd));
+#endif
+    close_thread_tables(thd);
+  }
   if (spider)
     my_free(spider, MYF(0));
   spider_udf_free_copy_tables_alloc(copy_tables);
@@ -1053,7 +1070,6 @@ long long spider_copy_tables_body(
   DBUG_RETURN(1);
 
 error_db_udf_copy_tables:
-error_free_set_names:
 error_append_set_names:
   for (table_conn = copy_tables->table_conn[0];
     table_conn; table_conn = table_conn->next)
@@ -1062,6 +1078,15 @@ error_append_set_names:
     table_conn; table_conn = table_conn->next)
     spider_db_free_set_names(table_conn->share);
 error:
+  if (table_list && table_list->table)
+  {
+#if MYSQL_VERSION_ID < 50500
+    ha_autocommit_or_rollback(thd, 0);
+#else
+    (thd->is_error() ? trans_rollback_stmt(thd) : trans_commit_stmt(thd));
+#endif
+    close_thread_tables(thd);
+  }
   if (spider)
   {
     for (roop_count = 0; roop_count < all_link_cnt; roop_count++)

@@ -76,6 +76,11 @@
 #define SPIDER_LINK_MON_DRAW_FEW_MON         1
 #define SPIDER_LINK_MON_DRAW                 2
 
+#define SPIDER_TMP_SHARE_CHAR_PTR_COUNT     17
+#define SPIDER_TMP_SHARE_UINT_COUNT         17
+#define SPIDER_TMP_SHARE_LONG_COUNT         10
+#define SPIDER_TMP_SHARE_LONGLONG_COUNT      3
+
 /* alter table */
 typedef struct st_spider_alter_table
 {
@@ -345,6 +350,11 @@ typedef struct st_spider_transaction
   ulonglong          trx_hs_w_conn_adjustment;
 #endif
   uint               locked_connections;
+
+  ulonglong          direct_update_count;
+  ulonglong          direct_delete_count;
+  ulonglong          direct_order_limit_count;
+
   pthread_mutex_t    *udf_table_mutexes;
   CHARSET_INFO       *udf_access_charset;
   String             *udf_set_names;
@@ -496,7 +506,9 @@ typedef struct st_spider_share
   int                auto_increment_mode;
   int                use_table_charset;
   int                use_pushdown_udf;
+  int                skip_default_condition;
   int                direct_dup_insert;
+  longlong           direct_order_limit;
 
   int                bka_mode;
   char               *bka_engine;
@@ -748,6 +760,7 @@ typedef struct st_spider_table_mon_list
 
   uint                       use_count;
   uint                       mutex_hash;
+  ulonglong                  mon_table_cache_version;
 
   char                       *table_name;
   int                        link_id;
@@ -815,6 +828,12 @@ typedef struct st_spider_copy_tables
 
   int                        database_length;
 } SPIDER_COPY_TABLES;
+
+class SPIDER_SORT
+{
+public:
+  ulong sort;
+};
 
 char *spider_create_string(
   const char *str,

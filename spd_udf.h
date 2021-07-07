@@ -59,6 +59,8 @@ void spider_ping_table_deinit_body(
   UDF_INIT *initid
 );
 
+long long spider_flush_table_mon_cache_body();
+
 long long spider_copy_tables_body(
   UDF_INIT *initid,
   UDF_ARGS *args,

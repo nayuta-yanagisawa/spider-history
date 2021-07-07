@@ -29,8 +29,23 @@
     roop_count = spider_conn_link_idx_next(link_statuses, \
       roop_count, link_count, link_status) \
   ) { \
-    conns[roop_count]->param_name = param_val; \
+    if (conns[roop_count]) \
+      conns[roop_count]->param_name = param_val; \
   }
+
+class ha_spider;
+struct st_spider_ft_info
+{
+  struct _ft_vft *please;
+  st_spider_ft_info *next;
+  ha_spider *file;
+  uint target;
+  bool used_in_where;
+  float score;
+  uint flags;
+  uint inx;
+  String *key;
+};
 
 class ha_spider: public handler
 {
@@ -114,6 +129,8 @@ public:
   bool               pk_update;
   bool               force_auto_increment;
   int                bka_mode;
+  bool               cond_check;
+  int                cond_check_error;
 
   uchar              *m_handler_opened;
   uint               *m_handler_id;
@@ -142,9 +159,12 @@ public:
 #endif
 
   /* for fulltext search */
-  uint               ft_init_flags;
-  String             *ft_init_key;
   bool               ft_init_and_first;
+  uint               ft_init_idx;
+  uint               ft_count;
+  bool               ft_init_without_index_init;
+  st_spider_ft_info  *ft_first;
+  st_spider_ft_info  *ft_current;
 
   ha_spider();
   ha_spider(
@@ -445,12 +465,10 @@ public:
     const COND* cond
   );
   void cond_pop();
-#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
   int info_push(
     uint info_type,
     void *info
   );
-#endif
   TABLE *get_table();
   void set_searched_bitmap();
   void set_clone_searched_bitmap();
@@ -465,6 +483,7 @@ public:
     spider_bulk_upd_start bulk_upd_start
   );
   uint check_partitioned();
+  void check_direct_order_limit();
   int drop_tmp_tables();
   bool handler_opened(
     int link_idx,

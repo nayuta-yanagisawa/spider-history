@@ -28,6 +28,11 @@ void spider_free_ping_table_mon_list(
   SPIDER_TABLE_MON_LIST *table_mon_list
 );
 
+void spider_release_ping_table_mon_list_loop(
+  uint mutex_hash,
+  SPIDER_TABLE_MON_LIST *table_mon_list
+);
+
 void spider_release_ping_table_mon_list(
   const char *conv_name,
   uint conv_name_length,
@@ -60,6 +65,17 @@ SPIDER_CONN *spider_get_ping_table_tgt_conn(
   SPIDER_TRX *trx,
   SPIDER_SHARE *share,
   int *error_num
+);
+
+int spider_init_ping_table_mon_cache(
+  THD *thd,
+  MEM_ROOT *mem_root,
+  bool need_lock
+);
+
+int spider_ping_table_cache_compare(
+  TABLE *table,
+  MEM_ROOT *mem_root
 );
 
 void spider_ping_table_free_mon_list(

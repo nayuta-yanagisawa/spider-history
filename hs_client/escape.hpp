@@ -23,6 +23,7 @@ bool unescape_string(string_buffer& ar, const char *start, const char *finish);
 
 uint32 read_ui32(char *& start, char *finish);
 void write_ui32(string_buffer& buf, uint32 v);
+void write_ui64(string_buffer& buf, uint64 v);
 
 inline bool
 is_null_expression(const char *start, const char *finish)

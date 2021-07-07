@@ -109,3 +109,5 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(use_hs_read, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(use_hs_write, int);
 #endif
 extern DECLARE_MYSQL_THDVAR_SIMPLE(use_handler, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(skip_default_condition, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(direct_order_limit, long long);

@@ -86,7 +86,7 @@ struct string_buffer : private noncopyable {
   }
   void space_wrote(size_t len) {
     len = len < alloc_size - end_offset ? len : alloc_size - end_offset;
-    end_offset = end_offset + len < alloc_size ? end_offset + len : alloc_size;
+    end_offset += len;
   }
   template <size_t N>
   void append_literal(const char (& str)[N]) {

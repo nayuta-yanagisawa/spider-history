@@ -107,6 +107,28 @@ void spider_ping_table_deinit(
   spider_ping_table_deinit_body(initid);
 }
 
+long long spider_flush_table_mon_cache(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *is_null,
+  char *error
+) {
+  return spider_flush_table_mon_cache_body();
+}
+
+my_bool spider_flush_table_mon_cache_init(
+  UDF_INIT *initid,
+  UDF_ARGS *args,
+  char *message
+) {
+  return FALSE;
+}
+
+void spider_flush_table_mon_cache_deinit(
+  UDF_INIT *initid
+) {
+}
+
 long long spider_copy_tables(
   UDF_INIT *initid,
   UDF_ARGS *args,

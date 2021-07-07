@@ -242,6 +242,21 @@ int spider_sys_index_end(
   DBUG_RETURN(table->file->ha_index_end());
 }
 
+int spider_sys_rnd_init(
+  TABLE *table,
+  bool scan
+) {
+  DBUG_ENTER("spider_sys_rnd_init");
+  DBUG_RETURN(table->file->ha_rnd_init(scan));
+}
+
+int spider_sys_rnd_end(
+  TABLE *table
+) {
+  DBUG_ENTER("spider_sys_rnd_end");
+  DBUG_RETURN(table->file->ha_rnd_end());
+}
+
 int spider_check_sys_table(
   TABLE *table,
   char *table_key
@@ -612,6 +627,21 @@ void spider_store_tables_link_idx(
   DBUG_ENTER("spider_store_tables_link_idx");
   table->field[2]->set_notnull();
   table->field[2]->store(link_idx);
+  DBUG_VOID_RETURN;
+}
+
+void spider_store_tables_link_idx_str(
+  TABLE *table,
+  const char *link_idx,
+  const uint link_idx_length
+) {
+  DBUG_ENTER("spider_store_tables_link_idx_str");
+  table->field[2]->store(
+    link_idx,
+    link_idx_length,
+    system_charset_info);
+  DBUG_PRINT("info",("spider field[2]->null_bit = %d",
+    table->field[2]->null_bit));
   DBUG_VOID_RETURN;
 }
 
@@ -1727,7 +1757,7 @@ int spider_sys_update_tables_link_status(
 #else
   Open_tables_backup open_tables_backup;
 #endif
-  DBUG_ENTER("spider_get_ping_table_tgt");
+  DBUG_ENTER("spider_sys_update_tables_link_status");
   if (
     !(table_tables = spider_open_sys_table(
       thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
@@ -1750,6 +1780,71 @@ error:
     spider_close_sys_table(thd, table_tables,
       &open_tables_backup, need_lock);
   DBUG_RETURN(error_num);
+}
+
+int spider_get_sys_link_mon_key(
+  TABLE *table,
+  SPIDER_MON_KEY *mon_key,
+  MEM_ROOT *mem_root,
+  int *same
+) {
+  char *db_name, *table_name, *link_id;
+  uint db_name_length, table_name_length, link_id_length;
+  DBUG_ENTER("spider_get_sys_link_mon_key");
+  if (
+    table->field[0]->is_null() ||
+    table->field[1]->is_null() ||
+    table->field[2]->is_null()
+  ) {
+    my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
+      ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
+      SPIDER_SYS_LINK_MON_TABLE_NAME_STR);
+    DBUG_RETURN(ER_SPIDER_SYS_TABLE_VERSION_NUM);
+  }
+
+  if (
+    !(db_name = get_field(mem_root, table->field[0])) ||
+    !(table_name = get_field(mem_root, table->field[1])) ||
+    !(link_id = get_field(mem_root, table->field[2]))
+  )
+    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+
+  db_name_length = strlen(db_name);
+  table_name_length = strlen(table_name);
+  link_id_length = strlen(link_id);
+
+  if (
+    db_name_length > SPIDER_SYS_LINK_MON_TABLE_DB_NAME_SIZE ||
+    table_name_length > SPIDER_SYS_LINK_MON_TABLE_TABLE_NAME_SIZE ||
+    link_id_length > SPIDER_SYS_LINK_MON_TABLE_LINK_ID_SIZE
+  ) {
+    my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
+      ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
+      SPIDER_SYS_LINK_MON_TABLE_NAME_STR);
+    DBUG_RETURN(ER_SPIDER_SYS_TABLE_VERSION_NUM);
+  }
+
+  if (
+    db_name_length == mon_key->db_name_length &&
+    table_name_length == mon_key->table_name_length &&
+    link_id_length == mon_key->link_id_length &&
+    !memcmp(db_name, mon_key->db_name, db_name_length) &&
+    !memcmp(table_name, mon_key->table_name, table_name_length) &&
+    !memcmp(link_id, mon_key->link_id, link_id_length)
+  ) {
+    /* same key */
+    *same = 1;
+    DBUG_RETURN(0);
+  }
+
+  *same = 0;
+  mon_key->db_name_length = db_name_length;
+  memcpy(mon_key->db_name, db_name, db_name_length + 1);
+  mon_key->table_name_length = table_name_length;
+  memcpy(mon_key->table_name, table_name, table_name_length + 1);
+  mon_key->link_id_length = link_id_length;
+  memcpy(mon_key->link_id, link_id, link_id_length + 1);
+  DBUG_RETURN(0);
 }
 
 int spider_get_sys_link_mon_server_id(

@@ -487,6 +487,29 @@ int spider_db_append_key_where(
   ha_spider *spider
 );
 
+int spider_db_append_match_against(
+  String *str,
+  ha_spider *spider,
+  st_spider_ft_info  *ft_info,
+  const char *alias,
+  uint alias_length
+);
+
+int spider_db_append_match_select(
+  String *str,
+  ha_spider *spider,
+  const char *alias,
+  uint alias_length
+);
+
+int spider_db_append_match_fetch(
+  ha_spider *spider,
+  st_spider_ft_info *ft_first,
+  st_spider_ft_info *ft_current,
+  SPIDER_DB_ROW *row,
+  ulong **lengths
+);
+
 int spider_db_append_match_where(
   ha_spider *spider
 );
@@ -973,6 +996,14 @@ int spider_db_open_item_string(
 
 int spider_db_open_item_int(
   Item *item,
+  ha_spider *spider,
+  String *str,
+  char *alias,
+  uint alias_length
+);
+
+int spider_db_open_item_cache(
+  Item_cache *item_cache,
   ha_spider *spider,
   String *str,
   char *alias,

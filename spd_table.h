@@ -317,3 +317,17 @@ void spider_get_select_limit(
 longlong spider_split_read_param(
   ha_spider *spider
 );
+
+bool spider_check_direct_order_limit(
+  ha_spider *spider
+);
+
+int spider_compare_for_sort(
+  SPIDER_SORT *a,
+  SPIDER_SORT *b
+);
+
+ulong spider_calc_for_sort(
+  uint count,
+  ...
+);

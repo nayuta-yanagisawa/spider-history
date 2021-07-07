@@ -37,6 +37,21 @@
 #define SPIDER_SYS_TABLES_IDX1_COL_CNT 1
 #define SPIDER_SYS_LINK_MON_TABLE_COL_CNT 19
 
+#define SPIDER_SYS_LINK_MON_TABLE_DB_NAME_SIZE 64
+#define SPIDER_SYS_LINK_MON_TABLE_TABLE_NAME_SIZE 64
+#define SPIDER_SYS_LINK_MON_TABLE_LINK_ID_SIZE 10
+
+class SPIDER_MON_KEY: public SPIDER_SORT
+{
+public:
+  char db_name[SPIDER_SYS_LINK_MON_TABLE_DB_NAME_SIZE + 1];
+  char table_name[SPIDER_SYS_LINK_MON_TABLE_TABLE_NAME_SIZE + 1];
+  char link_id[SPIDER_SYS_LINK_MON_TABLE_LINK_ID_SIZE + 1];
+  uint db_name_length;
+  uint table_name_length;
+  uint link_id_length;
+};
+
 #if MYSQL_VERSION_ID < 50500
 TABLE *spider_open_sys_table(
   THD *thd,
@@ -80,6 +95,15 @@ int spider_sys_index_init(
 );
 
 int spider_sys_index_end(
+  TABLE *table
+);
+
+int spider_sys_rnd_init(
+  TABLE *table,
+  bool scan
+);
+
+int spider_sys_rnd_end(
   TABLE *table
 );
 
@@ -159,6 +183,12 @@ void spider_store_db_and_table_name(
 void spider_store_tables_link_idx(
   TABLE *table,
   int link_idx
+);
+
+void spider_store_tables_link_idx_str(
+  TABLE *table,
+  const char *link_idx,
+  const uint link_idx_length
 );
 
 void spider_store_tables_priority(
@@ -299,6 +329,13 @@ int spider_sys_update_tables_link_status(
   int link_idx,
   long link_status,
   bool need_lock
+);
+
+int spider_get_sys_link_mon_key(
+  TABLE *table,
+  SPIDER_MON_KEY *mon_key,
+  MEM_ROOT *mem_root,
+  int *same
 );
 
 int spider_get_sys_link_mon_server_id(
