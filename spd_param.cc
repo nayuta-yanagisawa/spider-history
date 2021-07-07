@@ -22,6 +22,7 @@
 #include "spd_table.h"
 
 my_bool spider_support_xa;
+uint spider_table_init_error_interval;
 
 static MYSQL_SYSVAR_BOOL(
   support_xa,
@@ -31,6 +32,22 @@ static MYSQL_SYSVAR_BOOL(
   NULL,
   NULL,
   TRUE
+);
+
+/*
+  0-: interval
+ */
+static MYSQL_SYSVAR_UINT(
+  table_init_error_interval,
+  spider_table_init_error_interval,
+  PLUGIN_VAR_RQCMDARG,
+  "Return same error code until interval passes if table init is failed",
+  NULL,
+  NULL,
+  1,
+  0,
+  4294967295U,
+  0
 );
 
 /*
@@ -842,11 +859,25 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+/*
+  FALSE: off
+  TRUE:  on
+ */
+MYSQL_THDVAR_BOOL(
+  same_server_link, /* name */
+  PLUGIN_VAR_OPCMDARG, /* opt */
+  "Permit to link same server's table", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  FALSE /* def */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
 struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(support_xa),
+  MYSQL_SYSVAR(table_init_error_interval),
   MYSQL_SYSVAR(conn_recycle_mode),
   MYSQL_SYSVAR(conn_recycle_strict),
   MYSQL_SYSVAR(sync_trx_isolation),
@@ -906,6 +937,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
 #endif
   MYSQL_SYSVAR(ping_interval_at_trx_start),
   MYSQL_SYSVAR(auto_increment_mode),
+  MYSQL_SYSVAR(same_server_link),
   NULL
 };
 
@@ -919,7 +951,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x000f,
+  0x0010,
   NULL,
   spider_system_variables,
   NULL

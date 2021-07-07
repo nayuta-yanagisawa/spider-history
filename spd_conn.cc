@@ -993,6 +993,7 @@ void *spider_bg_crd_action(
   share->bg_crd_thd = thd;
   table.s = share->table_share;
   table.field = share->table_share->field;
+  table.key_info = share->table_share->key_info;
   spider.trx = spider_global_trx;
   spider.change_table_ptr(&table, share->table_share);
   spider.share = share;

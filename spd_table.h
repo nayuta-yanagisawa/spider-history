@@ -203,3 +203,8 @@ int spider_get_crd(
 void spider_set_result_list_param(
   ha_spider *spider
 );
+
+SPIDER_INIT_ERROR_TABLE *spider_get_init_error_table(
+  SPIDER_SHARE *share,
+  bool create
+);

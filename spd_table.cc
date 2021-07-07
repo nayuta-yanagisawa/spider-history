@@ -36,6 +36,8 @@ extern pthread_mutex_t spider_conn_mutex;
 
 HASH spider_open_tables;
 pthread_mutex_t spider_tbl_mutex;
+HASH spider_init_error_tables;
+pthread_mutex_t spider_init_error_tbl_mutex;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 HASH spider_open_pt_share;
@@ -1297,7 +1299,8 @@ SPIDER_SHARE *spider_get_share(
   char *tmp_name;
   char *tmp_csname;
   longlong *tmp_cardinality;
-  bool *tmp_cardinality_upd;
+  uchar *tmp_cardinality_upd;
+  int bitmap_size;
   int roop_count;
   double sts_interval;
   int sts_mode;
@@ -1316,15 +1319,16 @@ SPIDER_SHARE *spider_get_share(
   if (!(share = (SPIDER_SHARE*) hash_search(&spider_open_tables,
     (uchar*) table_name, length)))
   {
+    bitmap_size = (table->s->fields + 7) / 8;
     DBUG_PRINT("info",("spider create new share"));
-    csname_length = (uint) strlen(table->s->table_charset->csname);
+    csname_length = (uint) strlen((char*) system_charset_info->csname);
     if (!(share = (SPIDER_SHARE *)
       my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
         &share, sizeof(*share),
         &tmp_name, length + 1,
         &tmp_csname, csname_length + 1,
         &tmp_cardinality, sizeof(*tmp_cardinality) * table->s->fields,
-        &tmp_cardinality_upd, sizeof(*tmp_cardinality_upd) * table->s->fields,
+        &tmp_cardinality_upd, sizeof(*tmp_cardinality_upd) * bitmap_size,
         NullS))
     ) {
       *error_num = HA_ERR_OUT_OF_MEM;
@@ -1337,9 +1341,10 @@ SPIDER_SHARE *spider_get_share(
     strmov(share->table_name, table_name);
     share->csname_length = csname_length;
     share->csname = tmp_csname;
-    strmov(share->csname, table->s->table_charset->csname);
+    strmov(share->csname, (char*) system_charset_info->csname);
     share->cardinality = tmp_cardinality;
     share->cardinality_upd = tmp_cardinality_upd;
+    share->bitmap_size = bitmap_size;
     share->table_share = table->s;
 
     if (table->s->keys > 0 &&
@@ -1431,47 +1436,84 @@ SPIDER_SHARE *spider_get_share(
       !(spider->conn =
         spider_get_conn(share, spider->trx, spider, FALSE, TRUE, error_num))
     ) {
-      share->init_error = TRUE;
+      share->init_error = error_num;
+      share->init_error_time = (time_t) time((time_t*) 0);
       share->init = TRUE;
       spider_free_share(share);
       goto error_but_no_delete;
     }
 
-    sts_interval = THDVAR(thd, sts_interval) == -1 ?
-      share->sts_interval : THDVAR(thd, sts_interval);
-    sts_mode = THDVAR(thd, sts_mode) <= 0 ?
-      share->sts_mode : THDVAR(thd, sts_mode);
+    if (!THDVAR(thd, same_server_link))
+    {
+      SPIDER_INIT_ERROR_TABLE *spider_init_error_table;
+      sts_interval = THDVAR(thd, sts_interval) == -1 ?
+        share->sts_interval : THDVAR(thd, sts_interval);
+      sts_mode = THDVAR(thd, sts_mode) <= 0 ?
+        share->sts_mode : THDVAR(thd, sts_mode);
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-    sts_sync = THDVAR(thd, sts_sync) == -1 ?
-      share->sts_sync : THDVAR(thd, sts_sync);
+      sts_sync = THDVAR(thd, sts_sync) == -1 ?
+        share->sts_sync : THDVAR(thd, sts_sync);
 #endif
-    crd_interval = THDVAR(thd, crd_interval) == -1 ?
-      share->crd_interval : THDVAR(thd, crd_interval);
-    crd_mode = THDVAR(thd, crd_mode) <= 0 ?
-      share->crd_mode : THDVAR(thd, crd_mode);
+      crd_interval = THDVAR(thd, crd_interval) == -1 ?
+        share->crd_interval : THDVAR(thd, crd_interval);
+      crd_mode = THDVAR(thd, crd_mode) <= 0 ?
+        share->crd_mode : THDVAR(thd, crd_mode);
+      if (crd_mode == 3)
+        crd_mode = 1;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-    crd_sync = THDVAR(thd, crd_sync) == -1 ?
-      share->crd_sync : THDVAR(thd, crd_sync);
+      crd_sync = THDVAR(thd, crd_sync) == -1 ?
+        share->crd_sync : THDVAR(thd, crd_sync);
 #endif
-    time_t tmp_time = (time_t) time((time_t*) 0);
-    if (
-      (*error_num = spider_get_sts(share, tmp_time, spider, sts_interval,
-        sts_mode,
+      time_t tmp_time = (time_t) time((time_t*) 0);
+      if ((spider_init_error_table =
+        spider_get_init_error_table(share, FALSE)))
+      {
+        DBUG_PRINT("info",("spider diff1=%f",
+          difftime(tmp_time, spider_init_error_table->init_error_time)));
+        if (difftime(tmp_time,
+          spider_init_error_table->init_error_time) <
+          spider_table_init_error_interval)
+        {
+          *error_num = spider_init_error_table->init_error;
+          my_message(spider_init_error_table->init_error,
+            spider_init_error_table->init_error_msg, MYF(0));
+          share->init_error = TRUE;
+          share->init = TRUE;
+          spider_free_share(share);
+          goto error_but_no_delete;
+        }
+      }
+
+      if (
+        (*error_num = spider_get_sts(share, tmp_time, spider, sts_interval,
+          sts_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-        sts_sync,
+          sts_sync,
 #endif
-        1)) ||
-      (*error_num = spider_get_crd(share, tmp_time, spider, table,
-        crd_interval, crd_mode,
+          1)) ||
+        (*error_num = spider_get_crd(share, tmp_time, spider, table,
+          crd_interval, crd_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-        crd_sync,
+          crd_sync,
 #endif
-        1))
-    ) {
-      share->init_error = TRUE;
-      share->init = TRUE;
-      spider_free_share(share);
-      goto error_but_no_delete;
+          1))
+      ) {
+        if (
+          spider_init_error_table ||
+          (spider_init_error_table =
+            spider_get_init_error_table(share, TRUE))
+        ) {
+          spider_init_error_table->init_error = *error_num;
+          strmov(spider_init_error_table->init_error_msg,
+            thd->main_da.message());
+          spider_init_error_table->init_error_time =
+            (time_t) time((time_t*) 0);
+        }
+        share->init_error = TRUE;
+        share->init = TRUE;
+        spider_free_share(share);
+        goto error_but_no_delete;
+      }
     }
 
     share->init = TRUE;
@@ -1489,50 +1531,91 @@ SPIDER_SHARE *spider_get_share(
       !(spider->trx = spider_get_trx(thd, error_num)) ||
       !(spider->conn =
         spider_get_conn(share, spider->trx, spider, FALSE, TRUE, error_num))
-    )
+    ) {
+      spider_free_share(share);
       goto error_but_no_delete;
+    }
     if (share->init_error)
     {
       pthread_mutex_lock(&share->sts_mutex);
+      pthread_mutex_lock(&share->crd_mutex);
       if (share->init_error)
       {
-        sts_interval = THDVAR(thd, sts_interval) == -1 ?
-          share->sts_interval : THDVAR(thd, sts_interval);
-        sts_mode = THDVAR(thd, sts_mode) <= 0 ?
-          share->sts_mode : THDVAR(thd, sts_mode);
+        if (!THDVAR(thd, same_server_link))
+        {
+          SPIDER_INIT_ERROR_TABLE *spider_init_error_table;
+          sts_interval = THDVAR(thd, sts_interval) == -1 ?
+            share->sts_interval : THDVAR(thd, sts_interval);
+          sts_mode = THDVAR(thd, sts_mode) <= 0 ?
+            share->sts_mode : THDVAR(thd, sts_mode);
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-        sts_sync = THDVAR(thd, sts_sync) == -1 ?
-          share->sts_sync : THDVAR(thd, sts_sync);
+          sts_sync = THDVAR(thd, sts_sync) == -1 ?
+            share->sts_sync : THDVAR(thd, sts_sync);
 #endif
-        crd_interval = THDVAR(thd, crd_interval) == -1 ?
-          share->crd_interval : THDVAR(thd, crd_interval);
-        crd_mode = THDVAR(thd, crd_mode) <= 0 ?
-          share->crd_mode : THDVAR(thd, crd_mode);
+          crd_interval = THDVAR(thd, crd_interval) == -1 ?
+            share->crd_interval : THDVAR(thd, crd_interval);
+          crd_mode = THDVAR(thd, crd_mode) <= 0 ?
+            share->crd_mode : THDVAR(thd, crd_mode);
+          if (crd_mode == 3)
+            crd_mode = 1;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-        crd_sync = THDVAR(thd, crd_sync) == -1 ?
-          share->crd_sync : THDVAR(thd, crd_sync);
+          crd_sync = THDVAR(thd, crd_sync) == -1 ?
+            share->crd_sync : THDVAR(thd, crd_sync);
 #endif
-        time_t tmp_time = (time_t) time((time_t*) 0);
-        if (
-          (*error_num = spider_get_sts(share, tmp_time, spider, sts_interval,
-            sts_mode,
+          time_t tmp_time = (time_t) time((time_t*) 0);
+          if ((spider_init_error_table =
+            spider_get_init_error_table(share, FALSE)))
+          {
+            DBUG_PRINT("info",("spider diff2=%f",
+              difftime(tmp_time, spider_init_error_table->init_error_time)));
+            if (difftime(tmp_time,
+              spider_init_error_table->init_error_time) <
+              spider_table_init_error_interval)
+            {
+              *error_num = spider_init_error_table->init_error;
+              my_message(spider_init_error_table->init_error,
+                spider_init_error_table->init_error_msg, MYF(0));
+              pthread_mutex_unlock(&share->crd_mutex);
+              pthread_mutex_unlock(&share->sts_mutex);
+              spider_free_share(share);
+              goto error_but_no_delete;
+            }
+          }
+
+          if (
+            (*error_num = spider_get_sts(share, tmp_time, spider, sts_interval,
+              sts_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-            sts_sync,
+              sts_sync,
 #endif
-            1)) ||
-          (*error_num = spider_get_crd(share, tmp_time, spider, table,
-            crd_interval, crd_mode,
+              1)) ||
+            (*error_num = spider_get_crd(share, tmp_time, spider, table,
+              crd_interval, crd_mode,
 #ifdef WITH_PARTITION_STORAGE_ENGINE
-            crd_sync,
+              crd_sync,
 #endif
-            1))
-        ) {
-          pthread_mutex_unlock(&share->sts_mutex);
-          spider_free_share(share);
-          goto error_but_no_delete;
+              1))
+          ) {
+            if (
+              spider_init_error_table ||
+              (spider_init_error_table =
+                spider_get_init_error_table(share, TRUE))
+            ) {
+              spider_init_error_table->init_error = *error_num;
+              strmov(spider_init_error_table->init_error_msg,
+                thd->main_da.message());
+              spider_init_error_table->init_error_time =
+                (time_t) time((time_t*) 0);
+            }
+            pthread_mutex_unlock(&share->crd_mutex);
+            pthread_mutex_unlock(&share->sts_mutex);
+            spider_free_share(share);
+            goto error_but_no_delete;
+          }
         }
         share->init_error = FALSE;
       }
+      pthread_mutex_unlock(&share->crd_mutex);
       pthread_mutex_unlock(&share->sts_mutex);
     }
   }
@@ -1923,11 +2006,33 @@ int spider_close_connection(
   handlerton*	hton,
   THD* thd
 ) {
+  int roop_count = 0;
+  SPIDER_CONN *conn;
   SPIDER_TRX *trx;
+  ha_spider tmp_spider;
   DBUG_ENTER("spider_close_connection");
-
   if (!(trx = (SPIDER_TRX*) thd_get_ha_data(thd, spider_hton_ptr)))
     DBUG_RETURN(0); /* transaction is not started */
+
+  memset(&tmp_spider, 0, sizeof(ha_spider));
+  while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash,
+    roop_count)))
+  {
+    DBUG_PRINT("info",("spider conn->table_lock=%d", conn->table_lock));
+    if (conn->table_lock > 0)
+    {
+      if (!conn->trx_start)
+        conn->disable_reconnect = FALSE;
+      if (conn->table_lock != 2)
+      {
+        tmp_spider.conn = conn;
+        spider_db_unlock_tables(&tmp_spider);
+      }
+      conn->table_lock = 0;
+    }
+    roop_count++;
+  }
+
   spider_rollback(spider_hton_ptr, thd, TRUE);
   spider_free_trx(trx);
 
@@ -1960,6 +2065,7 @@ int spider_db_done(
   void *p
 ) {
   SPIDER_CONN *conn;
+  SPIDER_INIT_ERROR_TABLE *spider_init_error_table;
   DBUG_ENTER("spider_db_done");
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -1976,6 +2082,15 @@ int spider_db_done(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   hash_free(&spider_open_pt_share);
 #endif
+  pthread_mutex_lock(&spider_init_error_tbl_mutex);
+  while ((spider_init_error_table = (SPIDER_INIT_ERROR_TABLE*)
+    hash_element(&spider_init_error_tables, 0)))
+  {
+    hash_delete(&spider_init_error_tables, (uchar*) spider_init_error_table);
+    my_free(spider_init_error_table, MYF(0));
+  }
+  pthread_mutex_unlock(&spider_init_error_tbl_mutex);
+  hash_free(&spider_init_error_tables);
   hash_free(&spider_open_tables);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   VOID(pthread_mutex_destroy(&spider_global_trx_mutex));
@@ -1984,6 +2099,7 @@ int spider_db_done(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   VOID(pthread_mutex_destroy(&spider_pt_share_mutex));
 #endif
+  VOID(pthread_mutex_destroy(&spider_init_error_tbl_mutex));
   VOID(pthread_mutex_destroy(&spider_tbl_mutex));
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   VOID(pthread_attr_destroy(&spider_pt_attr));
@@ -2055,6 +2171,11 @@ int spider_db_init(
     error_num = HA_ERR_OUT_OF_MEM;
     goto error_tbl_mutex_init;
   }
+  if (pthread_mutex_init(&spider_init_error_tbl_mutex, MY_MUTEX_INIT_FAST))
+  {
+    error_num = HA_ERR_OUT_OF_MEM;
+    goto error_init_error_tbl_mutex_init;
+  }
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   if (pthread_mutex_init(&spider_pt_share_mutex, MY_MUTEX_INIT_FAST))
   {
@@ -2081,6 +2202,13 @@ int spider_db_init(
   ) {
     error_num = HA_ERR_OUT_OF_MEM;
     goto error_open_tables_hash_init;
+  }
+  if(
+    hash_init(&spider_init_error_tables, system_charset_info, 32, 0, 0,
+                   (hash_get_key) spider_tbl_get_key, 0, 0)
+  ) {
+    error_num = HA_ERR_OUT_OF_MEM;
+    goto error_init_error_tables_hash_init;
   }
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   if(
@@ -2115,6 +2243,8 @@ error_open_connections_hash_init:
   hash_free(&spider_open_pt_share);
 error_open_pt_share_hash_init:
 #endif
+  hash_free(&spider_init_error_tables);
+error_init_error_tables_hash_init:
   hash_free(&spider_open_tables);
 error_open_tables_hash_init:
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -2127,6 +2257,8 @@ error_conn_mutex_init:
   VOID(pthread_mutex_destroy(&spider_pt_share_mutex));
 error_pt_share_mutex_init:
 #endif
+  VOID(pthread_mutex_destroy(&spider_init_error_tbl_mutex));
+error_init_error_tbl_mutex_init:
   VOID(pthread_mutex_destroy(&spider_tbl_mutex));
 error_tbl_mutex_init:
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -2297,6 +2429,7 @@ int spider_get_sts(
   }
 #endif
   share->sts_get_time = tmp_time;
+  share->sts_init = TRUE;
   DBUG_RETURN(0);
 }
 
@@ -2374,6 +2507,7 @@ int spider_get_crd(
   }
 #endif
   share->crd_get_time = tmp_time;
+  share->crd_init = TRUE;
   DBUG_RETURN(0);
 }
 
@@ -2417,4 +2551,45 @@ void spider_set_result_list_param(
     share->low_mem_read :
     THDVAR(thd, low_mem_read);
   DBUG_VOID_RETURN;
+}
+
+SPIDER_INIT_ERROR_TABLE *spider_get_init_error_table(
+  SPIDER_SHARE *share,
+  bool create
+) {
+  SPIDER_INIT_ERROR_TABLE *spider_init_error_table;
+  char *tmp_name;
+  DBUG_ENTER("spider_get_init_error_table");
+  pthread_mutex_lock(&spider_init_error_tbl_mutex);
+  if (!(spider_init_error_table = (SPIDER_INIT_ERROR_TABLE *) hash_search(
+    &spider_init_error_tables,
+    (uchar*) share->table_name, share->table_name_length)))
+  {
+    if (!create)
+    {
+      pthread_mutex_unlock(&spider_init_error_tbl_mutex);
+      DBUG_RETURN(NULL);
+    }
+    if (!(spider_init_error_table = (SPIDER_INIT_ERROR_TABLE *)
+      my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
+        &spider_init_error_table, sizeof(*spider_init_error_table),
+        &tmp_name, share->table_name_length + 1,
+        NullS))
+    ) {
+      pthread_mutex_unlock(&spider_init_error_tbl_mutex);
+      DBUG_RETURN(NULL);
+    }
+    memcpy(tmp_name, share->table_name, share->table_name_length);
+    spider_init_error_table->table_name = tmp_name;
+    spider_init_error_table->table_name_length = share->table_name_length;
+    if (my_hash_insert(&spider_init_error_tables,
+      (uchar*) spider_init_error_table))
+    {
+      my_free(spider_init_error_table, MYF(0));
+      pthread_mutex_unlock(&spider_init_error_tbl_mutex);
+      DBUG_RETURN(NULL);
+    }
+  }
+  pthread_mutex_unlock(&spider_init_error_tbl_mutex);
+  DBUG_RETURN(spider_init_error_table);
 }

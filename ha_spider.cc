@@ -166,7 +166,7 @@ THR_LOCK_DATA **ha_spider::store_lock(
     if (!(SPIDER_ALTER_TABLE*) hash_search(&trx->trx_alter_table_hash,
       (uchar*) share->table_name, share->table_name_length))
     {
-      if (spider_create_trx_alter_table(trx, share))
+      if (spider_create_trx_alter_table(trx, share, FALSE))
       {
         store_error_num = HA_ERR_OUT_OF_MEM;
         DBUG_RETURN(to);
@@ -311,10 +311,25 @@ int ha_spider::external_lock(
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider lock_type=%x", lock_type));
   DBUG_PRINT("info",("spider thd->options=%x", (int) thd->options));
+
+	sql_command = thd_sql_command(thd);
+  if (sql_command == SQLCOM_BEGIN)
+    sql_command = SQLCOM_UNLOCK_TABLES;
+  if (
+    sql_command == SQLCOM_UNLOCK_TABLES &&
+    (error_num = spider_check_trx_and_get_conn(thd, this))
+  ) {
+    DBUG_RETURN(error_num);
+  }
+
+  DBUG_PRINT("info",("spider sql_command=%d", sql_command));
   DBUG_ASSERT(trx == spider_get_trx(thd, &error_num));
   if (store_error_num)
     DBUG_RETURN(store_error_num);
-  if (lock_type == F_UNLCK)
+  if (
+    lock_type == F_UNLCK &&
+    sql_command != SQLCOM_UNLOCK_TABLES
+  )
     DBUG_RETURN(0);
   if (!conn)
   {
@@ -324,33 +339,36 @@ int ha_spider::external_lock(
   }
   if (sql_command == SQLCOM_TRUNCATE)
     DBUG_RETURN(0);
-  if (
-    (!conn->join_trx &&
-      (error_num = spider_internal_start_trx(this)))
-  )
-    DBUG_RETURN(error_num);
-  result_list.lock_type = lock_type;
-  if (
-    conn->semi_trx_isolation == -2 &&
-    conn->semi_trx_isolation_chk == TRUE &&
-    sync_trx_isolation &&
-    THDVAR(trx->thd, semi_trx_isolation) >= 0
-  ) {
+  else if (sql_command != SQLCOM_UNLOCK_TABLES)
+  {
     if (
-      conn->trx_isolation != THDVAR(trx->thd, semi_trx_isolation) &&
-      (error_num = spider_db_set_trx_isolation(
-        conn, THDVAR(trx->thd, semi_trx_isolation)))
+      (!conn->join_trx &&
+        (error_num = spider_internal_start_trx(this)))
     )
       DBUG_RETURN(error_num);
-    conn->semi_trx_isolation = THDVAR(trx->thd, semi_trx_isolation);
-    conn->trx_isolation = thd_tx_isolation(conn->thd);
-  } else {
-    if (sync_trx_isolation)
-    {
-      if ((error_num = spider_check_and_set_trx_isolation(conn)))
+    result_list.lock_type = lock_type;
+    if (
+      conn->semi_trx_isolation == -2 &&
+      conn->semi_trx_isolation_chk == TRUE &&
+      sync_trx_isolation &&
+      THDVAR(trx->thd, semi_trx_isolation) >= 0
+    ) {
+      if (
+        conn->trx_isolation != THDVAR(trx->thd, semi_trx_isolation) &&
+        (error_num = spider_db_set_trx_isolation(
+          conn, THDVAR(trx->thd, semi_trx_isolation)))
+      )
         DBUG_RETURN(error_num);
+      conn->semi_trx_isolation = THDVAR(trx->thd, semi_trx_isolation);
+      conn->trx_isolation = thd_tx_isolation(conn->thd);
+    } else {
+      if (sync_trx_isolation)
+      {
+        if ((error_num = spider_check_and_set_trx_isolation(conn)))
+          DBUG_RETURN(error_num);
+      }
+      conn->semi_trx_isolation = -1;
     }
-    conn->semi_trx_isolation = -1;
   }
   if (conn->table_lock >= 2)
   {
@@ -417,6 +435,7 @@ int ha_spider::reset()
   low_priority = FALSE;
   high_priority = FALSE;
   insert_delayed = FALSE;
+  bulk_insert = FALSE;
   while (condition)
   {
     tmp_cond = condition->next;
@@ -1338,6 +1357,7 @@ int ha_spider::info(
   int sts_bg_mode = THDVAR(thd, sts_bg_mode) == -1 ?
     share->sts_bg_mode : THDVAR(thd, sts_bg_mode);
 #endif
+  SPIDER_INIT_ERROR_TABLE *spider_init_error_table = NULL;
   DBUG_ENTER("ha_spider::info");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider flag=%x", flag));
@@ -1349,6 +1369,27 @@ int ha_spider::info(
       ("spider difftime=%f", difftime(tmp_time, share->sts_get_time)));
     DBUG_PRINT("info",
       ("spider sts_interval=%f", sts_interval));
+    if (!share->sts_init)
+    {
+      pthread_mutex_lock(&share->sts_mutex);
+      if ((spider_init_error_table =
+        spider_get_init_error_table(share, FALSE)))
+      {
+        DBUG_PRINT("info",("spider diff=%f",
+          difftime(tmp_time, spider_init_error_table->init_error_time)));
+        if (difftime(tmp_time,
+          spider_init_error_table->init_error_time) <
+          spider_table_init_error_interval)
+        {
+          pthread_mutex_unlock(&share->sts_mutex);
+          my_message(spider_init_error_table->init_error,
+            spider_init_error_table->init_error_msg, MYF(0));
+          DBUG_RETURN(spider_init_error_table->init_error);
+        }
+      }
+      pthread_mutex_unlock(&share->sts_mutex);
+      sts_interval = 0;
+    }
     if (difftime(tmp_time, share->sts_get_time) >= sts_interval)
     {
       if (
@@ -1370,9 +1411,25 @@ int ha_spider::info(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
                 sts_sync,
 #endif
-                2))
+                share->sts_init ? 2 : 1))
             ) {
               pthread_mutex_unlock(&share->sts_mutex);
+              if (!share->sts_init)
+              {
+                if (
+                  spider_init_error_table ||
+                  (spider_init_error_table =
+                    spider_get_init_error_table(share, TRUE))
+                ) {
+                  spider_init_error_table->init_error = error_num;
+                  strmov(spider_init_error_table->init_error_msg,
+                    thd->main_da.message());
+                  spider_init_error_table->init_error_time =
+                    (time_t) time((time_t*) 0);
+                }
+                share->init_error = TRUE;
+                share->init = TRUE;
+              }
               DBUG_RETURN(error_num);
             }
           }
@@ -1449,11 +1506,36 @@ ha_rows ha_spider::records_in_range(
   int crd_bg_mode = THDVAR(thd, crd_bg_mode) == -1 ?
     share->crd_bg_mode : THDVAR(thd, crd_bg_mode);
 #endif
+  SPIDER_INIT_ERROR_TABLE *spider_init_error_table = NULL;
   DBUG_ENTER("ha_spider::records_in_range");
   DBUG_PRINT("info",("spider this=%x", this));
+  time_t tmp_time = (time_t) time((time_t*) 0);
+  if (!share->crd_init)
+  {
+    pthread_mutex_lock(&share->crd_mutex);
+    if ((spider_init_error_table =
+      spider_get_init_error_table(share, FALSE)))
+    {
+      DBUG_PRINT("info",("spider diff=%f",
+        difftime(tmp_time, spider_init_error_table->init_error_time)));
+      if (difftime(tmp_time,
+        spider_init_error_table->init_error_time) <
+        spider_table_init_error_interval)
+      {
+        pthread_mutex_unlock(&share->crd_mutex);
+        my_errno = spider_init_error_table->init_error;
+        my_message(spider_init_error_table->init_error,
+          spider_init_error_table->init_error_msg, MYF(0));
+        DBUG_RETURN(HA_POS_ERROR);
+      }
+    }
+    pthread_mutex_unlock(&share->crd_mutex);
+    if (crd_mode == 3)
+      crd_mode = 1;
+    crd_interval = 0;
+  }
   if (crd_mode == 1 || crd_mode == 2)
   {
-    time_t tmp_time = (time_t) time((time_t*) 0);
     DBUG_PRINT("info",
       ("spider difftime=%f", difftime(tmp_time, share->crd_get_time)));
     DBUG_PRINT("info",
@@ -1477,10 +1559,26 @@ ha_rows ha_spider::records_in_range(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
               crd_sync,
 #endif
-              2)))
+              share->crd_init ? 2 : 1)))
             {
               pthread_mutex_unlock(&share->crd_mutex);
               my_errno = error_num;
+              if (!share->crd_init)
+              {
+                if (
+                  spider_init_error_table ||
+                  (spider_init_error_table =
+                    spider_get_init_error_table(share, TRUE))
+                ) {
+                  spider_init_error_table->init_error = error_num;
+                  strmov(spider_init_error_table->init_error_msg,
+                    thd->main_da.message());
+                  spider_init_error_table->init_error_time =
+                    (time_t) time((time_t*) 0);
+                }
+                share->init_error = TRUE;
+                share->init = TRUE;
+              }
               DBUG_RETURN(HA_POS_ERROR);
             }
           }
@@ -1627,14 +1725,17 @@ ulonglong ha_spider::table_flags() const
 const char *ha_spider::index_type(
   uint key_number
 ) {
+  KEY *key_info = &table->s->key_info[key_number];
   DBUG_ENTER("ha_spider::index_type");
   DBUG_PRINT("info",("spider this=%x", this));
+  DBUG_PRINT("info",("spider flags=%ld", key_info->flags));
+  DBUG_PRINT("info",("spider algorithm=%ld", key_info->algorithm));
   DBUG_RETURN(
-    (table->s->key_info[key_number].flags & HA_FULLTEXT) ? "FULLTEXT" :
-    (table->s->key_info[key_number].flags & HA_SPATIAL) ? "SPATIAL" :
-    (table->s->key_info[key_number].algorithm == HA_KEY_ALG_BTREE) ? "BTREE" :
-    (table->s->key_info[key_number].algorithm == HA_KEY_ALG_RTREE) ? "RTREE" :
-    "HASH"
+    (key_info->flags & HA_FULLTEXT) ? "FULLTEXT" :
+    (key_info->flags & HA_SPATIAL) ? "SPATIAL" :
+    (key_info->algorithm == HA_KEY_ALG_HASH) ? "HASH" :
+    (key_info->algorithm == HA_KEY_ALG_RTREE) ? "RTREE" :
+    "BTREE"
   );
 }
 
@@ -1696,15 +1797,6 @@ uint8 ha_spider::table_cache_type()
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_RETURN(HA_CACHE_TBL_NOCACHE);
 }
-
-/*
-int ha_spider::update_auto_increment()
-{
-  DBUG_ENTER("ha_spider::update_auto_increment");
-  DBUG_PRINT("info",("spider this=%x", this));
-  DBUG_RETURN(spider_db_update_auto_increment(this));
-}
-*/
 
 void ha_spider::get_auto_increment(
   ulonglong offset,
@@ -1986,13 +2078,11 @@ int ha_spider::create(
 ) {
   int error_num;
   SPIDER_SHARE tmp_share;
-/*
-  TABLE *table_tables;
-*/
   THD *thd = ha_thd();
   uint sql_command = thd_sql_command(thd);
   SPIDER_TRX *trx;
-  TABLE *table_tables;
+  TABLE *table_tables = NULL;
+  Open_tables_state open_tables_backup;
   DBUG_ENTER("ha_spider::create");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider name=%s", name));
@@ -2001,7 +2091,7 @@ int ha_spider::create(
   DBUG_PRINT("info",
     ("spider info->connect_string=%s", info->connect_string.str));
   if (!(trx = spider_get_trx(thd, &error_num)))
-    goto error;
+    goto error_get_trx;
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
   tmp_share.table_name = (char*) name;
   tmp_share.table_name_length = strlen(name);
@@ -2014,9 +2104,11 @@ int ha_spider::create(
   DBUG_PRINT("info",("spider tmp_share.key_hint=%x", tmp_share.key_hint));
   if ((error_num = spider_parse_connect_info(&tmp_share, form, 1)))
     goto error;
-  if (sql_command == SQLCOM_CREATE_TABLE)
-  {
-    Open_tables_state open_tables_backup;
+  DBUG_PRINT("info",("spider tmp_table=%d", form->s->tmp_table));
+  if (
+    (sql_command == SQLCOM_CREATE_TABLE &&
+      !(info->options & HA_LEX_CREATE_TMP_TABLE))
+  ) {
     if (
       !(table_tables = spider_open_sys_table(
         current_thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
@@ -2027,18 +2119,21 @@ int ha_spider::create(
     }
     if (
       (error_num = spider_insert_tables(table_tables, &tmp_share))
-    )
+    ) {
       goto error;
+    }
     spider_close_sys_table(current_thd, table_tables,
       &open_tables_backup, FALSE);
-  } else if (sql_command == SQLCOM_ALTER_TABLE)
-  {
+    table_tables = NULL;
+  } else if (
+    sql_command == SQLCOM_ALTER_TABLE
+  ) {
     SPIDER_ALTER_TABLE *alter_table;
     if (!(alter_table =
       (SPIDER_ALTER_TABLE*) hash_search(&trx->trx_alter_table_hash,
       (uchar*) tmp_share.table_name, tmp_share.table_name_length)))
     {
-      if ((error_num = spider_create_trx_alter_table(trx, &tmp_share)))
+      if ((error_num = spider_create_trx_alter_table(trx, &tmp_share, TRUE)))
         goto error;
     }
     trx->tmp_flg = TRUE;
@@ -2048,7 +2143,11 @@ int ha_spider::create(
   DBUG_RETURN(0);
 
 error:
+  if (table_tables)
+    spider_close_sys_table(current_thd, table_tables,
+      &open_tables_backup, FALSE);
   spider_free_tmp_share_alloc(&tmp_share);
+error_get_trx:
   DBUG_RETURN(error_num);
 }
 
@@ -2068,23 +2167,25 @@ int ha_spider::rename_table(
   const char *to
 ) {
   int error_num;
-/*
-  TABLE *table_tables;
-*/
   THD *thd = ha_thd();
   uint sql_command = thd_sql_command(thd);
   SPIDER_TRX *trx;
-  TABLE *table_tables;
+  TABLE *table_tables = NULL;
+  SPIDER_ALTER_TABLE *alter_table_from;
+  Open_tables_state open_tables_backup;
   DBUG_ENTER("ha_spider::rename_table");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider from=%s", from));
   DBUG_PRINT("info",("spider to=%s", to));
   if (!(trx = spider_get_trx(thd, &error_num)))
     goto error;
-  if (sql_command == SQLCOM_RENAME_TABLE ||
-    (sql_command == SQLCOM_ALTER_TABLE && !trx->tmp_flg))
-  {
-    Open_tables_state open_tables_backup;
+  if (
+    sql_command == SQLCOM_RENAME_TABLE ||
+    (sql_command == SQLCOM_ALTER_TABLE && !trx->tmp_flg) ||
+    !(alter_table_from =
+      (SPIDER_ALTER_TABLE*) hash_search(&trx->trx_alter_table_hash,
+      (uchar*) from, strlen(from)))
+  ) {
     if (
       !(table_tables = spider_open_sys_table(
         current_thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
@@ -2096,65 +2197,56 @@ int ha_spider::rename_table(
     if (
       (error_num = spider_update_tables_name(
         table_tables, from, to))
-    )
+    ) {
       goto error;
+    }
     spider_close_sys_table(current_thd, table_tables,
       &open_tables_backup, FALSE);
+    table_tables = NULL;
   } else if (sql_command == SQLCOM_ALTER_TABLE)
   {
-    SPIDER_ALTER_TABLE *alter_table_to, *alter_table_from;
-    alter_table_to =
-      (SPIDER_ALTER_TABLE*) hash_search(&trx->trx_alter_table_hash,
-      (uchar*) to, strlen(to));
-    DBUG_PRINT("info",("spider alter_table_to=%x", alter_table_to));
-    alter_table_from =
-      (SPIDER_ALTER_TABLE*) hash_search(&trx->trx_alter_table_hash,
-      (uchar*) from, strlen(from));
     DBUG_PRINT("info",("spider alter_table_from=%x", alter_table_from));
-    if (!alter_table_to && alter_table_from)
-    {
-      if (!(alter_table_from->tmp_char =
-        spider_create_string(from, strlen(from))))
-      {
-        error_num = HA_ERR_OUT_OF_MEM;
-        goto error;
-      }
-    } else if (alter_table_to && alter_table_from)
-    {
-      if (strcmp(alter_table_to->tmp_char, to))
-      {
-        error_num = ER_SPIDER_RENAME_WITH_OTHER_NUM;
-        my_message(error_num, ER_SPIDER_RENAME_WITH_OTHER_STR, MYF(0));
-        goto error;
-      } else if (
-        spider_cmp_trx_alter_table(alter_table_to, alter_table_from)
-      ) {
-        Open_tables_state open_tables_backup;
-        if (
-          !(table_tables = spider_open_sys_table(
-            current_thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
-            SPIDER_SYS_TABLES_TABLE_NAME_LEN, TRUE, &open_tables_backup, FALSE,
-            &error_num))
-        ) {
-          goto error;
-        }
-        if (
-          (error_num = spider_update_tables_priority(
-            table_tables, alter_table_from,
-            alter_table_to->tmp_char))
-        )
-          goto error;
-        spider_close_sys_table(current_thd, table_tables,
-          &open_tables_backup, FALSE);
-      }
-      spider_free_trx_alter_table_alloc(trx, alter_table_to);
-      spider_free_trx_alter_table_alloc(trx, alter_table_from);
+    if (
+      !(table_tables = spider_open_sys_table(
+        current_thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
+        SPIDER_SYS_TABLES_TABLE_NAME_LEN, TRUE, &open_tables_backup, FALSE,
+        &error_num))
+    ) {
+      goto error;
     }
+    if (alter_table_from->now_create)
+    {
+      SPIDER_SHARE tmp_share;
+      tmp_share.table_name = (char*) to;
+      tmp_share.table_name_length = strlen(to);
+      tmp_share.priority = alter_table_from->tmp_priority;
+      memcpy(&tmp_share.alter_table, alter_table_from,
+        sizeof(*alter_table_from));
+      if (
+        (error_num = spider_insert_tables(table_tables, &tmp_share))
+      ) {
+        goto error;
+      }
+    } else {
+      if (
+        (error_num = spider_update_tables_priority(
+          table_tables, alter_table_from, to))
+      ) {
+        goto error;
+      }
+    }
+    spider_close_sys_table(current_thd, table_tables,
+      &open_tables_backup, FALSE);
+    table_tables = NULL;
+    spider_free_trx_alter_table_alloc(trx, alter_table_from);
   }
 
   DBUG_RETURN(0);
 
 error:
+  if (table_tables)
+    spider_close_sys_table(current_thd, table_tables,
+      &open_tables_backup, FALSE);
   DBUG_RETURN(error_num);
 }
 
@@ -2162,13 +2254,12 @@ int ha_spider::delete_table(
   const char *name
 ) {
   int error_num;
-/*
-  TABLE *table_tables;
-*/
   THD *thd = ha_thd();
   SPIDER_TRX *trx;
-  TABLE *table_tables;
+  TABLE *table_tables = NULL;
   uint sql_command = thd_sql_command(thd);
+  SPIDER_ALTER_TABLE *alter_table;
+  Open_tables_state open_tables_backup;
   DBUG_ENTER("ha_spider::delete_table");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider name=%s", name));
@@ -2176,9 +2267,18 @@ int ha_spider::delete_table(
     goto error;
   if (sql_command == SQLCOM_DROP_TABLE ||
     sql_command == SQLCOM_DROP_DB ||
+    sql_command == SQLCOM_ALTER_TABLE ||
     sql_command == SQLCOM_CREATE_TABLE)
   {
-    Open_tables_state open_tables_backup;
+    if (
+      sql_command == SQLCOM_ALTER_TABLE &&
+      (alter_table =
+        (SPIDER_ALTER_TABLE*) hash_search(&trx->trx_alter_table_hash,
+        (uchar*) name, strlen(name))) &&
+      alter_table->now_create
+    )
+      DBUG_RETURN(0);
+
     if (
       !(table_tables = spider_open_sys_table(
         current_thd, SPIDER_SYS_TABLES_TABLE_NAME_STR,
@@ -2190,15 +2290,20 @@ int ha_spider::delete_table(
     if (
       (error_num = spider_delete_tables(
         table_tables, name))
-    )
+    ) {
       goto error;
+    }
     spider_close_sys_table(current_thd, table_tables,
       &open_tables_backup, FALSE);
+    table_tables = NULL;
   }
 
   DBUG_RETURN(0);
 
 error:
+  if (table_tables)
+    spider_close_sys_table(current_thd, table_tables,
+      &open_tables_backup, FALSE);
   DBUG_RETURN(error_num);
 }
 

@@ -393,6 +393,11 @@ int spider_db_show_table_status(
   int sts_mode
 );
 
+void spider_db_set_cardinarity(
+  ha_spider *spider,
+  TABLE *table
+);
+
 int spider_db_show_index(
   ha_spider *spider,
   TABLE *table,

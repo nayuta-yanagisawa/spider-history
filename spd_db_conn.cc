@@ -559,13 +559,24 @@ int spider_db_commit(
 int spider_db_rollback(
   SPIDER_CONN *conn
 ) {
+  int error_num;
+  bool is_error;
   DBUG_ENTER("spider_db_rollback");
   if (spider_db_query(
     conn,
     SPIDER_SQL_ROLLBACK_STR,
     SPIDER_SQL_ROLLBACK_LEN)
-  )
-    DBUG_RETURN(spider_db_errorno(conn));
+  ) {
+    is_error = conn->thd->is_error();
+    error_num = spider_db_errorno(conn);
+    if (
+      error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+      !is_error
+    )
+      conn->thd->clear_error();
+    else
+      DBUG_RETURN(error_num);
+  }
   conn->trx_start = FALSE;
   DBUG_RETURN(0);
 }
@@ -793,7 +804,6 @@ int spider_db_append_column_value(
   else
     ptr = field->val_str(&tmp_str);
   DBUG_PRINT("info", ("spider field->type() is %d", field->type()));
-  DBUG_PRINT("info", ("spider field->val_int() is %ld", field->val_int()));
   DBUG_PRINT("info", ("spider ptr->length() is %d", ptr->length()));
 /*
   if (
@@ -3369,6 +3379,45 @@ int spider_db_show_table_status(
   DBUG_RETURN(0);
 }
 
+void spider_db_set_cardinarity(
+  ha_spider *spider,
+  TABLE *table
+) {
+  int roop_count, roop_count2;
+  SPIDER_SHARE *share = spider->share;
+  KEY *key_info;
+  KEY_PART_INFO *key_part;
+  Field *field;
+  ha_rows rec_per_key;
+  DBUG_ENTER("spider_db_set_cardinarity");
+  for (roop_count = 0; roop_count < table->s->keys; roop_count++)
+  {
+    key_info = &table->key_info[roop_count];
+    for (roop_count2 = 0; roop_count2 < key_info->key_parts; roop_count2++)
+    {
+      key_part = &key_info->key_part[roop_count2];
+      field = key_part->field;
+      rec_per_key = (ha_rows) share->records /
+        share->cardinality[field->field_index];
+      if (rec_per_key > ~(ulong) 0)
+        key_info->rec_per_key[roop_count2] = ~(ulong) 0;
+      else if (rec_per_key == 0)
+        key_info->rec_per_key[roop_count2] = 1;
+      else
+        key_info->rec_per_key[roop_count2] = rec_per_key;
+      DBUG_PRINT("info",
+        ("spider column id=%d", field->field_index));
+      DBUG_PRINT("info",
+        ("spider cardinality=%lld",
+        share->cardinality[field->field_index]));
+      DBUG_PRINT("info",
+        ("spider rec_per_key=%lld",
+        key_info->rec_per_key[roop_count2]));
+    }
+  }
+  DBUG_VOID_RETURN;
+}
+
 int spider_db_show_index(
   ha_spider *spider,
   TABLE *table,
@@ -3382,7 +3431,6 @@ int spider_db_show_index(
   Field *field;
   int roop_count;
   longlong *tmp_cardinality;
-  bool *tmp_cardinality_upd;
   DBUG_ENTER("spider_db_show_index");
   DBUG_PRINT("info",("spider crd_mode=%d", crd_mode));
   if (crd_mode == 1)
@@ -3427,10 +3475,8 @@ int spider_db_show_index(
       DBUG_RETURN(ER_QUERY_ON_FOREIGN_DATA_SOURCE);
     }
 
-    for (roop_count = 0, tmp_cardinality_upd = share->cardinality_upd;
-      roop_count < table->s->fields;
-      roop_count++, tmp_cardinality_upd++)
-      *tmp_cardinality_upd = FALSE;
+    memset((uchar *) share->cardinality_upd, 0,
+      sizeof(uchar) * share->bitmap_size);
     while (row)
     {
       if (
@@ -3441,7 +3487,7 @@ int spider_db_show_index(
         if ((share->cardinality[field->field_index] =
           (longlong) my_strtoll10(row[6], (char**) NULL, &error_num)) <= 0)
           share->cardinality[field->field_index] = 1;
-          share->cardinality_upd[field->field_index] = TRUE;
+        spider_set_bit(share->cardinality_upd, field->field_index);
         DBUG_PRINT("info",
           ("spider col_name=%s", row[4]));
         DBUG_PRINT("info",
@@ -3457,13 +3503,16 @@ int spider_db_show_index(
       }
       row = mysql_fetch_row(res);
     }
-    for (roop_count = 0, tmp_cardinality = share->cardinality,
-      tmp_cardinality_upd = share->cardinality_upd;
+    for (roop_count = 0, tmp_cardinality = share->cardinality;
       roop_count < table->s->fields;
-      roop_count++, tmp_cardinality++, tmp_cardinality_upd++)
+      roop_count++, tmp_cardinality++)
     {
-      if (!tmp_cardinality_upd)
+      if (!spider_bit_is_set(share->cardinality_upd, roop_count))
+      {
+        DBUG_PRINT("info",
+          ("spider init column cardinality id=%d", roop_count));
         *tmp_cardinality = 1;
+      }
     }
     if (res)
       mysql_free_result(res);
@@ -3503,10 +3552,8 @@ int spider_db_show_index(
       /* no record is ok */
     }
 
-    for (roop_count = 0, tmp_cardinality_upd = share->cardinality_upd;
-      roop_count < table->s->fields;
-      roop_count++, tmp_cardinality_upd++)
-      *tmp_cardinality_upd = FALSE;
+    memset((uchar *) share->cardinality_upd, 0,
+      sizeof(uchar) * share->bitmap_size);
     while (row)
     {
       if (
@@ -3517,7 +3564,7 @@ int spider_db_show_index(
         if ((share->cardinality[field->field_index] =
           (longlong) my_strtoll10(row[1], (char**) NULL, &error_num)) <= 0)
           share->cardinality[field->field_index] = 1;
-          share->cardinality_upd[field->field_index] = TRUE;
+        spider_set_bit(share->cardinality_upd, field->field_index);
         DBUG_PRINT("info",
           ("spider col_name=%s", row[0]));
         DBUG_PRINT("info",
@@ -3533,17 +3580,21 @@ int spider_db_show_index(
       }
       row = mysql_fetch_row(res);
     }
-    for (roop_count = 0, tmp_cardinality = share->cardinality,
-      tmp_cardinality_upd = share->cardinality_upd;
+    for (roop_count = 0, tmp_cardinality = share->cardinality;
       roop_count < table->s->fields;
-      roop_count++, tmp_cardinality++, tmp_cardinality_upd++)
+      roop_count++, tmp_cardinality++)
     {
-      if (!tmp_cardinality_upd)
+      if (!spider_bit_is_set(share->cardinality_upd, roop_count))
+      {
+        DBUG_PRINT("info",
+          ("spider init column cardinality id=%d", roop_count));
         *tmp_cardinality = 1;
+      }
     }
     if (res)
       mysql_free_result(res);
   }
+  spider_db_set_cardinarity(spider, table);
   DBUG_RETURN(0);
 }
 
@@ -3560,6 +3611,7 @@ ha_rows spider_db_explain_select(
   SPIDER_DB_ROW row;
   ha_rows rows;
   DBUG_ENTER("spider_db_explain_select");
+  str->length(0);
   if (str->reserve(SPIDER_SQL_EXPLAIN_SELECT_LEN))
   {
     my_errno = HA_ERR_OUT_OF_MEM;

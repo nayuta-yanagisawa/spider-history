@@ -62,7 +62,8 @@ int spider_free_trx_alter_table(
 
 int spider_create_trx_alter_table(
   SPIDER_TRX *trx,
-  SPIDER_SHARE *share
+  SPIDER_SHARE *share,
+  bool now_create
 );
 
 bool spider_cmp_trx_alter_table(

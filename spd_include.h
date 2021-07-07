@@ -13,9 +13,15 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+#define spider_set_bit(BITMAP, BIT) \
+  ((BITMAP)[(BIT) / 8] |= (1 << ((BIT) & 7)))
+#define spider_bit_is_set(BITMAP, BIT) \
+  (uint) ((BITMAP)[(BIT) / 8] & (1 << ((BIT) & 7)))
+
 /* alter table */
 typedef struct st_spider_alter_table
 {
+  bool               now_create;
   char               *table_name;
   uint               table_name_length;
   char               *tmp_char;
@@ -174,6 +180,8 @@ typedef struct st_spider_share
 
   volatile bool      init;
   volatile bool      init_error;
+  volatile time_t    init_error_time;
+  volatile bool      sts_init;
   volatile time_t    sts_get_time;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   volatile time_t    bg_sts_try_time;
@@ -188,6 +196,7 @@ typedef struct st_spider_share
   THD                *bg_sts_thd;
   pthread_t          bg_sts_thread;
   pthread_cond_t     bg_sts_cond;
+  volatile bool      crd_init;
 #endif
   volatile time_t    crd_get_time;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -216,13 +225,14 @@ typedef struct st_spider_share
   time_t             create_time;
   time_t             update_time;
 
+  int                bitmap_size;
   String             *table_select;
   String             *key_select;
   String             *key_hint;
   String             *show_table_status;
   String             *show_index;
   longlong           *cardinality;
-  bool               *cardinality_upd;
+  uchar              *cardinality_upd;
   longlong           additional_table_flags;
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -301,6 +311,15 @@ typedef struct st_spider_share
   SPIDER_PARTITION_SHARE *partition_share;
 #endif
 } SPIDER_SHARE;
+
+typedef struct st_spider_init_error_table
+{
+  char               *table_name;
+  uint               table_name_length;
+  char               init_error_msg[MYSQL_ERRMSG_SIZE];
+  volatile int       init_error;
+  volatile time_t    init_error_time;
+} SPIDER_INIT_ERROR_TABLE;
 
 char *spider_create_string(
   const char *str,

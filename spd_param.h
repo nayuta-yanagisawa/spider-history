@@ -14,6 +14,7 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 extern my_bool spider_support_xa;
+extern uint spider_table_init_error_interval;
 
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_mode, unsigned int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_strict, unsigned int);
@@ -74,3 +75,4 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_bg_mode, int);
 #endif
 extern DECLARE_MYSQL_THDVAR_SIMPLE(ping_interval_at_trx_start, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(auto_increment_mode, int);
+extern DECLARE_MYSQL_THDVAR_BASIC(same_server_link, char);

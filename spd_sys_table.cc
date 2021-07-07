@@ -292,14 +292,23 @@ void spider_store_tables_name(
   const char *ptr_db, *ptr_table;
   my_ptrdiff_t ptr_diff_db, ptr_diff_table;
   DBUG_ENTER("spider_store_tables_name");
-  ptr_db = strchr(name, '/');
-  ptr_db++;
-  ptr_diff_db = PTR_BYTE_DIFF(ptr_db, name);
-  DBUG_PRINT("info",("spider ptr_diff_db = %ld", ptr_diff_db));
-  ptr_table = strchr(ptr_db, '/');
-  ptr_table++;
-  ptr_diff_table = PTR_BYTE_DIFF(ptr_table, ptr_db);
-  DBUG_PRINT("info",("spider ptr_diff_table = %ld", ptr_diff_table));
+  if (name[0] == '.' && name[1] == '/')
+  {
+    ptr_db = strchr(name, '/');
+    ptr_db++;
+    ptr_diff_db = PTR_BYTE_DIFF(ptr_db, name);
+    DBUG_PRINT("info",("spider ptr_diff_db = %ld", ptr_diff_db));
+    ptr_table = strchr(ptr_db, '/');
+    ptr_table++;
+    ptr_diff_table = PTR_BYTE_DIFF(ptr_table, ptr_db);
+    DBUG_PRINT("info",("spider ptr_diff_table = %ld", ptr_diff_table));
+  } else {
+    DBUG_PRINT("info",("spider temporary table"));
+    ptr_db = "";
+    ptr_diff_db = 1;
+    ptr_table = "";
+    ptr_diff_table = 1;
+  }
   table->field[0]->store(
     ptr_db,
     ptr_diff_table - 1,
@@ -581,7 +590,8 @@ int spider_update_tables_priority(
   char table_key[MAX_KEY_LENGTH];
   DBUG_ENTER("spider_update_tables_name");
   table->use_all_columns();
-  spider_store_tables_name(table, name, strlen(name));
+  spider_store_tables_name(table, alter_table->table_name,
+    alter_table->table_name_length);
   if ((error_num = spider_check_sys_table(table, table_key)))
   {
     table->file->print_error(error_num, MYF(0));
@@ -589,6 +599,7 @@ int spider_update_tables_priority(
   } else {
     store_record(table, record[1]);
     table->use_all_columns();
+    spider_store_tables_name(table, name, strlen(name));
     spider_store_tables_priority(table, alter_table->tmp_priority);
     spider_store_tables_connect_info(table, alter_table);
     if (
@@ -685,10 +696,8 @@ int spider_delete_tables(
   spider_store_tables_name(table, name, strlen(name));
 
   if ((error_num = spider_check_sys_table(table, table_key)))
-  {
-    table->file->print_error(error_num, MYF(0));
-    DBUG_RETURN(error_num);
-  } else {
+    DBUG_RETURN(0);
+  else {
     if ((error_num = table->file->ha_delete_row(table->record[0])))
     {
       table->file->print_error(error_num, MYF(0));
