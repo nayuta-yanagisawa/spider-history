@@ -346,8 +346,10 @@ void spider_store_tables_connect_info(
       alter_table->tmp_server_name,
       (uint) alter_table->tmp_server_name_length,
       system_charset_info);
-  } else
+  } else {
     table->field[3]->set_null();
+    table->field[3]->reset();
+  }
   if (alter_table->tmp_tgt_wrapper)
   {
     table->field[4]->set_notnull();
@@ -355,8 +357,10 @@ void spider_store_tables_connect_info(
       alter_table->tmp_tgt_wrapper,
       (uint) alter_table->tmp_tgt_wrapper_length,
       system_charset_info);
-  } else
+  } else {
     table->field[4]->set_null();
+    table->field[4]->reset();
+  }
   if (alter_table->tmp_tgt_host)
   {
     table->field[5]->set_notnull();
@@ -364,15 +368,19 @@ void spider_store_tables_connect_info(
       alter_table->tmp_tgt_host,
       (uint) alter_table->tmp_tgt_host_length,
       system_charset_info);
-  } else
+  } else {
     table->field[5]->set_null();
+    table->field[5]->reset();
+  }
   if (alter_table->tmp_tgt_port >= 0)
   {
     table->field[6]->set_notnull();
     table->field[6]->store(
       alter_table->tmp_tgt_port);
-  } else
+  } else {
     table->field[6]->set_null();
+    table->field[6]->reset();
+  }
   if (alter_table->tmp_tgt_socket)
   {
     table->field[7]->set_notnull();
@@ -380,8 +388,10 @@ void spider_store_tables_connect_info(
       alter_table->tmp_tgt_socket,
       (uint) alter_table->tmp_tgt_socket_length,
       system_charset_info);
-  } else
+  } else {
     table->field[7]->set_null();
+    table->field[7]->reset();
+  }
   if (alter_table->tmp_tgt_username)
   {
     table->field[8]->set_notnull();
@@ -389,8 +399,10 @@ void spider_store_tables_connect_info(
       alter_table->tmp_tgt_username,
       (uint) alter_table->tmp_tgt_username_length,
       system_charset_info);
-  } else
+  } else {
     table->field[8]->set_null();
+    table->field[8]->reset();
+  }
   if (alter_table->tmp_tgt_password)
   {
     table->field[9]->set_notnull();
@@ -398,8 +410,10 @@ void spider_store_tables_connect_info(
       alter_table->tmp_tgt_password,
       (uint) alter_table->tmp_tgt_password_length,
       system_charset_info);
-  } else
+  } else {
     table->field[9]->set_null();
+    table->field[9]->reset();
+  }
   if (alter_table->tmp_tgt_db)
   {
     table->field[10]->set_notnull();
@@ -407,8 +421,10 @@ void spider_store_tables_connect_info(
       alter_table->tmp_tgt_db,
       (uint) alter_table->tmp_tgt_db_length,
       system_charset_info);
-  } else
+  } else {
     table->field[10]->set_null();
+    table->field[10]->reset();
+  }
   if (alter_table->tmp_tgt_table_name)
   {
     table->field[11]->set_notnull();
@@ -416,8 +432,10 @@ void spider_store_tables_connect_info(
       alter_table->tmp_tgt_table_name,
       (uint) alter_table->tmp_tgt_table_name_length,
       system_charset_info);
-  } else
+  } else {
     table->field[11]->set_null();
+    table->field[11]->reset();
+  }
   DBUG_VOID_RETURN;
 }
 

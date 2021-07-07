@@ -23,6 +23,7 @@
 
 my_bool spider_support_xa;
 uint spider_table_init_error_interval;
+int spider_use_table_charset;
 
 static MYSQL_SYSVAR_BOOL(
   support_xa,
@@ -47,6 +48,24 @@ static MYSQL_SYSVAR_UINT(
   1,
   0,
   4294967295U,
+  0
+);
+
+/*
+ -1 :use table parameter
+  0 :use utf8
+  1 :use table charset
+ */
+static MYSQL_SYSVAR_INT(
+  use_table_charset,
+  spider_use_table_charset,
+  PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+  "Use table charset for remote access",
+  NULL,
+  NULL,
+  -1,
+  -1,
+  1,
   0
 );
 
@@ -872,12 +891,27 @@ MYSQL_THDVAR_BOOL(
   FALSE /* def */
 );
 
+/*
+  FALSE: transmits
+  TRUE:  don't transmit
+ */
+MYSQL_THDVAR_BOOL(
+  local_lock_table, /* name */
+  PLUGIN_VAR_OPCMDARG, /* opt */
+  "Remote server transmission when lock tables is executed at local",
+    /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  FALSE /* def */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
 struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(support_xa),
   MYSQL_SYSVAR(table_init_error_interval),
+  MYSQL_SYSVAR(use_table_charset),
   MYSQL_SYSVAR(conn_recycle_mode),
   MYSQL_SYSVAR(conn_recycle_strict),
   MYSQL_SYSVAR(sync_trx_isolation),
@@ -938,6 +972,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(ping_interval_at_trx_start),
   MYSQL_SYSVAR(auto_increment_mode),
   MYSQL_SYSVAR(same_server_link),
+  MYSQL_SYSVAR(local_lock_table),
   NULL
 };
 
@@ -951,7 +986,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0010,
+  0x0011,
   NULL,
   spider_system_variables,
   NULL

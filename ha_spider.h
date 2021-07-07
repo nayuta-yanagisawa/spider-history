@@ -32,6 +32,7 @@ public:
   SPIDER_CONN        *conn;
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;
+  String             *blob_buff;
   ha_spider          *next;
 
   bool               rnd_scan_and_first;

@@ -217,6 +217,9 @@ int spider_free_share_alloc(
     delete [] share->key_hint;
   spider_db_free_show_table_status(share);
   spider_db_free_show_index(share);
+  spider_db_free_set_names(share);
+  spider_db_free_column_name_str(share);
+  spider_db_free_table_name_str(share);
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   if (share->partition_share)
     spider_free_pt_share(share->partition_share);
@@ -602,6 +605,7 @@ int spider_parse_connect_info(
   share->bgs_second_read = -1;
 #endif
   share->auto_increment_mode = -1;
+  share->use_table_charset = -1;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   for (roop_count = 4; roop_count > 0; roop_count--)
@@ -755,6 +759,7 @@ int spider_parse_connect_info(
 #endif
           SPIDER_PARAM_STR("tbl", tgt_table_name);
           SPIDER_PARAM_INT_WITH_MAX("tcm", table_count_mode, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX("utc", use_table_charset, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -880,6 +885,8 @@ int spider_parse_connect_info(
         case 17:
           SPIDER_PARAM_INT_WITH_MAX(
             "internal_optimize", internal_optimize, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX(
+            "use_table_charset", use_table_charset, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1234,6 +1241,8 @@ int spider_set_connect_info_default(
 #endif
   if (share->auto_increment_mode == -1)
     share->auto_increment_mode = 0;
+  if (share->use_table_charset == -1)
+    share->use_table_charset = 1;
   DBUG_RETURN(0);
 }
 
@@ -1250,8 +1259,7 @@ int spider_create_conn_key(
     + 5 + 1
     + share->tgt_socket_length + 1
     + share->tgt_username_length + 1
-    + share->tgt_password_length + 1
-    + share->csname_length;
+    + share->tgt_password_length;
   if (!(share->conn_key = (char *)
         my_malloc(share->conn_key_length + 1, MYF(MY_WME | MY_ZEROFILL)))
   )
@@ -1281,8 +1289,6 @@ int spider_create_conn_key(
     tmp_name = strmov(tmp_name + 1, share->tgt_password);
   } else
     tmp_name++;
-  DBUG_PRINT("info",("spider csname=%s", share->csname));
-  tmp_name = strmov(tmp_name + 1, share->csname);
   DBUG_RETURN(0);
 }
 
@@ -1295,9 +1301,8 @@ SPIDER_SHARE *spider_get_share(
 ) {
   SPIDER_SHARE *share;
   uint length;
-  uint csname_length;
+  int use_table_charset;
   char *tmp_name;
-  char *tmp_csname;
   longlong *tmp_cardinality;
   uchar *tmp_cardinality_upd;
   int bitmap_size;
@@ -1321,12 +1326,10 @@ SPIDER_SHARE *spider_get_share(
   {
     bitmap_size = (table->s->fields + 7) / 8;
     DBUG_PRINT("info",("spider create new share"));
-    csname_length = (uint) strlen((char*) system_charset_info->csname);
     if (!(share = (SPIDER_SHARE *)
       my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
         &share, sizeof(*share),
         &tmp_name, length + 1,
-        &tmp_csname, csname_length + 1,
         &tmp_cardinality, sizeof(*tmp_cardinality) * table->s->fields,
         &tmp_cardinality_upd, sizeof(*tmp_cardinality_upd) * bitmap_size,
         NullS))
@@ -1339,9 +1342,6 @@ SPIDER_SHARE *spider_get_share(
     share->table_name_length = length;
     share->table_name = tmp_name;
     strmov(share->table_name, table_name);
-    share->csname_length = csname_length;
-    share->csname = tmp_csname;
-    strmov(share->csname, (char*) system_charset_info->csname);
     share->cardinality = tmp_cardinality;
     share->cardinality_upd = tmp_cardinality_upd;
     share->bitmap_size = bitmap_size;
@@ -1358,6 +1358,13 @@ SPIDER_SHARE *spider_get_share(
     if ((*error_num = spider_parse_connect_info(share, table, 0)))
       goto error_parse_connect_string;
 
+    use_table_charset = spider_use_table_charset == -1 ?
+      share->use_table_charset : spider_use_table_charset;
+    if (use_table_charset)
+      share->access_charset = table->s->table_charset;
+    else
+      share->access_charset = system_charset_info;
+
     if ((*error_num = spider_create_conn_key(share)))
       goto error_create_conn_key;
 
@@ -1366,8 +1373,12 @@ SPIDER_SHARE *spider_get_share(
       (table->s->keys > 0 &&
         !(share->key_select = new String[table->s->keys])
       ) ||
+      (*error_num = spider_db_create_table_name_str(share)) ||
+      (*error_num = spider_db_create_column_name_str(share, table->s)) ||
+      (*error_num = spider_db_convert_key_hint_str(share, table->s)) ||
       (*error_num = spider_db_append_show_table_status(share)) ||
-      (*error_num = spider_db_append_show_index(share))
+      (*error_num = spider_db_append_show_index(share)) ||
+      (*error_num = spider_db_append_set_names(share))
     ) {
       *error_num = HA_ERR_OUT_OF_MEM;
       goto error_init_string;
@@ -1475,8 +1486,9 @@ SPIDER_SHARE *spider_get_share(
           spider_table_init_error_interval)
         {
           *error_num = spider_init_error_table->init_error;
-          my_message(spider_init_error_table->init_error,
-            spider_init_error_table->init_error_msg, MYF(0));
+          if (spider_init_error_table->init_error_with_message)
+            my_message(spider_init_error_table->init_error,
+              spider_init_error_table->init_error_msg, MYF(0));
           share->init_error = TRUE;
           share->init = TRUE;
           spider_free_share(share);
@@ -1504,8 +1516,10 @@ SPIDER_SHARE *spider_get_share(
             spider_get_init_error_table(share, TRUE))
         ) {
           spider_init_error_table->init_error = *error_num;
-          strmov(spider_init_error_table->init_error_msg,
-            thd->main_da.message());
+          if ((spider_init_error_table->init_error_with_message =
+            thd->main_da.is_error()))
+            strmov(spider_init_error_table->init_error_msg,
+              thd->main_da.message());
           spider_init_error_table->init_error_time =
             (time_t) time((time_t*) 0);
         }
@@ -1573,8 +1587,9 @@ SPIDER_SHARE *spider_get_share(
               spider_table_init_error_interval)
             {
               *error_num = spider_init_error_table->init_error;
-              my_message(spider_init_error_table->init_error,
-                spider_init_error_table->init_error_msg, MYF(0));
+              if (spider_init_error_table->init_error_with_message)
+                my_message(spider_init_error_table->init_error,
+                  spider_init_error_table->init_error_msg, MYF(0));
               pthread_mutex_unlock(&share->crd_mutex);
               pthread_mutex_unlock(&share->sts_mutex);
               spider_free_share(share);
@@ -1602,8 +1617,10 @@ SPIDER_SHARE *spider_get_share(
                 spider_get_init_error_table(share, TRUE))
             ) {
               spider_init_error_table->init_error = *error_num;
-              strmov(spider_init_error_table->init_error_msg,
-                thd->main_da.message());
+              if ((spider_init_error_table->init_error_with_message =
+                thd->main_da.is_error()))
+                strmov(spider_init_error_table->init_error_msg,
+                  thd->main_da.message());
               spider_init_error_table->init_error_time =
                 (time_t) time((time_t*) 0);
             }
@@ -1845,8 +1862,6 @@ int spider_open_all_tables(
 
   init_alloc_root(&mem_root, 4096, 0);
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
-  tmp_share.csname = (char*) system_charset_info->csname;
-  tmp_share.csname_length = strlen(tmp_share.csname);
   tmp_share.net_timeout = -1;
   do {
     if (

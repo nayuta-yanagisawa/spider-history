@@ -66,6 +66,11 @@ int spider_db_set_sql_log_off(
   bool sql_log_off
 );
 
+int spider_db_set_names(
+  SPIDER_SHARE *share,
+  SPIDER_CONN *conn
+);
+
 int spider_db_consistent_snapshot(
   SPIDER_CONN *conn
 );
@@ -80,6 +85,12 @@ int spider_db_commit(
 
 int spider_db_rollback(
   SPIDER_CONN *conn
+);
+
+int spider_db_append_hex_string(
+  String *str,
+  uchar *hex_ptr,
+  int hex_ptr_length
 );
 
 void spider_db_append_xid_str(
@@ -120,13 +131,41 @@ int spider_db_unlock_tables(
   ha_spider *spider
 );
 
-void spider_db_append_column_name(
+int spider_db_append_name_with_quote_str(
   String *str,
-  const Field *field,
-  int field_length
+  char *name
+);
+
+int spider_db_create_table_name_str(
+  SPIDER_SHARE *share
+);
+
+void spider_db_free_table_name_str(
+  SPIDER_SHARE *share
+);
+
+int spider_db_create_column_name_str(
+  SPIDER_SHARE *share,
+  TABLE_SHARE *table_share
+);
+
+void spider_db_free_column_name_str(
+  SPIDER_SHARE *share
+);
+
+int spider_db_convert_key_hint_str(
+  SPIDER_SHARE *share,
+  TABLE_SHARE *table_share
+);
+
+void spider_db_append_column_name(
+  SPIDER_SHARE *share,
+  String *str,
+  int field_index
 );
 
 int spider_db_append_column_value(
+  SPIDER_SHARE *share,
   String *str,
   Field *field,
   const uchar *new_ptr
@@ -196,9 +235,9 @@ int spider_db_append_select_columns(
 );
 
 int spider_db_append_null(
+  SPIDER_SHARE *share,
   String *str,
   KEY_PART_INFO *key_part,
-  uint key_name_length,
   const key_range *key,
   const uchar **ptr
 );
@@ -249,6 +288,14 @@ void spider_db_free_show_index(
   SPIDER_SHARE *share
 );
 
+int spider_db_append_set_names(
+  SPIDER_SHARE *share
+);
+
+void spider_db_free_set_names(
+  SPIDER_SHARE *share
+);
+
 int spider_db_append_disable_keys(
   ha_spider *spider
 );
@@ -280,7 +327,8 @@ int spider_db_append_flush_tables(
   bool lock
 );
 
-void spider_db_fetch_row(
+int spider_db_fetch_row(
+  SPIDER_SHARE *share,
   Field *field,
   SPIDER_DB_ROW row,
   ulong *lengths,
@@ -288,12 +336,14 @@ void spider_db_fetch_row(
 );
 
 int spider_db_fetch_table(
+  SPIDER_SHARE *share,
   uchar *buf,
   TABLE *table,
   SPIDER_RESULT_LIST *result_list
 );
 
 int spider_db_fetch_key(
+  SPIDER_SHARE *share,
   uchar *buf,
   TABLE *table,
   const KEY *key_info,
@@ -301,6 +351,7 @@ int spider_db_fetch_key(
 );
 
 int spider_db_fetch_minimum_columns(
+  SPIDER_SHARE *share,
   uchar *buf,
   TABLE *table,
   SPIDER_RESULT_LIST *result_list

@@ -83,6 +83,7 @@ int spider_free_trx_another_conn(
     roop_count)))
   {
     tmp_spider.conn = conn;
+    tmp_spider.trx = trx;
     if (lock && (tmp_error_num = spider_db_unlock_tables(&tmp_spider)))
       error_num = tmp_error_num;
     spider_free_conn_from_trx(trx, conn, TRUE, TRUE, &roop_count);
@@ -97,16 +98,27 @@ int spider_trx_another_lock_tables(
   int roop_count = 0;
   SPIDER_CONN *conn;
   ha_spider tmp_spider;
+  SPIDER_SHARE tmp_share;
   DBUG_ENTER("spider_trx_another_lock_tables");
   memset(&tmp_spider, 0, sizeof(ha_spider));
+  memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
+  tmp_spider.share = &tmp_share;
+  tmp_spider.trx = trx;
+  tmp_share.access_charset = system_charset_info;
+  if ((error_num = spider_db_append_set_names(&tmp_share)))
+    DBUG_RETURN(error_num);
   while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_another_conn_hash,
     roop_count)))
   {
     tmp_spider.conn = conn;
     if ((error_num = spider_db_lock_tables(&tmp_spider)))
+    {
+      spider_db_free_set_names(&tmp_share);
       DBUG_RETURN(error_num);
+    }
     roop_count++;
   }
+  spider_db_free_set_names(&tmp_share);
   DBUG_RETURN(0);
 }
 
@@ -163,6 +175,7 @@ int spider_trx_all_unlock_tables(
     roop_count)))
   {
     tmp_spider.conn = conn;
+    tmp_spider.trx = trx;
     if ((error_num = spider_db_unlock_tables(&tmp_spider)))
       DBUG_RETURN(error_num);
     roop_count++;
@@ -1585,8 +1598,6 @@ int spider_internal_xa_commit_by_xid(
   }
 
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
-  tmp_share.csname = (char*) table_xa_member->s->table_charset->csname;
-  tmp_share.csname_length = strlen(tmp_share.csname);
   do {
     spider_get_sys_server_info(table_xa_member, &tmp_share, &mem_root);
     if ((error_num = spider_create_conn_key(&tmp_share)))
@@ -1790,8 +1801,6 @@ int spider_internal_xa_rollback_by_xid(
   }
 
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
-  tmp_share.csname = (char*) table_xa_member->s->table_charset->csname;
-  tmp_share.csname_length = strlen(tmp_share.csname);
   do {
     spider_get_sys_server_info(table_xa_member, &tmp_share, &mem_root);
     if ((error_num = spider_create_conn_key(&tmp_share)))
@@ -2166,6 +2175,7 @@ int spider_end_trx(
     conn->table_lock = 0;
     conn->disable_reconnect = FALSE;
     tmp_spider.conn = conn;
+    tmp_spider.trx = trx;
     if (
       !conn->server_lost &&
       (error_num = spider_db_unlock_tables(&tmp_spider))

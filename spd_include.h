@@ -61,6 +61,7 @@ typedef struct st_spider_conn
   bool               semi_trx_chk;
   bool               semi_trx;
   bool               trx_start;
+  bool               table_locked;
   int                table_lock;
   bool               disable_xa;
   bool               disable_reconnect;
@@ -80,6 +81,7 @@ typedef struct st_spider_conn
   char               *error_str;
   int                error_length;
   time_t             ping_time;
+  CHARSET_INFO       *access_charset;
 
   char               *tgt_host;
   char               *tgt_username;
@@ -164,6 +166,7 @@ typedef struct st_spider_transaction
   SPIDER_CONN        *join_trx_top;
   ulonglong          spider_thread_id;
   ulonglong          trx_conn_adjustment;
+  uint               locked_connections;
 } SPIDER_TRX;
 
 typedef struct st_spider_share
@@ -231,6 +234,11 @@ typedef struct st_spider_share
   String             *key_hint;
   String             *show_table_status;
   String             *show_index;
+  String             *set_names;
+  String             *table_name_str;
+  String             *db_name_str;
+  String             *column_name_str;
+  CHARSET_INFO       *access_charset;
   longlong           *cardinality;
   uchar              *cardinality_upd;
   longlong           additional_table_flags;
@@ -282,6 +290,7 @@ typedef struct st_spider_share
   longlong           bgs_second_read;
 #endif
   int                auto_increment_mode;
+  int                use_table_charset;
 
   char               *server_name;
   char               *tgt_table_name;
@@ -291,7 +300,6 @@ typedef struct st_spider_share
   char               *tgt_password;
   char               *tgt_socket;
   char               *tgt_wrapper;
-  char               *csname;
   char               *conn_key;
   long               tgt_port;
 
@@ -303,7 +311,6 @@ typedef struct st_spider_share
   uint               tgt_password_length;
   uint               tgt_socket_length;
   uint               tgt_wrapper_length;
-  uint               csname_length;
   uint               conn_key_length;
 
   SPIDER_ALTER_TABLE alter_table;
@@ -316,6 +323,7 @@ typedef struct st_spider_init_error_table
 {
   char               *table_name;
   uint               table_name_length;
+  bool               init_error_with_message;
   char               init_error_msg[MYSQL_ERRMSG_SIZE];
   volatile int       init_error;
   volatile time_t    init_error_time;

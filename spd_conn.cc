@@ -164,6 +164,7 @@ SPIDER_CONN *spider_create_conn(
   conn->semi_trx_isolation = -2;
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
+  conn->access_charset = NULL;
 
   if (pthread_mutex_init(&conn->mta_conn_mutex, MY_MUTEX_INIT_FAST))
   {
@@ -769,15 +770,19 @@ void *spider_bg_conn_action(
         result_list->bgs_phase == 1 ||
         !result_list->bgs_current->result
       ) {
-        if (spider_db_query(
-          conn,
-          result_list->sql.ptr(),
-          result_list->sql.length())
-        )
-          result_list->bgs_error = spider_db_errorno(conn);
-        else {
-          result_list->bgs_error =
-            spider_db_store_result(spider, result_list->table);
+        if (!(result_list->bgs_error =
+          spider_db_set_names(spider->share, conn)))
+        {
+          if (spider_db_query(
+            conn,
+            result_list->sql.ptr(),
+            result_list->sql.length())
+          )
+            result_list->bgs_error = spider_db_errorno(conn);
+          else {
+            result_list->bgs_error =
+              spider_db_store_result(spider, result_list->table);
+          }
         }
       } else {
         result_list->bgs_error =

@@ -15,6 +15,7 @@
 
 extern my_bool spider_support_xa;
 extern uint spider_table_init_error_interval;
+extern int spider_use_table_charset;
 
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_mode, unsigned int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_strict, unsigned int);
@@ -76,3 +77,4 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_bg_mode, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(ping_interval_at_trx_start, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(auto_increment_mode, int);
 extern DECLARE_MYSQL_THDVAR_BASIC(same_server_link, char);
+extern DECLARE_MYSQL_THDVAR_BASIC(local_lock_table, char);
