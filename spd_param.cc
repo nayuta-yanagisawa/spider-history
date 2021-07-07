@@ -905,6 +905,23 @@ MYSQL_THDVAR_BOOL(
   FALSE /* def */
 );
 
+/*
+ -1 :use table parameter
+  0 :don't transmit
+  1 :transmits
+ */
+MYSQL_THDVAR_INT(
+  use_pushdown_udf, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Remote server transmission existence when UDF is used at condition and \"engine_condition_pushdown=1\"", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -973,6 +990,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(auto_increment_mode),
   MYSQL_SYSVAR(same_server_link),
   MYSQL_SYSVAR(local_lock_table),
+  MYSQL_SYSVAR(use_pushdown_udf),
   NULL
 };
 
@@ -986,7 +1004,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0011,
+  0x0012,
   NULL,
   spider_system_variables,
   NULL

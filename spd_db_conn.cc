@@ -350,6 +350,7 @@ int spider_db_query(
   uint length
 ) {
   DBUG_ENTER("spider_db_query");
+  DBUG_PRINT("info", ("spider conn->db_conn %x", conn->db_conn));
   if (conn->server_lost)
     DBUG_RETURN(CR_SERVER_GONE_ERROR);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -4675,6 +4676,7 @@ int spider_db_open_item_func(
   int func_name_length = SPIDER_SQL_NULL_CHAR_LEN,
     separete_str_length = SPIDER_SQL_NULL_CHAR_LEN,
     last_str_length = SPIDER_SQL_NULL_CHAR_LEN;
+  int use_pushdown_udf;
   DBUG_ENTER("spider_db_open_item_func");
   if (str->reserve(SPIDER_SQL_OPEN_PAREN_LEN))
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -4794,6 +4796,11 @@ int spider_db_open_item_func(
       }
       break;
     case Item_func::UDF_FUNC:
+      use_pushdown_udf = THDVAR(spider->trx->thd, use_pushdown_udf) == -1 ?
+        spider->share->use_pushdown_udf :
+        THDVAR(spider->trx->thd, use_pushdown_udf);
+      if (!use_pushdown_udf)
+        DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
       func_name = (char*) item_func->func_name();
       func_name_length = strlen(func_name);
       DBUG_PRINT("info",("spider func_name = %s", func_name));
@@ -4813,6 +4820,8 @@ int spider_db_open_item_func(
       str->length(str->length() - SPIDER_SQL_OPEN_PAREN_LEN);
       DBUG_RETURN(
         spider_db_open_item_cond((Item_cond *) item_func, spider, str));
+    case Item_func::TRIG_COND_FUNC:
+      DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
 /*  memo
     case Item_func::EQ_FUNC:
     case Item_func::EQUAL_FUNC:

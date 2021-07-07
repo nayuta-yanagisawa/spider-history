@@ -78,3 +78,4 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(ping_interval_at_trx_start, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(auto_increment_mode, int);
 extern DECLARE_MYSQL_THDVAR_BASIC(same_server_link, char);
 extern DECLARE_MYSQL_THDVAR_BASIC(local_lock_table, char);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(use_pushdown_udf, int);

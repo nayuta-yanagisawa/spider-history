@@ -1534,6 +1534,8 @@ int ha_spider::info(
       stats.records = share->records;
       stats.mean_rec_length = share->mean_rec_length;
       stats.check_time = share->check_time;
+      if (stats.records <= 1 && (flag & HA_STATUS_NO_LOCK))
+        stats.records = 2;
     }
     if (flag & HA_STATUS_AUTO)
       stats.auto_increment_value = share->auto_increment_value;

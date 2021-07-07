@@ -291,6 +291,7 @@ typedef struct st_spider_share
 #endif
   int                auto_increment_mode;
   int                use_table_charset;
+  int                use_pushdown_udf;
 
   char               *server_name;
   char               *tgt_table_name;

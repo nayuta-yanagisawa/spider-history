@@ -606,6 +606,7 @@ int spider_parse_connect_info(
 #endif
   share->auto_increment_mode = -1;
   share->use_table_charset = -1;
+  share->use_pushdown_udf = -1;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   for (roop_count = 4; roop_count > 0; roop_count--)
@@ -690,7 +691,8 @@ int spider_parse_connect_info(
       }
       tmp_ptr = sprit_ptr[0];
       sprit_ptr[0] = sprit_ptr[1];
-      while (*tmp_ptr == ' ')
+      while (*tmp_ptr == ' ' || *tmp_ptr == '\r' ||
+        *tmp_ptr == '\n' || *tmp_ptr == '\t')
         tmp_ptr++;
 
       if (*tmp_ptr == '\0')
@@ -699,7 +701,9 @@ int spider_parse_connect_info(
       title_length = 0;
       start_ptr = tmp_ptr;
       while (*start_ptr != ' ' && *start_ptr != '\'' &&
-        *start_ptr != '"' && *start_ptr != '\0')
+        *start_ptr != '"' && *start_ptr != '\0' &&
+        *start_ptr != '\r' && *start_ptr != '\n' &&
+        *start_ptr != '\t')
       {
         title_length++;
         start_ptr++;
@@ -759,6 +763,7 @@ int spider_parse_connect_info(
 #endif
           SPIDER_PARAM_STR("tbl", tgt_table_name);
           SPIDER_PARAM_INT_WITH_MAX("tcm", table_count_mode, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX("upu", use_pushdown_udf, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX("utc", use_table_charset, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
@@ -878,6 +883,8 @@ int spider_parse_connect_info(
             "internal_delayed", internal_delayed, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX(
             "table_count_mode", table_count_mode, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX(
+            "use_pushdown_udf", use_pushdown_udf, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1243,6 +1250,8 @@ int spider_set_connect_info_default(
     share->auto_increment_mode = 0;
   if (share->use_table_charset == -1)
     share->use_table_charset = 1;
+  if (share->use_pushdown_udf == -1)
+    share->use_pushdown_udf = 1;
   DBUG_RETURN(0);
 }
 
