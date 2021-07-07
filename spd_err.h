@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -39,6 +39,7 @@
 #define ER_SPIDER_LOW_MEM_READ_PREV_STR "Can't use this operation at low mem read mode"
 #define ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM 12701
 #define ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR "Remote MySQL server has gone away"
+#define ER_SPIDER_REMOTE_SERVER_GONE_AWAY_LEN (sizeof(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR) - 1)
 #define ER_SPIDER_REMOTE_TABLE_NOT_FOUND_NUM 12702
 #define ER_SPIDER_REMOTE_TABLE_NOT_FOUND_STR "Remote table '%s.%s' is not found"
 #define ER_SPIDER_COND_SKIP_NUM 12801

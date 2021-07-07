@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software); you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -72,3 +72,5 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_sync, int);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 extern DECLARE_MYSQL_THDVAR_SIMPLE(sts_bg_mode, int);
 #endif
+extern DECLARE_MYSQL_THDVAR_SIMPLE(ping_interval_at_trx_start, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(auto_increment_mode, int);

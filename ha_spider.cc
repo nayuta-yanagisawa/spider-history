@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -367,6 +367,8 @@ int ha_spider::external_lock(
     if (conn->table_lock == 1)
     {
       conn->table_lock = 0;
+      if (!conn->trx_start)
+        conn->disable_reconnect = FALSE;
       if ((error_num = spider_db_unlock_tables(this)))
       {
         DBUG_RETURN(error_num);
@@ -1404,7 +1406,7 @@ int ha_spider::info(
 
     if (flag & HA_STATUS_TIME)
       stats.update_time = share->update_time;
-    if (flag & HA_STATUS_CONST)
+    if (flag & (HA_STATUS_CONST | HA_STATUS_VARIABLE))
     {
       stats.max_data_file_length = share->max_data_file_length;
       stats.create_time = share->create_time;
@@ -1695,12 +1697,14 @@ uint8 ha_spider::table_cache_type()
   DBUG_RETURN(HA_CACHE_TBL_NOCACHE);
 }
 
+/*
 int ha_spider::update_auto_increment()
 {
   DBUG_ENTER("ha_spider::update_auto_increment");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_RETURN(spider_db_update_auto_increment(this));
 }
+*/
 
 void ha_spider::get_auto_increment(
   ulonglong offset,
@@ -1709,10 +1713,64 @@ void ha_spider::get_auto_increment(
   ulonglong *first_value,
   ulonglong *nb_reserved_values
 ) {
+  THD *thd = ha_thd();
+  int auto_increment_mode = THDVAR(thd, auto_increment_mode) == -1 ?
+    share->auto_increment_mode : THDVAR(thd, auto_increment_mode);
   DBUG_ENTER("ha_spider::get_auto_increment");
   DBUG_PRINT("info",("spider this=%x", this));
-  *first_value = ~(ulonglong)0;
-  DBUG_VOID_RETURN;
+  if (auto_increment_mode == 0)
+  {
+    /* strict mode */
+    int error_num;
+    VOID(extra(HA_EXTRA_KEYREAD));
+    if (index_init(table_share->next_number_index, TRUE))
+      goto error_index_init;
+    result_list.internal_limit = 1;
+    if (table_share->next_number_keypart)
+    {
+      uchar key[MAX_KEY_LENGTH];
+      key_copy(key, table->record[0],
+        &table->key_info[table_share->next_number_index],
+        table_share->next_number_key_offset);
+      error_num = index_read_last_map(table->record[1], key,
+        make_prev_keypart_map(table_share->next_number_keypart));
+    } else
+      error_num = index_last(table->record[1]);
+
+    if (error_num)
+      *first_value = 1;
+    else
+      *first_value = ((ulonglong) table->next_number_field->
+        val_int_offset(table_share->rec_buff_length) + 1);
+    VOID(index_end());
+    VOID(extra(HA_EXTRA_NO_KEYREAD));
+    DBUG_VOID_RETURN;
+
+error_index_init:
+    VOID(extra(HA_EXTRA_NO_KEYREAD));
+    *first_value = ~(ulonglong)0;
+    DBUG_VOID_RETURN;
+  } else {
+    pthread_mutex_lock(&share->auto_increment_mutex);
+    *first_value = share->auto_increment_lclval;
+    share->auto_increment_lclval += nb_desired_values * increment;
+    pthread_mutex_unlock(&share->auto_increment_mutex);
+  }
+}
+
+int ha_spider::reset_auto_increment(
+  ulonglong value
+) {
+  DBUG_ENTER("ha_spider::reset_auto_increment");
+  DBUG_PRINT("info",("spider this=%x", this));
+  if (table->next_number_field)
+  {
+    pthread_mutex_lock(&share->auto_increment_mutex);
+    share->auto_increment_lclval = value;
+    share->auto_increment_init = TRUE;
+    pthread_mutex_unlock(&share->auto_increment_mutex);
+  }
+  DBUG_RETURN(0);
 }
 
 void ha_spider::start_bulk_insert(
@@ -1737,11 +1795,44 @@ int ha_spider::write_row(
   uchar *buf
 ) {
   int error_num;
+  THD *thd = ha_thd();
+  int auto_increment_mode = THDVAR(thd, auto_increment_mode) == -1 ?
+    share->auto_increment_mode : THDVAR(thd, auto_increment_mode);
+  bool auto_increment_flag =
+    table->next_number_field && buf == table->record[0];
   DBUG_ENTER("ha_spider::write_row");
   DBUG_PRINT("info",("spider this=%x", this));
   ha_statistic_increment(&SSV::ha_write_count);
   if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_INSERT)
     table->timestamp_field->set_time();
+  if (auto_increment_flag)
+  {
+    if (auto_increment_mode == 2)
+    {
+#ifndef DBUG_OFF
+      my_bitmap_map *tmp_map =
+        dbug_tmp_use_all_columns(table, table->write_set);
+#endif
+      table->next_number_field->store((longlong) 0, TRUE);
+#ifndef DBUG_OFF
+      dbug_tmp_restore_column_map(table->write_set, tmp_map);
+#endif
+    } else {
+      if (!share->auto_increment_init)
+      {
+        pthread_mutex_lock(&share->auto_increment_mutex);
+        if (!share->auto_increment_init)
+        {
+          VOID(info(HA_STATUS_AUTO));
+          share->auto_increment_lclval = stats.auto_increment_value;
+          share->auto_increment_init = TRUE;
+        }
+        pthread_mutex_unlock(&share->auto_increment_mutex);
+      }
+      if ((error_num = update_auto_increment()))
+        DBUG_RETURN(error_num);
+    }
+  }
   if (!bulk_insert || bulk_size < 0)
   {
     if ((error_num = spider_db_bulk_insert_init(this, table)))
@@ -1763,12 +1854,34 @@ int ha_spider::update_row(
   const uchar *old_data,
   uchar *new_data
 ) {
+  int error_num;
   DBUG_ENTER("ha_spider::update_row");
   DBUG_PRINT("info",("spider this=%x", this));
   ha_statistic_increment(&SSV::ha_update_count);
   if (table->timestamp_field_type & TIMESTAMP_AUTO_SET_ON_UPDATE)
     table->timestamp_field->set_time();
-  DBUG_RETURN(spider_db_update(this, table, old_data));
+  if ((error_num = spider_db_update(this, table, old_data)))
+    DBUG_RETURN(error_num);
+  if (table->found_next_number_field &&
+    new_data == table->record[0] &&
+    !table->s->next_number_keypart
+  ) {
+    pthread_mutex_lock(&share->auto_increment_mutex);
+    if (!share->auto_increment_init)
+    {
+      VOID(info(HA_STATUS_AUTO));
+      share->auto_increment_lclval = stats.auto_increment_value;
+      share->auto_increment_init = TRUE;
+    }
+    int tmp_auto_increment = table->found_next_number_field->val_int();
+    if (tmp_auto_increment >= share->auto_increment_lclval)
+    {
+      share->auto_increment_lclval = tmp_auto_increment + 1;
+      share->auto_increment_value = tmp_auto_increment + 1;
+    }
+    pthread_mutex_unlock(&share->auto_increment_mutex);
+  }
+  DBUG_RETURN(0);
 }
 
 int ha_spider::delete_row(
@@ -1782,9 +1895,21 @@ int ha_spider::delete_row(
 
 int ha_spider::delete_all_rows()
 {
+  int error_num;
   DBUG_ENTER("ha_spider::delete_all_rows");
   DBUG_PRINT("info",("spider this=%x", this));
-  DBUG_RETURN(spider_db_delete_all_rows(this));
+  if ((error_num = spider_db_delete_all_rows(this)))
+    DBUG_RETURN(error_num);
+  if (sql_command == SQLCOM_TRUNCATE && table->found_next_number_field)
+  {
+    DBUG_PRINT("info",("spider reset auto increment"));
+    pthread_mutex_lock(&share->auto_increment_mutex);
+    share->auto_increment_lclval = 1;
+    share->auto_increment_init = TRUE;
+    share->auto_increment_value = 1;
+    pthread_mutex_unlock(&share->auto_increment_mutex);
+  }
+  DBUG_RETURN(0);
 }
 
 double ha_spider::scan_time()
@@ -1837,9 +1962,20 @@ bool ha_spider::get_error_message(
 ) {
   DBUG_ENTER("ha_spider::get_error_message");
   DBUG_PRINT("info",("spider this=%x", this));
-  if (buf->reserve(ER_SPIDER_UNKNOWN_LEN))
-    DBUG_RETURN(TRUE);
-  buf->q_append(ER_SPIDER_UNKNOWN_STR, ER_SPIDER_UNKNOWN_LEN);
+  switch (error)
+  {
+    case ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM:
+      if (buf->reserve(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_LEN))
+        DBUG_RETURN(TRUE);
+      buf->q_append(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR,
+        ER_SPIDER_REMOTE_SERVER_GONE_AWAY_LEN);
+      break;
+    default:
+      if (buf->reserve(ER_SPIDER_UNKNOWN_LEN))
+        DBUG_RETURN(TRUE);
+      buf->q_append(ER_SPIDER_UNKNOWN_STR, ER_SPIDER_UNKNOWN_LEN);
+      break;
+  }
   DBUG_RETURN(FALSE);
 }
 

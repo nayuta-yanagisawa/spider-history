@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -636,11 +636,21 @@ int spider_internal_start_trx(
   SPIDER_TRX *trx = spider->trx;
   SPIDER_CONN *conn = spider->conn;
   bool sync_autocommit = THDVAR(trx->thd, sync_autocommit);
+  double ping_interval_at_trx_start =
+    THDVAR(trx->thd, ping_interval_at_trx_start);
   bool xa_lock = FALSE;
+  time_t tmp_time = (time_t) time((time_t*) 0);
   DBUG_ENTER("spider_internal_start_trx");
 
-  if ((error_num = spider_db_ping(spider)))
+  if (
+    (
+      conn->server_lost ||
+      difftime(tmp_time, conn->ping_time) >= ping_interval_at_trx_start
+    ) &&
+    (error_num = spider_db_ping(spider))
+  )
     goto error;
+  conn->disable_reconnect = TRUE;
   if (!trx->trx_start)
   {
     if (!trx->trx_consistent_snapshot)
@@ -2135,6 +2145,8 @@ int spider_end_trx(
   conn->semi_trx_isolation = -2;
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
+  if (!conn->table_lock)
+    conn->disable_reconnect = FALSE;
   DBUG_RETURN(0);
 }
 

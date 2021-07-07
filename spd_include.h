@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -48,7 +48,6 @@ typedef struct st_spider_conn
   uint               conn_key_length;
   SPIDER_DB_CONN     *db_conn;
   pthread_mutex_t    mta_conn_mutex;
-  query_id_t         ping_query_id;
   uint               join_trx;
   int                trx_isolation;
   bool               semi_trx_isolation_chk;
@@ -58,6 +57,7 @@ typedef struct st_spider_conn
   bool               trx_start;
   int                table_lock;
   bool               disable_xa;
+  bool               disable_reconnect;
   int                autocommit;
   int                sql_log_off;
   THD                *thd;
@@ -73,6 +73,7 @@ typedef struct st_spider_conn
   bool               ignore_dup_key;
   char               *error_str;
   int                error_length;
+  time_t             ping_time;
 
   char               *tgt_host;
   char               *tgt_username;
@@ -167,6 +168,7 @@ typedef struct st_spider_share
   pthread_mutex_t    mutex;
   pthread_mutex_t    sts_mutex;
   pthread_mutex_t    crd_mutex;
+  pthread_mutex_t    auto_increment_mutex;
   THR_LOCK           lock;
   TABLE_SHARE        *table_share;
 
@@ -205,6 +207,8 @@ typedef struct st_spider_share
   ulonglong          data_file_length;
   ulonglong          max_data_file_length;
   ulonglong          index_file_length;
+  volatile bool      auto_increment_init;
+  volatile ulonglong auto_increment_lclval;
   ulonglong          auto_increment_value;
   ha_rows            records;
   ulong              mean_rec_length;
@@ -267,6 +271,7 @@ typedef struct st_spider_share
   longlong           bgs_first_read;
   longlong           bgs_second_read;
 #endif
+  int                auto_increment_mode;
 
   char               *server_name;
   char               *tgt_table_name;

@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -166,13 +166,18 @@ public:
   uint max_supported_key_length() const;
   uint max_supported_key_part_length() const;
   uint8 table_cache_type();
+/*
   int update_auto_increment();
+*/
   void get_auto_increment(
     ulonglong offset,
     ulonglong increment,
     ulonglong nb_desired_values,
     ulonglong *first_value,
     ulonglong *nb_reserved_values
+  );
+  int reset_auto_increment(
+    ulonglong value
   );
   void start_bulk_insert(
     ha_rows rows

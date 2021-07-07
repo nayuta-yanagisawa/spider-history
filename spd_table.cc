@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -599,6 +599,7 @@ int spider_parse_connect_info(
   share->bgs_first_read = -1;
   share->bgs_second_read = -1;
 #endif
+  share->auto_increment_mode = -1;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   for (roop_count = 4; roop_count > 0; roop_count--)
@@ -703,6 +704,7 @@ int spider_parse_connect_info(
         case 0:
           continue;
         case 3:
+          SPIDER_PARAM_INT_WITH_MAX("aim", auto_increment_mode, 0, 2);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           SPIDER_PARAM_LONGLONG("bfr", bgs_first_read, 0);
           SPIDER_PARAM_INT("bmd", bgs_mode, 0);
@@ -889,6 +891,8 @@ int spider_parse_connect_info(
           goto error;
         case 19:
           SPIDER_PARAM_INT("init_sql_alloc_size", init_sql_alloc_size, 0);
+          SPIDER_PARAM_INT_WITH_MAX(
+            "auto_increment_mode", auto_increment_mode, 0, 2);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1226,6 +1230,8 @@ int spider_set_connect_info_default(
   if (share->bgs_second_read == -1)
     share->bgs_second_read = 100;
 #endif
+  if (share->auto_increment_mode == -1)
+    share->auto_increment_mode = 0;
   DBUG_RETURN(0);
 }
 
@@ -1397,6 +1403,12 @@ SPIDER_SHARE *spider_get_share(
       goto error_init_crd_mutex;
     }
 
+    if (pthread_mutex_init(&share->auto_increment_mutex, MY_MUTEX_INIT_FAST))
+    {
+      *error_num = HA_ERR_OUT_OF_MEM;
+      goto error_init_auto_increment_mutex;
+    }
+
     thr_lock_init(&share->lock);
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -1533,6 +1545,8 @@ error_hash_insert:
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 error_get_pt_share:
 #endif
+  VOID(pthread_mutex_destroy(&share->auto_increment_mutex));
+error_init_auto_increment_mutex:
   VOID(pthread_mutex_destroy(&share->crd_mutex));
 error_init_crd_mutex:
   VOID(pthread_mutex_destroy(&share->sts_mutex));
@@ -1565,6 +1579,7 @@ int spider_free_share(
     spider_free_share_alloc(share);
     hash_delete(&spider_open_tables, (uchar*) share);
     thr_lock_delete(&share->lock);
+    VOID(pthread_mutex_destroy(&share->auto_increment_mutex));
     VOID(pthread_mutex_destroy(&share->crd_mutex));
     VOID(pthread_mutex_destroy(&share->sts_mutex));
     VOID(pthread_mutex_destroy(&share->mutex));

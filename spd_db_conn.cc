@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -294,48 +294,37 @@ int spider_db_ping(
   DBUG_ENTER("spider_db_ping");
 #ifndef DBUG_OFF
   if (spider->trx->thd)
-  {
     DBUG_PRINT("info", ("spider thd->query_id is %lld",
       spider->trx->thd->query_id));
-    DBUG_PRINT("info", ("spider conn->ping_query_id is %lld",
-      conn->ping_query_id));
-  }
 #endif
-  if (
-    conn->server_lost ||
-    !spider->trx->thd ||
-    spider->trx->thd->query_id != conn->ping_query_id
-  ) {
-    if (spider->trx->thd)
-      conn->ping_query_id = spider->trx->thd->query_id;
-    if (conn->server_lost)
+  if (conn->server_lost)
+  {
+    conn->trx_isolation = -1;
+    conn->autocommit = -1;
+    conn->sql_log_off = -1;
+    if ((error_num = spider_db_connect(spider->share, conn)))
+      DBUG_RETURN(error_num);
+    conn->server_lost = FALSE;
+  }
+  if ((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
+  {
+    conn->trx_isolation = -1;
+    conn->autocommit = -1;
+    conn->sql_log_off = -1;
+    spider_db_disconnect(conn);
+    if ((error_num = spider_db_connect(spider->share, conn)))
     {
-      conn->trx_isolation = -1;
-      conn->autocommit = -1;
-      conn->sql_log_off = -1;
-      if ((error_num = spider_db_connect(spider->share, conn)))
-        DBUG_RETURN(error_num);
-      conn->server_lost = FALSE;
+      conn->server_lost = TRUE;
+      DBUG_RETURN(error_num);
     }
-    if ((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
+    if((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
     {
-      conn->trx_isolation = -1;
-      conn->autocommit = -1;
-      conn->sql_log_off = -1;
       spider_db_disconnect(conn);
-      if ((error_num = spider_db_connect(spider->share, conn)))
-      {
-        conn->server_lost = TRUE;
-        DBUG_RETURN(error_num);
-      }
-      if((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
-      {
-        spider_db_disconnect(conn);
-        conn->server_lost = TRUE;
-        DBUG_RETURN(error_num);
-      }
+      conn->server_lost = TRUE;
+      DBUG_RETURN(error_num);
     }
   }
+  conn->ping_time = (time_t) time((time_t*) 0);
   DBUG_RETURN(0);
 }
 
@@ -406,8 +395,9 @@ int spider_db_errorno(
     ) {
       spider_db_disconnect(conn);
       conn->server_lost = TRUE;
-      my_message(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM,
-        ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR, MYF(0));
+      if (conn->disable_reconnect)
+        my_message(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM,
+          ER_SPIDER_REMOTE_SERVER_GONE_AWAY_STR, MYF(0));
       DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
     } else if (
       conn->ignore_dup_key &&
@@ -3143,22 +3133,36 @@ int spider_db_show_table_status(
   SPIDER_DB_RESULT *res;
   SPIDER_DB_ROW row;
   SPIDER_SHARE *share = spider->share;
+  MYSQL_TIME mysql_time;
+  my_bool not_used_my_bool;
+  int not_used_int;
+  long not_used_long;
   DBUG_ENTER("spider_db_show_table_status");
   DBUG_PRINT("info",("spider sts_mode=%d", sts_mode));
-  if (
-    /* for background */
-    spider->trx->thd == NULL &&
-    (error_num = spider_db_ping(spider))
-  )
-    DBUG_RETURN(0);
   if (sts_mode == 1)
   {
     if (spider_db_query(
       conn,
       share->show_table_status[0].ptr(),
       share->show_table_status[0].length())
-    )
-      DBUG_RETURN(spider_db_errorno(conn));
+    ) {
+      error_num = spider_db_errorno(conn);
+      if (
+        error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+        !conn->disable_reconnect
+      ) {
+        /* retry */
+        if ((error_num = spider_db_ping(spider)))
+          DBUG_RETURN(error_num);
+        if (spider_db_query(
+          conn,
+          share->show_table_status[0].ptr(),
+          share->show_table_status[0].length())
+        )
+          DBUG_RETURN(spider_db_errorno(conn));
+      } else
+        DBUG_RETURN(error_num);
+    }
     if (
       !(res = mysql_store_result(conn->db_conn)) ||
       !(row = mysql_fetch_row(res))
@@ -3223,23 +3227,32 @@ int spider_db_show_table_status(
     DBUG_PRINT("info",
       ("spider auto_increment_value=%lld", share->auto_increment_value));
     if (row[11])
-      share->create_time =
-        (time_t) my_strtoll10(row[11], (char**) NULL, &error_num);
-    else
+    {
+      VOID(str_to_datetime(row[11], strlen(row[11]), &mysql_time, 0,
+        &not_used_int));
+      share->create_time = (time_t) my_system_gmt_sec(&mysql_time,
+        &not_used_long, &not_used_my_bool);
+    } else
       share->create_time = (time_t) 0;
     DBUG_PRINT("info",
       ("spider create_time=%lld", share->create_time));
     if (row[12])
-      share->update_time =
-        (time_t) my_strtoll10(row[12], (char**) NULL, &error_num);
-    else
+    {
+      VOID(str_to_datetime(row[12], strlen(row[12]), &mysql_time, 0,
+        &not_used_int));
+      share->update_time = (time_t) my_system_gmt_sec(&mysql_time,
+        &not_used_long, &not_used_my_bool);
+    } else
       share->update_time = (time_t) 0;
     DBUG_PRINT("info",
       ("spider update_time=%lld", share->update_time));
     if (row[13])
-      share->check_time =
-        (time_t) my_strtoll10(row[13], (char**) NULL, &error_num);
-    else
+    {
+      VOID(str_to_datetime(row[13], strlen(row[13]), &mysql_time, 0,
+        &not_used_int));
+      share->check_time = (time_t) my_system_gmt_sec(&mysql_time,
+        &not_used_long, &not_used_my_bool);
+    } else
       share->check_time = (time_t) 0;
     DBUG_PRINT("info",
       ("spider check_time=%lld", share->check_time));
@@ -3249,8 +3262,24 @@ int spider_db_show_table_status(
       conn,
       share->show_table_status[1].ptr(),
       share->show_table_status[1].length())
-    )
-      DBUG_RETURN(spider_db_errorno(conn));
+    ) {
+      error_num = spider_db_errorno(conn);
+      if (
+        error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+        !conn->disable_reconnect
+      ) {
+        /* retry */
+        if ((error_num = spider_db_ping(spider)))
+          DBUG_RETURN(error_num);
+        if (spider_db_query(
+          conn,
+          share->show_table_status[1].ptr(),
+          share->show_table_status[1].length())
+        )
+          DBUG_RETURN(spider_db_errorno(conn));
+      } else
+        DBUG_RETURN(error_num);
+    }
     if (
       !(res = mysql_store_result(conn->db_conn)) ||
       !(row = mysql_fetch_row(res))
@@ -3306,23 +3335,32 @@ int spider_db_show_table_status(
     DBUG_PRINT("info",
       ("spider auto_increment_value=%lld", share->auto_increment_value));
     if (row[6])
-      share->create_time =
-        (time_t) my_strtoll10(row[6], (char**) NULL, &error_num);
-    else
+    {
+      VOID(str_to_datetime(row[6], strlen(row[6]), &mysql_time, 0,
+        &not_used_int));
+      share->create_time = (time_t) my_system_gmt_sec(&mysql_time,
+        &not_used_long, &not_used_my_bool);
+    } else
       share->create_time = (time_t) 0;
     DBUG_PRINT("info",
       ("spider create_time=%lld", share->create_time));
     if (row[7])
-      share->update_time =
-        (time_t) my_strtoll10(row[7], (char**) NULL, &error_num);
-    else
+    {
+      VOID(str_to_datetime(row[7], strlen(row[7]), &mysql_time, 0,
+        &not_used_int));
+      share->update_time = (time_t) my_system_gmt_sec(&mysql_time,
+        &not_used_long, &not_used_my_bool);
+    } else
       share->update_time = (time_t) 0;
     DBUG_PRINT("info",
       ("spider update_time=%lld", share->update_time));
     if (row[8])
-      share->check_time =
-        (time_t) my_strtoll10(row[8], (char**) NULL, &error_num);
-    else
+    {
+      VOID(str_to_datetime(row[8], strlen(row[8]), &mysql_time, 0,
+        &not_used_int));
+      share->check_time = (time_t) my_system_gmt_sec(&mysql_time,
+        &not_used_long, &not_used_my_bool);
+    } else
       share->check_time = (time_t) 0;
     DBUG_PRINT("info",
       ("spider check_time=%lld", share->check_time));
@@ -3347,20 +3385,30 @@ int spider_db_show_index(
   bool *tmp_cardinality_upd;
   DBUG_ENTER("spider_db_show_index");
   DBUG_PRINT("info",("spider crd_mode=%d", crd_mode));
-  if (
-    /* for background */
-    spider->trx->thd == NULL &&
-    (error_num = spider_db_ping(spider))
-  )
-    DBUG_RETURN(0);
   if (crd_mode == 1)
   {
     if (spider_db_query(
       conn,
       share->show_index[0].ptr(),
       share->show_index[0].length())
-    )
-      DBUG_RETURN(spider_db_errorno(conn));
+    ) {
+      error_num = spider_db_errorno(conn);
+      if (
+        error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+        !conn->disable_reconnect
+      ) {
+        /* retry */
+        if ((error_num = spider_db_ping(spider)))
+          DBUG_RETURN(error_num);
+        if (spider_db_query(
+          conn,
+          share->show_index[0].ptr(),
+          share->show_index[0].length())
+        )
+          DBUG_RETURN(spider_db_errorno(conn));
+      } else
+        DBUG_RETURN(error_num);
+    }
     if (
       !(res = mysql_store_result(conn->db_conn)) ||
       !(row = mysql_fetch_row(res))
@@ -3424,8 +3472,24 @@ int spider_db_show_index(
       conn,
       share->show_index[1].ptr(),
       share->show_index[1].length())
-    )
-      DBUG_RETURN(spider_db_errorno(conn));
+    ) {
+      error_num = spider_db_errorno(conn);
+      if (
+        error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+        !conn->disable_reconnect
+      ) {
+        /* retry */
+        if ((error_num = spider_db_ping(spider)))
+          DBUG_RETURN(error_num);
+        if (spider_db_query(
+          conn,
+          share->show_index[1].ptr(),
+          share->show_index[1].length())
+        )
+          DBUG_RETURN(spider_db_errorno(conn));
+      } else
+        DBUG_RETURN(error_num);
+    }
     if (
       !(res = mysql_store_result(conn->db_conn)) ||
       !(row = mysql_fetch_row(res))
@@ -3516,7 +3580,23 @@ ha_rows spider_db_explain_select(
     str->length())
   ) {
     my_errno = spider_db_errorno(conn);
-    DBUG_RETURN(HA_POS_ERROR);
+    if (
+      error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+      !conn->disable_reconnect
+    ) {
+      /* retry */
+      if ((my_errno = spider_db_ping(spider)))
+        DBUG_RETURN(my_errno);
+      if (spider_db_query(
+        conn,
+        str->ptr(),
+        str->length())
+      ) {
+        my_errno = spider_db_errorno(conn);
+        DBUG_RETURN(HA_POS_ERROR);
+      }
+    } else
+      DBUG_RETURN(HA_POS_ERROR);
   }
   if (
     !(res = mysql_store_result(conn->db_conn)) ||
@@ -3681,13 +3761,15 @@ int spider_db_bulk_insert(
       DBUG_RETURN(error_num);
     }
     str->length(result_list->insert_pos);
-    if (
-      (error_num = spider_db_update_auto_increment(spider)) ||
-      (table->next_number_field &&
-      (error_num = table->next_number_field->store(
-        conn->db_conn->last_used_con->insert_id, TRUE)))
-    )
+    if ((error_num = spider_db_update_auto_increment(spider)))
       DBUG_RETURN(error_num);
+    if (table->next_number_field && table->next_number_field->is_null())
+    {
+      table->next_number_field->set_notnull();
+      if((error_num = table->next_number_field->store(
+        conn->db_conn->last_used_con->insert_id, TRUE)))
+        DBUG_RETURN(error_num);
+    }
   }
   DBUG_RETURN(0);
 }
@@ -3700,7 +3782,7 @@ int spider_db_update_auto_increment(
   DBUG_ENTER("spider_db_update_auto_increment");
   last_insert_id = last_used_con->insert_id;
   spider->share->auto_increment_value =
-    last_insert_id + last_used_con->affected_rows - 1;
+    last_insert_id + last_used_con->affected_rows;
   spider->trx->thd->record_first_successful_insert_id_in_cur_stmt(
     last_insert_id);
   DBUG_RETURN(0);
@@ -3788,8 +3870,24 @@ int spider_db_delete_all_rows(
     spider->conn,
     str->ptr(),
     str->length())
-  )
-    DBUG_RETURN(spider_db_errorno(spider->conn));
+  ) {
+    error_num = spider_db_errorno(spider->conn);
+    if (
+      error_num == ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM &&
+      !spider->conn->disable_reconnect
+    ) {
+      /* retry */
+      if ((error_num = spider_db_ping(spider)))
+        DBUG_RETURN(error_num);
+      if (spider_db_query(
+        spider->conn,
+        str->ptr(),
+        str->length())
+      )
+        DBUG_RETURN(spider_db_errorno(spider->conn));
+    } else
+      DBUG_RETURN(error_num);
+  }
   DBUG_RETURN(0);
 }
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -808,6 +808,40 @@ MYSQL_THDVAR_INT(
 );
 #endif
 
+/*
+  0 :always ping
+  1-:interval
+ */
+MYSQL_THDVAR_INT(
+  ping_interval_at_trx_start, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Ping interval at transaction start", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  3600, /* def */
+  0, /* min */
+  2147483647, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :normal mode
+  1 :quick mode
+  2 :set 0 value
+ */
+MYSQL_THDVAR_INT(
+  auto_increment_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Mode of auto increment.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2, /* max */
+  0 /* blk */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -870,6 +904,8 @@ struct st_mysql_sys_var* spider_system_variables[] = {
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   MYSQL_SYSVAR(sts_bg_mode),
 #endif
+  MYSQL_SYSVAR(ping_interval_at_trx_start),
+  MYSQL_SYSVAR(auto_increment_mode),
   NULL
 };
 
@@ -883,7 +919,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x000d,
+  0x000f,
   NULL,
   spider_system_variables,
   NULL

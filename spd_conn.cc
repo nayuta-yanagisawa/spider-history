@@ -1,4 +1,4 @@
-/* Copyright (C) 2008 Kentoku Shiba
+/* Copyright (C) 2008-2009 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -95,7 +95,6 @@ void spider_free_conn_from_trx(
       THDVAR(trx->thd, conn_recycle_mode) == 1
     ) {
       /* conn_recycle_mode == 1 */
-      conn->ping_query_id = 0;
       pthread_mutex_lock(&spider_conn_mutex);
       if (my_hash_insert(&spider_open_connections, (uchar*) conn))
       {
@@ -182,6 +181,7 @@ SPIDER_CONN *spider_create_conn(
 
   if ((*error_num = spider_db_connect(share, conn)))
     goto error;
+  conn->ping_time = (time_t) time((time_t*) 0);
 
   DBUG_RETURN(conn);
 
@@ -235,15 +235,7 @@ SPIDER_CONN *spider_get_conn(
         pthread_mutex_unlock(&spider_conn_mutex);
         DBUG_PRINT("info",("spider get global conn"));
         if (spider)
-        {
           spider->conn = conn;
-          if (
-            trx->thd &&
-            !conn->trx_start &&
-            (*error_num = spider_db_ping(spider))
-          )
-            goto error;
-        }
       }
     } else {
       DBUG_PRINT("info",("spider create new conn"));
@@ -273,15 +265,7 @@ SPIDER_CONN *spider_get_conn(
       }
     }
   } else if (spider)
-  {
     spider->conn = conn;
-    if (
-      trx->thd &&
-      !conn->trx_start &&
-      (*error_num = spider_db_ping(spider))
-    )
-      goto error;
-  }
 
   DBUG_PRINT("info",("spider conn=%x", conn));
   DBUG_RETURN(conn);
