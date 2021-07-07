@@ -181,9 +181,9 @@ int spider_get_ping_table_mon(
       my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
         &table_mon, sizeof(SPIDER_TABLE_MON),
         &tmp_share, sizeof(SPIDER_SHARE),
-        &tmp_connect_info, sizeof(char *) * 8,
-        &tmp_connect_info_length, sizeof(uint) * 8,
-        &tmp_long, sizeof(long) * 3,
+        &tmp_connect_info, sizeof(char *) * 15,
+        &tmp_connect_info_length, sizeof(uint) * 15,
+        &tmp_long, sizeof(long) * 4,
         &tmp_longlong, sizeof(longlong) * 2,
         NullS))
     ) {
@@ -291,9 +291,9 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
     my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
       &table_mon_list, sizeof(SPIDER_TABLE_MON_LIST),
       &tmp_share, sizeof(SPIDER_SHARE),
-      &tmp_connect_info, sizeof(char *) * 8,
-      &tmp_connect_info_length, sizeof(uint) * 8,
-      &tmp_long, sizeof(long) * 3,
+      &tmp_connect_info, sizeof(char *) * 15,
+      &tmp_connect_info_length, sizeof(uint) * 15,
+      &tmp_long, sizeof(long) * 4,
       &tmp_longlong, sizeof(longlong) * 2,
       &key_str, str->length() + 1,
       NullS))

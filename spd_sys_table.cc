@@ -299,6 +299,92 @@ void spider_store_xa_member_info(
     conn->tgt_password,
     (uint) conn->tgt_password_length,
     system_charset_info);
+  if (conn->tgt_ssl_ca)
+  {
+    table->field[10]->set_notnull();
+    table->field[10]->store(
+      conn->tgt_ssl_ca,
+      (uint) conn->tgt_ssl_ca_length,
+      system_charset_info);
+  } else {
+    table->field[10]->set_null();
+    table->field[10]->reset();
+  }
+  if (conn->tgt_ssl_capath)
+  {
+    table->field[11]->set_notnull();
+    table->field[11]->store(
+      conn->tgt_ssl_capath,
+      (uint) conn->tgt_ssl_capath_length,
+      system_charset_info);
+  } else {
+    table->field[11]->set_null();
+    table->field[11]->reset();
+  }
+  if (conn->tgt_ssl_cert)
+  {
+    table->field[12]->set_notnull();
+    table->field[12]->store(
+      conn->tgt_ssl_cert,
+      (uint) conn->tgt_ssl_cert_length,
+      system_charset_info);
+  } else {
+    table->field[12]->set_null();
+    table->field[12]->reset();
+  }
+  if (conn->tgt_ssl_cipher)
+  {
+    table->field[13]->set_notnull();
+    table->field[13]->store(
+      conn->tgt_ssl_cipher,
+      (uint) conn->tgt_ssl_cipher_length,
+      system_charset_info);
+  } else {
+    table->field[13]->set_null();
+    table->field[13]->reset();
+  }
+  if (conn->tgt_ssl_key)
+  {
+    table->field[14]->set_notnull();
+    table->field[14]->store(
+      conn->tgt_ssl_key,
+      (uint) conn->tgt_ssl_key_length,
+      system_charset_info);
+  } else {
+    table->field[14]->set_null();
+    table->field[14]->reset();
+  }
+  if (conn->tgt_ssl_vsc >= 0)
+  {
+    table->field[15]->set_notnull();
+    table->field[15]->store(
+      conn->tgt_ssl_vsc);
+  } else {
+    table->field[15]->set_null();
+    table->field[15]->reset();
+  }
+  if (conn->tgt_default_file)
+  {
+    table->field[16]->set_notnull();
+    table->field[16]->store(
+      conn->tgt_default_file,
+      (uint) conn->tgt_default_file_length,
+      system_charset_info);
+  } else {
+    table->field[16]->set_null();
+    table->field[16]->reset();
+  }
+  if (conn->tgt_default_group)
+  {
+    table->field[17]->set_notnull();
+    table->field[17]->store(
+      conn->tgt_default_group,
+      (uint) conn->tgt_default_group_length,
+      system_charset_info);
+  } else {
+    table->field[17]->set_null();
+    table->field[17]->reset();
+  }
   DBUG_VOID_RETURN;
 }
 
@@ -443,27 +529,113 @@ void spider_store_tables_connect_info(
     table->field[10]->set_null();
     table->field[10]->reset();
   }
-  if (alter_table->tmp_tgt_dbs[link_idx])
+  if (alter_table->tmp_tgt_ssl_cas[link_idx])
   {
     table->field[11]->set_notnull();
     table->field[11]->store(
-      alter_table->tmp_tgt_dbs[link_idx],
-      (uint) alter_table->tmp_tgt_dbs_lengths[link_idx],
+      alter_table->tmp_tgt_ssl_cas[link_idx],
+      (uint) alter_table->tmp_tgt_ssl_cas_lengths[link_idx],
       system_charset_info);
   } else {
     table->field[11]->set_null();
     table->field[11]->reset();
   }
-  if (alter_table->tmp_tgt_table_names[link_idx])
+  if (alter_table->tmp_tgt_ssl_capaths[link_idx])
   {
     table->field[12]->set_notnull();
     table->field[12]->store(
-      alter_table->tmp_tgt_table_names[link_idx],
-      (uint) alter_table->tmp_tgt_table_names_lengths[link_idx],
+      alter_table->tmp_tgt_ssl_capaths[link_idx],
+      (uint) alter_table->tmp_tgt_ssl_capaths_lengths[link_idx],
       system_charset_info);
   } else {
     table->field[12]->set_null();
     table->field[12]->reset();
+  }
+  if (alter_table->tmp_tgt_ssl_certs[link_idx])
+  {
+    table->field[13]->set_notnull();
+    table->field[13]->store(
+      alter_table->tmp_tgt_ssl_certs[link_idx],
+      (uint) alter_table->tmp_tgt_ssl_certs_lengths[link_idx],
+      system_charset_info);
+  } else {
+    table->field[13]->set_null();
+    table->field[13]->reset();
+  }
+  if (alter_table->tmp_tgt_ssl_ciphers[link_idx])
+  {
+    table->field[14]->set_notnull();
+    table->field[14]->store(
+      alter_table->tmp_tgt_ssl_ciphers[link_idx],
+      (uint) alter_table->tmp_tgt_ssl_ciphers_lengths[link_idx],
+      system_charset_info);
+  } else {
+    table->field[14]->set_null();
+    table->field[14]->reset();
+  }
+  if (alter_table->tmp_tgt_ssl_keys[link_idx])
+  {
+    table->field[15]->set_notnull();
+    table->field[15]->store(
+      alter_table->tmp_tgt_ssl_keys[link_idx],
+      (uint) alter_table->tmp_tgt_ssl_keys_lengths[link_idx],
+      system_charset_info);
+  } else {
+    table->field[15]->set_null();
+    table->field[15]->reset();
+  }
+  if (alter_table->tmp_tgt_ssl_vscs[link_idx] >= 0)
+  {
+    table->field[16]->set_notnull();
+    table->field[16]->store(
+      alter_table->tmp_tgt_ssl_vscs[link_idx]);
+  } else {
+    table->field[16]->set_null();
+    table->field[16]->reset();
+  }
+  if (alter_table->tmp_tgt_default_files[link_idx])
+  {
+    table->field[17]->set_notnull();
+    table->field[17]->store(
+      alter_table->tmp_tgt_default_files[link_idx],
+      (uint) alter_table->tmp_tgt_default_files_lengths[link_idx],
+      system_charset_info);
+  } else {
+    table->field[17]->set_null();
+    table->field[17]->reset();
+  }
+  if (alter_table->tmp_tgt_default_groups[link_idx])
+  {
+    table->field[18]->set_notnull();
+    table->field[18]->store(
+      alter_table->tmp_tgt_default_groups[link_idx],
+      (uint) alter_table->tmp_tgt_default_groups_lengths[link_idx],
+      system_charset_info);
+  } else {
+    table->field[18]->set_null();
+    table->field[18]->reset();
+  }
+  if (alter_table->tmp_tgt_dbs[link_idx])
+  {
+    table->field[19]->set_notnull();
+    table->field[19]->store(
+      alter_table->tmp_tgt_dbs[link_idx],
+      (uint) alter_table->tmp_tgt_dbs_lengths[link_idx],
+      system_charset_info);
+  } else {
+    table->field[19]->set_null();
+    table->field[19]->reset();
+  }
+  if (alter_table->tmp_tgt_table_names[link_idx])
+  {
+    table->field[20]->set_notnull();
+    table->field[20]->store(
+      alter_table->tmp_tgt_table_names[link_idx],
+      (uint) alter_table->tmp_tgt_table_names_lengths[link_idx],
+      system_charset_info);
+  } else {
+    table->field[20]->set_null();
+    table->field[20]->reset();
   }
   DBUG_VOID_RETURN;
 }
@@ -475,7 +647,7 @@ void spider_store_tables_link_status(
   DBUG_ENTER("spider_store_tables_link_status");
   DBUG_PRINT("info",("spider link_status = %d", link_status));
   if (link_status > SPIDER_LINK_STATUS_NO_CHANGE)
-    table->field[13]->store(link_status, FALSE);
+    table->field[21]->store(link_status, FALSE);
   DBUG_VOID_RETURN;
 }
 
@@ -993,6 +1165,90 @@ int spider_get_sys_server_info(
     share->tgt_passwords_lengths[link_idx] = 0;
     share->tgt_passwords[link_idx] = NULL;
   }
+  if (
+    !table->field[10]->is_null() &&
+    (ptr = get_field(mem_root, table->field[10]))
+  ) {
+    share->tgt_ssl_cas_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_cas[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_cas_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_cas_lengths[link_idx] = 0;
+    share->tgt_ssl_cas[link_idx] = NULL;
+  }
+  if (
+    !table->field[11]->is_null() &&
+    (ptr = get_field(mem_root, table->field[11]))
+  ) {
+    share->tgt_ssl_capaths_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_capaths[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_capaths_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_capaths_lengths[link_idx] = 0;
+    share->tgt_ssl_capaths[link_idx] = NULL;
+  }
+  if (
+    !table->field[12]->is_null() &&
+    (ptr = get_field(mem_root, table->field[12]))
+  ) {
+    share->tgt_ssl_certs_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_certs[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_certs_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_certs_lengths[link_idx] = 0;
+    share->tgt_ssl_certs[link_idx] = NULL;
+  }
+  if (
+    !table->field[13]->is_null() &&
+    (ptr = get_field(mem_root, table->field[13]))
+  ) {
+    share->tgt_ssl_ciphers_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_ciphers[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_ciphers_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_ciphers_lengths[link_idx] = 0;
+    share->tgt_ssl_ciphers[link_idx] = NULL;
+  }
+  if (
+    !table->field[14]->is_null() &&
+    (ptr = get_field(mem_root, table->field[14]))
+  ) {
+    share->tgt_ssl_keys_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_keys[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_keys_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_keys_lengths[link_idx] = 0;
+    share->tgt_ssl_keys[link_idx] = NULL;
+  }
+  if (
+    !table->field[15]->is_null() &&
+    (ptr = get_field(mem_root, table->field[15]))
+  ) {
+    share->tgt_ssl_vscs[link_idx] = atol(ptr);
+  } else
+    share->tgt_ssl_vscs[link_idx] = 0;
+  if (
+    !table->field[16]->is_null() &&
+    (ptr = get_field(mem_root, table->field[16]))
+  ) {
+    share->tgt_default_files_lengths[link_idx] = strlen(ptr);
+    share->tgt_default_files[link_idx] =
+      spider_create_string(ptr, share->tgt_default_files_lengths[link_idx]);
+  } else {
+    share->tgt_default_files_lengths[link_idx] = 0;
+    share->tgt_default_files[link_idx] = NULL;
+  }
+  if (
+    !table->field[17]->is_null() &&
+    (ptr = get_field(mem_root, table->field[17]))
+  ) {
+    share->tgt_default_groups_lengths[link_idx] = strlen(ptr);
+    share->tgt_default_groups[link_idx] =
+      spider_create_string(ptr, share->tgt_default_groups_lengths[link_idx]);
+  } else {
+    share->tgt_default_groups_lengths[link_idx] = 0;
+    share->tgt_default_groups[link_idx] = NULL;
+  }
   DBUG_RETURN(0);
 }
 
@@ -1138,6 +1394,90 @@ int spider_get_sys_tables_connect_info(
     !table->field[11]->is_null() &&
     (ptr = get_field(mem_root, table->field[11]))
   ) {
+    share->tgt_ssl_cas_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_cas[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_cas_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_cas_lengths[link_idx] = 0;
+    share->tgt_ssl_cas[link_idx] = NULL;
+  }
+  if (
+    !table->field[12]->is_null() &&
+    (ptr = get_field(mem_root, table->field[12]))
+  ) {
+    share->tgt_ssl_capaths_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_capaths[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_capaths_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_capaths_lengths[link_idx] = 0;
+    share->tgt_ssl_capaths[link_idx] = NULL;
+  }
+  if (
+    !table->field[13]->is_null() &&
+    (ptr = get_field(mem_root, table->field[13]))
+  ) {
+    share->tgt_ssl_certs_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_certs[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_certs_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_certs_lengths[link_idx] = 0;
+    share->tgt_ssl_certs[link_idx] = NULL;
+  }
+  if (
+    !table->field[14]->is_null() &&
+    (ptr = get_field(mem_root, table->field[14]))
+  ) {
+    share->tgt_ssl_ciphers_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_ciphers[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_ciphers_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_ciphers_lengths[link_idx] = 0;
+    share->tgt_ssl_ciphers[link_idx] = NULL;
+  }
+  if (
+    !table->field[15]->is_null() &&
+    (ptr = get_field(mem_root, table->field[15]))
+  ) {
+    share->tgt_ssl_keys_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_keys[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_keys_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_keys_lengths[link_idx] = 0;
+    share->tgt_ssl_keys[link_idx] = NULL;
+  }
+  if (
+    !table->field[16]->is_null() &&
+    (ptr = get_field(mem_root, table->field[16]))
+  ) {
+    share->tgt_ssl_vscs[link_idx] = atol(ptr);
+  } else
+    share->tgt_ssl_vscs[link_idx] = -1;
+  if (
+    !table->field[17]->is_null() &&
+    (ptr = get_field(mem_root, table->field[17]))
+  ) {
+    share->tgt_default_files_lengths[link_idx] = strlen(ptr);
+    share->tgt_default_files[link_idx] =
+      spider_create_string(ptr, share->tgt_default_files_lengths[link_idx]);
+  } else {
+    share->tgt_default_files_lengths[link_idx] = 0;
+    share->tgt_default_files[link_idx] = NULL;
+  }
+  if (
+    !table->field[18]->is_null() &&
+    (ptr = get_field(mem_root, table->field[18]))
+  ) {
+    share->tgt_default_groups_lengths[link_idx] = strlen(ptr);
+    share->tgt_default_groups[link_idx] =
+      spider_create_string(ptr, share->tgt_default_groups_lengths[link_idx]);
+  } else {
+    share->tgt_default_groups_lengths[link_idx] = 0;
+    share->tgt_default_groups[link_idx] = NULL;
+  }
+  if (
+    !table->field[19]->is_null() &&
+    (ptr = get_field(mem_root, table->field[19]))
+  ) {
     share->tgt_dbs_lengths[link_idx] = strlen(ptr);
     share->tgt_dbs[link_idx] =
       spider_create_string(ptr, share->tgt_dbs_lengths[link_idx]);
@@ -1146,8 +1486,8 @@ int spider_get_sys_tables_connect_info(
     share->tgt_dbs[link_idx] = NULL;
   }
   if (
-    !table->field[12]->is_null() &&
-    (ptr = get_field(mem_root, table->field[12]))
+    !table->field[20]->is_null() &&
+    (ptr = get_field(mem_root, table->field[20]))
   ) {
     share->tgt_table_names_lengths[link_idx] = strlen(ptr);
     share->tgt_table_names[link_idx] =
@@ -1168,7 +1508,7 @@ int spider_get_sys_tables_link_status(
   char *ptr;
   int error_num = 0;
   DBUG_ENTER("spider_get_sys_tables_link_status");
-  if ((ptr = get_field(mem_root, table->field[13])))
+  if ((ptr = get_field(mem_root, table->field[21])))
   {
     share->link_statuses[link_idx] =
       my_strtoll10(ptr, (char**) NULL, &error_num);
@@ -1312,6 +1652,90 @@ int spider_get_sys_link_mon_connect_info(
   } else {
     share->tgt_passwords_lengths[link_idx] = 0;
     share->tgt_passwords[link_idx] = NULL;
+  }
+  if (
+    !table->field[11]->is_null() &&
+    (ptr = get_field(mem_root, table->field[11]))
+  ) {
+    share->tgt_ssl_cas_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_cas[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_cas_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_cas_lengths[link_idx] = 0;
+    share->tgt_ssl_cas[link_idx] = NULL;
+  }
+  if (
+    !table->field[12]->is_null() &&
+    (ptr = get_field(mem_root, table->field[12]))
+  ) {
+    share->tgt_ssl_capaths_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_capaths[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_capaths_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_capaths_lengths[link_idx] = 0;
+    share->tgt_ssl_capaths[link_idx] = NULL;
+  }
+  if (
+    !table->field[13]->is_null() &&
+    (ptr = get_field(mem_root, table->field[13]))
+  ) {
+    share->tgt_ssl_certs_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_certs[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_certs_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_certs_lengths[link_idx] = 0;
+    share->tgt_ssl_certs[link_idx] = NULL;
+  }
+  if (
+    !table->field[14]->is_null() &&
+    (ptr = get_field(mem_root, table->field[14]))
+  ) {
+    share->tgt_ssl_ciphers_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_ciphers[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_ciphers_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_ciphers_lengths[link_idx] = 0;
+    share->tgt_ssl_ciphers[link_idx] = NULL;
+  }
+  if (
+    !table->field[15]->is_null() &&
+    (ptr = get_field(mem_root, table->field[15]))
+  ) {
+    share->tgt_ssl_keys_lengths[link_idx] = strlen(ptr);
+    share->tgt_ssl_keys[link_idx] =
+      spider_create_string(ptr, share->tgt_ssl_keys_lengths[link_idx]);
+  } else {
+    share->tgt_ssl_keys_lengths[link_idx] = 0;
+    share->tgt_ssl_keys[link_idx] = NULL;
+  }
+  if (
+    !table->field[16]->is_null() &&
+    (ptr = get_field(mem_root, table->field[16]))
+  ) {
+    share->tgt_ssl_vscs[link_idx] = atol(ptr);
+  } else
+    share->tgt_ssl_vscs[link_idx] = -1;
+  if (
+    !table->field[17]->is_null() &&
+    (ptr = get_field(mem_root, table->field[17]))
+  ) {
+    share->tgt_default_files_lengths[link_idx] = strlen(ptr);
+    share->tgt_default_files[link_idx] =
+      spider_create_string(ptr, share->tgt_default_files_lengths[link_idx]);
+  } else {
+    share->tgt_default_files_lengths[link_idx] = 0;
+    share->tgt_default_files[link_idx] = NULL;
+  }
+  if (
+    !table->field[18]->is_null() &&
+    (ptr = get_field(mem_root, table->field[18]))
+  ) {
+    share->tgt_default_groups_lengths[link_idx] = strlen(ptr);
+    share->tgt_default_groups[link_idx] =
+      spider_create_string(ptr, share->tgt_default_groups_lengths[link_idx]);
+  } else {
+    share->tgt_default_groups_lengths[link_idx] = 0;
+    share->tgt_default_groups[link_idx] = NULL;
   }
   DBUG_RETURN(error_num);
 }

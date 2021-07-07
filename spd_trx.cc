@@ -295,6 +295,13 @@ int spider_create_trx_alter_table(
   char **tmp_tgt_passwords;
   char **tmp_tgt_sockets;
   char **tmp_tgt_wrappers;
+  char **tmp_tgt_ssl_cas;
+  char **tmp_tgt_ssl_capaths;
+  char **tmp_tgt_ssl_certs;
+  char **tmp_tgt_ssl_ciphers;
+  char **tmp_tgt_ssl_keys;
+  char **tmp_tgt_default_files;
+  char **tmp_tgt_default_groups;
   uint *tmp_server_names_lengths;
   uint *tmp_tgt_table_names_lengths;
   uint *tmp_tgt_dbs_lengths;
@@ -303,7 +310,15 @@ int spider_create_trx_alter_table(
   uint *tmp_tgt_passwords_lengths;
   uint *tmp_tgt_sockets_lengths;
   uint *tmp_tgt_wrappers_lengths;
+  uint *tmp_tgt_ssl_cas_lengths;
+  uint *tmp_tgt_ssl_capaths_lengths;
+  uint *tmp_tgt_ssl_certs_lengths;
+  uint *tmp_tgt_ssl_ciphers_lengths;
+  uint *tmp_tgt_ssl_keys_lengths;
+  uint *tmp_tgt_default_files_lengths;
+  uint *tmp_tgt_default_groups_lengths;
   long *tmp_tgt_ports;
+  long *tmp_tgt_ssl_vscs;
   long *tmp_link_statuses;
   char *tmp_server_names_char;
   char *tmp_tgt_table_names_char;
@@ -313,6 +328,13 @@ int spider_create_trx_alter_table(
   char *tmp_tgt_passwords_char;
   char *tmp_tgt_sockets_char;
   char *tmp_tgt_wrappers_char;
+  char *tmp_tgt_ssl_cas_char;
+  char *tmp_tgt_ssl_capaths_char;
+  char *tmp_tgt_ssl_certs_char;
+  char *tmp_tgt_ssl_ciphers_char;
+  char *tmp_tgt_ssl_keys_char;
+  char *tmp_tgt_default_files_char;
+  char *tmp_tgt_default_groups_char;
 
   DBUG_ENTER("spider_create_trx_alter_table");
   share_alter = &share->alter_table;
@@ -330,6 +352,13 @@ int spider_create_trx_alter_table(
       &tmp_tgt_passwords, sizeof(char *) * share->link_count,
       &tmp_tgt_sockets, sizeof(char *) * share->link_count,
       &tmp_tgt_wrappers, sizeof(char *) * share->link_count,
+      &tmp_tgt_ssl_cas, sizeof(char *) * share->link_count,
+      &tmp_tgt_ssl_capaths, sizeof(char *) * share->link_count,
+      &tmp_tgt_ssl_certs, sizeof(char *) * share->link_count,
+      &tmp_tgt_ssl_ciphers, sizeof(char *) * share->link_count,
+      &tmp_tgt_ssl_keys, sizeof(char *) * share->link_count,
+      &tmp_tgt_default_files, sizeof(char *) * share->link_count,
+      &tmp_tgt_default_groups, sizeof(char *) * share->link_count,
 
       &tmp_server_names_lengths, sizeof(uint) * share->link_count,
       &tmp_tgt_table_names_lengths, sizeof(uint) * share->link_count,
@@ -339,8 +368,16 @@ int spider_create_trx_alter_table(
       &tmp_tgt_passwords_lengths, sizeof(uint) * share->link_count,
       &tmp_tgt_sockets_lengths, sizeof(uint) * share->link_count,
       &tmp_tgt_wrappers_lengths, sizeof(uint) * share->link_count,
+      &tmp_tgt_ssl_cas_lengths, sizeof(uint) * share->link_count,
+      &tmp_tgt_ssl_capaths_lengths, sizeof(uint) * share->link_count,
+      &tmp_tgt_ssl_certs_lengths, sizeof(uint) * share->link_count,
+      &tmp_tgt_ssl_ciphers_lengths, sizeof(uint) * share->link_count,
+      &tmp_tgt_ssl_keys_lengths, sizeof(uint) * share->link_count,
+      &tmp_tgt_default_files_lengths, sizeof(uint) * share->link_count,
+      &tmp_tgt_default_groups_lengths, sizeof(uint) * share->link_count,
 
       &tmp_tgt_ports, sizeof(long) * share->link_count,
+      &tmp_tgt_ssl_vscs, sizeof(long) * share->link_count,
       &tmp_link_statuses, sizeof(long) * share->link_count,
 
       &tmp_server_names_char, sizeof(char) *
@@ -359,6 +396,20 @@ int spider_create_trx_alter_table(
         (share_alter->tmp_tgt_sockets_charlen + 1),
       &tmp_tgt_wrappers_char, sizeof(char) *
         (share_alter->tmp_tgt_wrappers_charlen + 1),
+      &tmp_tgt_ssl_cas_char, sizeof(char) *
+        (share_alter->tmp_tgt_ssl_cas_charlen + 1),
+      &tmp_tgt_ssl_capaths_char, sizeof(char) *
+        (share_alter->tmp_tgt_ssl_capaths_charlen + 1),
+      &tmp_tgt_ssl_certs_char, sizeof(char) *
+        (share_alter->tmp_tgt_ssl_certs_charlen + 1),
+      &tmp_tgt_ssl_ciphers_char, sizeof(char) *
+        (share_alter->tmp_tgt_ssl_ciphers_charlen + 1),
+      &tmp_tgt_ssl_keys_char, sizeof(char) *
+        (share_alter->tmp_tgt_ssl_keys_charlen + 1),
+      &tmp_tgt_default_files_char, sizeof(char) *
+        (share_alter->tmp_tgt_default_files_charlen + 1),
+      &tmp_tgt_default_groups_char, sizeof(char) *
+        (share_alter->tmp_tgt_default_groups_charlen + 1),
       NullS))
   ) {
     error_num = HA_ERR_OUT_OF_MEM;
@@ -379,8 +430,16 @@ int spider_create_trx_alter_table(
   alter_table->tmp_tgt_passwords = tmp_tgt_passwords;
   alter_table->tmp_tgt_sockets = tmp_tgt_sockets;
   alter_table->tmp_tgt_wrappers = tmp_tgt_wrappers;
+  alter_table->tmp_tgt_ssl_cas = tmp_tgt_ssl_cas;
+  alter_table->tmp_tgt_ssl_capaths = tmp_tgt_ssl_capaths;
+  alter_table->tmp_tgt_ssl_certs = tmp_tgt_ssl_certs;
+  alter_table->tmp_tgt_ssl_ciphers = tmp_tgt_ssl_ciphers;
+  alter_table->tmp_tgt_ssl_keys = tmp_tgt_ssl_keys;
+  alter_table->tmp_tgt_default_files = tmp_tgt_default_files;
+  alter_table->tmp_tgt_default_groups = tmp_tgt_default_groups;
 
   alter_table->tmp_tgt_ports = tmp_tgt_ports;
+  alter_table->tmp_tgt_ssl_vscs = tmp_tgt_ssl_vscs;
   alter_table->tmp_link_statuses = tmp_link_statuses;
 
   alter_table->tmp_server_names_lengths = tmp_server_names_lengths;
@@ -391,6 +450,13 @@ int spider_create_trx_alter_table(
   alter_table->tmp_tgt_passwords_lengths = tmp_tgt_passwords_lengths;
   alter_table->tmp_tgt_sockets_lengths = tmp_tgt_sockets_lengths;
   alter_table->tmp_tgt_wrappers_lengths = tmp_tgt_wrappers_lengths;
+  alter_table->tmp_tgt_ssl_cas_lengths = tmp_tgt_ssl_cas_lengths;
+  alter_table->tmp_tgt_ssl_capaths_lengths = tmp_tgt_ssl_capaths_lengths;
+  alter_table->tmp_tgt_ssl_certs_lengths = tmp_tgt_ssl_certs_lengths;
+  alter_table->tmp_tgt_ssl_ciphers_lengths = tmp_tgt_ssl_ciphers_lengths;
+  alter_table->tmp_tgt_ssl_keys_lengths = tmp_tgt_ssl_keys_lengths;
+  alter_table->tmp_tgt_default_files_lengths = tmp_tgt_default_files_lengths;
+  alter_table->tmp_tgt_default_groups_lengths = tmp_tgt_default_groups_lengths;
 
   for(roop_count = 0; roop_count < share->link_count; roop_count++)
   {
@@ -443,9 +509,57 @@ int spider_create_trx_alter_table(
       sizeof(char) * share_alter->tmp_tgt_wrappers_lengths[roop_count]);
     tmp_tgt_wrappers_char +=
       share_alter->tmp_tgt_wrappers_lengths[roop_count] + 1;
+
+    tmp_tgt_ssl_cas[roop_count] = tmp_tgt_ssl_cas_char;
+    memcpy(tmp_tgt_ssl_cas_char, share_alter->tmp_tgt_ssl_cas[roop_count],
+      sizeof(char) * share_alter->tmp_tgt_ssl_cas_lengths[roop_count]);
+    tmp_tgt_ssl_cas_char +=
+      share_alter->tmp_tgt_ssl_cas_lengths[roop_count] + 1;
+
+    tmp_tgt_ssl_capaths[roop_count] = tmp_tgt_ssl_capaths_char;
+    memcpy(tmp_tgt_ssl_capaths_char,
+      share_alter->tmp_tgt_ssl_capaths[roop_count],
+      sizeof(char) * share_alter->tmp_tgt_ssl_capaths_lengths[roop_count]);
+    tmp_tgt_ssl_capaths_char +=
+      share_alter->tmp_tgt_ssl_capaths_lengths[roop_count] + 1;
+
+    tmp_tgt_ssl_certs[roop_count] = tmp_tgt_ssl_certs_char;
+    memcpy(tmp_tgt_ssl_certs_char, share_alter->tmp_tgt_ssl_certs[roop_count],
+      sizeof(char) * share_alter->tmp_tgt_ssl_certs_lengths[roop_count]);
+    tmp_tgt_ssl_certs_char +=
+      share_alter->tmp_tgt_ssl_certs_lengths[roop_count] + 1;
+
+    tmp_tgt_ssl_ciphers[roop_count] = tmp_tgt_ssl_ciphers_char;
+    memcpy(tmp_tgt_ssl_ciphers_char,
+      share_alter->tmp_tgt_ssl_ciphers[roop_count],
+      sizeof(char) * share_alter->tmp_tgt_ssl_ciphers_lengths[roop_count]);
+    tmp_tgt_ssl_ciphers_char +=
+      share_alter->tmp_tgt_ssl_ciphers_lengths[roop_count] + 1;
+
+    tmp_tgt_ssl_keys[roop_count] = tmp_tgt_ssl_keys_char;
+    memcpy(tmp_tgt_ssl_keys_char, share_alter->tmp_tgt_ssl_keys[roop_count],
+      sizeof(char) * share_alter->tmp_tgt_ssl_keys_lengths[roop_count]);
+    tmp_tgt_ssl_keys_char +=
+      share_alter->tmp_tgt_ssl_keys_lengths[roop_count] + 1;
+
+    tmp_tgt_default_files[roop_count] = tmp_tgt_default_files_char;
+    memcpy(tmp_tgt_default_files_char,
+      share_alter->tmp_tgt_default_files[roop_count],
+      sizeof(char) * share_alter->tmp_tgt_default_files_lengths[roop_count]);
+    tmp_tgt_default_files_char +=
+      share_alter->tmp_tgt_default_files_lengths[roop_count] + 1;
+
+    tmp_tgt_default_groups[roop_count] = tmp_tgt_default_groups_char;
+    memcpy(tmp_tgt_default_groups_char,
+      share_alter->tmp_tgt_default_groups[roop_count],
+      sizeof(char) * share_alter->tmp_tgt_default_groups_lengths[roop_count]);
+    tmp_tgt_default_groups_char +=
+      share_alter->tmp_tgt_default_groups_lengths[roop_count] + 1;
   }
 
   memcpy(tmp_tgt_ports, share_alter->tmp_tgt_ports,
+    sizeof(long) * share->link_count);
+  memcpy(tmp_tgt_ssl_vscs, share_alter->tmp_tgt_ssl_vscs,
     sizeof(long) * share->link_count);
   memcpy(tmp_link_statuses, share_alter->tmp_link_statuses,
     sizeof(long) * share->link_count);
@@ -466,6 +580,22 @@ int spider_create_trx_alter_table(
     sizeof(uint) * share->link_count);
   memcpy(tmp_tgt_wrappers_lengths, share_alter->tmp_tgt_wrappers_lengths,
     sizeof(uint) * share->link_count);
+  memcpy(tmp_tgt_ssl_cas_lengths, share_alter->tmp_tgt_ssl_cas_lengths,
+    sizeof(uint) * share->link_count);
+  memcpy(tmp_tgt_ssl_capaths_lengths, share_alter->tmp_tgt_ssl_capaths_lengths,
+    sizeof(uint) * share->link_count);
+  memcpy(tmp_tgt_ssl_certs_lengths, share_alter->tmp_tgt_ssl_certs_lengths,
+    sizeof(uint) * share->link_count);
+  memcpy(tmp_tgt_ssl_ciphers_lengths, share_alter->tmp_tgt_ssl_ciphers_lengths,
+    sizeof(uint) * share->link_count);
+  memcpy(tmp_tgt_ssl_keys_lengths, share_alter->tmp_tgt_ssl_keys_lengths,
+    sizeof(uint) * share->link_count);
+  memcpy(tmp_tgt_default_files_lengths,
+    share_alter->tmp_tgt_default_files_lengths,
+    sizeof(uint) * share->link_count);
+  memcpy(tmp_tgt_default_groups_lengths,
+    share_alter->tmp_tgt_default_groups_lengths,
+    sizeof(uint) * share->link_count);
 
   alter_table->tmp_server_names_length =
     share_alter->tmp_server_names_length;
@@ -483,8 +613,24 @@ int spider_create_trx_alter_table(
     share_alter->tmp_tgt_sockets_length;
   alter_table->tmp_tgt_wrappers_length =
     share_alter->tmp_tgt_wrappers_length;
+  alter_table->tmp_tgt_ssl_cas_length =
+    share_alter->tmp_tgt_ssl_cas_length;
+  alter_table->tmp_tgt_ssl_capaths_length =
+    share_alter->tmp_tgt_ssl_capaths_length;
+  alter_table->tmp_tgt_ssl_certs_length =
+    share_alter->tmp_tgt_ssl_certs_length;
+  alter_table->tmp_tgt_ssl_ciphers_length =
+    share_alter->tmp_tgt_ssl_ciphers_length;
+  alter_table->tmp_tgt_ssl_keys_length =
+    share_alter->tmp_tgt_ssl_keys_length;
+  alter_table->tmp_tgt_default_files_length =
+    share_alter->tmp_tgt_default_files_length;
+  alter_table->tmp_tgt_default_groups_length =
+    share_alter->tmp_tgt_default_groups_length;
   alter_table->tmp_tgt_ports_length =
     share_alter->tmp_tgt_ports_length;
+  alter_table->tmp_tgt_ssl_vscs_length =
+    share_alter->tmp_tgt_ssl_vscs_length;
   alter_table->tmp_link_statuses_length =
     share_alter->tmp_link_statuses_length;
 
@@ -596,7 +742,81 @@ bool spider_cmp_trx_alter_table(
             cmp2->tmp_tgt_wrappers[roop_count])
         )
       ) ||
-      cmp1->tmp_tgt_ports[roop_count] != cmp2->tmp_tgt_ports[roop_count]
+      (
+        cmp1->tmp_tgt_ssl_cas[roop_count] !=
+          cmp2->tmp_tgt_ssl_cas[roop_count] &&
+        (
+          !cmp1->tmp_tgt_ssl_cas[roop_count] ||
+          !cmp2->tmp_tgt_ssl_cas[roop_count] ||
+          strcmp(cmp1->tmp_tgt_ssl_cas[roop_count],
+            cmp2->tmp_tgt_ssl_cas[roop_count])
+        )
+      ) ||
+      (
+        cmp1->tmp_tgt_ssl_capaths[roop_count] !=
+          cmp2->tmp_tgt_ssl_capaths[roop_count] &&
+        (
+          !cmp1->tmp_tgt_ssl_capaths[roop_count] ||
+          !cmp2->tmp_tgt_ssl_capaths[roop_count] ||
+          strcmp(cmp1->tmp_tgt_ssl_capaths[roop_count],
+            cmp2->tmp_tgt_ssl_capaths[roop_count])
+        )
+      ) ||
+      (
+        cmp1->tmp_tgt_ssl_certs[roop_count] !=
+          cmp2->tmp_tgt_ssl_certs[roop_count] &&
+        (
+          !cmp1->tmp_tgt_ssl_certs[roop_count] ||
+          !cmp2->tmp_tgt_ssl_certs[roop_count] ||
+          strcmp(cmp1->tmp_tgt_ssl_certs[roop_count],
+            cmp2->tmp_tgt_ssl_certs[roop_count])
+        )
+      ) ||
+      (
+        cmp1->tmp_tgt_ssl_ciphers[roop_count] !=
+          cmp2->tmp_tgt_ssl_ciphers[roop_count] &&
+        (
+          !cmp1->tmp_tgt_ssl_ciphers[roop_count] ||
+          !cmp2->tmp_tgt_ssl_ciphers[roop_count] ||
+          strcmp(cmp1->tmp_tgt_ssl_ciphers[roop_count],
+            cmp2->tmp_tgt_ssl_ciphers[roop_count])
+        )
+      ) ||
+      (
+        cmp1->tmp_tgt_ssl_keys[roop_count] !=
+          cmp2->tmp_tgt_ssl_keys[roop_count] &&
+        (
+          !cmp1->tmp_tgt_ssl_keys[roop_count] ||
+          !cmp2->tmp_tgt_ssl_keys[roop_count] ||
+          strcmp(cmp1->tmp_tgt_ssl_keys[roop_count],
+            cmp2->tmp_tgt_ssl_keys[roop_count])
+        )
+      ) ||
+      (
+        cmp1->tmp_tgt_default_files[roop_count] !=
+          cmp2->tmp_tgt_default_files[roop_count] &&
+        (
+          !cmp1->tmp_tgt_default_files[roop_count] ||
+          !cmp2->tmp_tgt_default_files[roop_count] ||
+          strcmp(cmp1->tmp_tgt_default_files[roop_count],
+            cmp2->tmp_tgt_default_files[roop_count])
+        )
+      ) ||
+      (
+        cmp1->tmp_tgt_default_groups[roop_count] !=
+          cmp2->tmp_tgt_default_groups[roop_count] &&
+        (
+          !cmp1->tmp_tgt_default_groups[roop_count] ||
+          !cmp2->tmp_tgt_default_groups[roop_count] ||
+          strcmp(cmp1->tmp_tgt_default_groups[roop_count],
+            cmp2->tmp_tgt_default_groups[roop_count])
+        )
+      ) ||
+      cmp1->tmp_tgt_ports[roop_count] != cmp2->tmp_tgt_ports[roop_count] ||
+      cmp1->tmp_tgt_ssl_vscs[roop_count] !=
+        cmp2->tmp_tgt_ssl_vscs[roop_count] ||
+      cmp1->tmp_link_statuses[roop_count] !=
+        cmp2->tmp_link_statuses[roop_count]
     )
       DBUG_RETURN(TRUE);
   }

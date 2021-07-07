@@ -290,12 +290,88 @@ int spider_free_share_alloc(
     }
     my_free(share->tgt_wrappers, MYF(0));
   }
+  if (share->tgt_ssl_cas)
+  {
+    for (roop_count = 0; roop_count < share->tgt_ssl_cas_length; roop_count++)
+    {
+      if (share->tgt_ssl_cas[roop_count])
+        my_free(share->tgt_ssl_cas[roop_count], MYF(0));
+    }
+    my_free(share->tgt_ssl_cas, MYF(0));
+  }
+  if (share->tgt_ssl_capaths)
+  {
+    for (roop_count = 0; roop_count < share->tgt_ssl_capaths_length;
+      roop_count++)
+    {
+      if (share->tgt_ssl_capaths[roop_count])
+        my_free(share->tgt_ssl_capaths[roop_count], MYF(0));
+    }
+    my_free(share->tgt_ssl_capaths, MYF(0));
+  }
+  if (share->tgt_ssl_certs)
+  {
+    for (roop_count = 0; roop_count < share->tgt_ssl_certs_length;
+      roop_count++)
+    {
+      if (share->tgt_ssl_certs[roop_count])
+        my_free(share->tgt_ssl_certs[roop_count], MYF(0));
+    }
+    my_free(share->tgt_ssl_certs, MYF(0));
+  }
+  if (share->tgt_ssl_ciphers)
+  {
+    for (roop_count = 0; roop_count < share->tgt_ssl_ciphers_length;
+      roop_count++)
+    {
+      if (share->tgt_ssl_ciphers[roop_count])
+        my_free(share->tgt_ssl_ciphers[roop_count], MYF(0));
+    }
+    my_free(share->tgt_ssl_ciphers, MYF(0));
+  }
+  if (share->tgt_ssl_keys)
+  {
+    for (roop_count = 0; roop_count < share->tgt_ssl_keys_length; roop_count++)
+    {
+      if (share->tgt_ssl_keys[roop_count])
+        my_free(share->tgt_ssl_keys[roop_count], MYF(0));
+    }
+    my_free(share->tgt_ssl_keys, MYF(0));
+  }
+  if (share->tgt_default_files)
+  {
+    for (roop_count = 0; roop_count < share->tgt_default_files_length;
+      roop_count++)
+    {
+      if (share->tgt_default_files[roop_count])
+        my_free(share->tgt_default_files[roop_count], MYF(0));
+    }
+    my_free(share->tgt_default_files, MYF(0));
+  }
+  if (share->tgt_default_groups)
+  {
+    for (roop_count = 0; roop_count < share->tgt_default_groups_length;
+      roop_count++)
+    {
+      if (share->tgt_default_groups[roop_count])
+        my_free(share->tgt_default_groups[roop_count], MYF(0));
+    }
+    my_free(share->tgt_default_groups, MYF(0));
+  }
   if (share->conn_keys)
     my_free(share->conn_keys, MYF(0));
   if (share->tgt_ports)
     my_free(share->tgt_ports, MYF(0));
+  if (share->tgt_ssl_vscs)
+    my_free(share->tgt_ssl_vscs, MYF(0));
   if (share->link_statuses)
     my_free(share->link_statuses, MYF(0));
+  if (share->monitoring_kind)
+    my_free(share->monitoring_kind, MYF(0));
+  if (share->monitoring_limit)
+    my_free(share->monitoring_limit, MYF(0));
+  if (share->monitoring_sid)
+    my_free(share->monitoring_sid, MYF(0));
   if (share->alter_table.tmp_server_names)
     my_free(share->alter_table.tmp_server_names, MYF(0));
   if (share->table_select)
@@ -359,6 +435,41 @@ void spider_free_tmp_share_alloc(
   {
     my_free(share->tgt_wrappers[0], MYF(0));
     share->tgt_wrappers[0] = NULL;
+  }
+  if (share->tgt_ssl_cas && share->tgt_ssl_cas[0])
+  {
+    my_free(share->tgt_ssl_cas[0], MYF(0));
+    share->tgt_ssl_cas[0] = NULL;
+  }
+  if (share->tgt_ssl_capaths && share->tgt_ssl_capaths[0])
+  {
+    my_free(share->tgt_ssl_capaths[0], MYF(0));
+    share->tgt_ssl_capaths[0] = NULL;
+  }
+  if (share->tgt_ssl_certs && share->tgt_ssl_certs[0])
+  {
+    my_free(share->tgt_ssl_certs[0], MYF(0));
+    share->tgt_ssl_certs[0] = NULL;
+  }
+  if (share->tgt_ssl_ciphers && share->tgt_ssl_ciphers[0])
+  {
+    my_free(share->tgt_ssl_ciphers[0], MYF(0));
+    share->tgt_ssl_ciphers[0] = NULL;
+  }
+  if (share->tgt_ssl_keys && share->tgt_ssl_keys[0])
+  {
+    my_free(share->tgt_ssl_keys[0], MYF(0));
+    share->tgt_ssl_keys[0] = NULL;
+  }
+  if (share->tgt_default_files && share->tgt_default_files[0])
+  {
+    my_free(share->tgt_default_files[0], MYF(0));
+    share->tgt_default_files[0] = NULL;
+  }
+  if (share->tgt_default_groups && share->tgt_default_groups[0])
+  {
+    my_free(share->tgt_default_groups[0], MYF(0));
+    share->tgt_default_groups[0] = NULL;
   }
   if (share->conn_keys)
   {
@@ -1364,6 +1475,8 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT_WITH_MAX("ctp", crd_type, 0, 2);
           SPIDER_PARAM_DOUBLE("cwg", crd_weight, 1);
           SPIDER_PARAM_INT_WITH_MAX("ddi", direct_dup_insert, 0, 1);
+          SPIDER_PARAM_STR_LIST("dff", tgt_default_files);
+          SPIDER_PARAM_STR_LIST("dfg", tgt_default_groups);
           SPIDER_PARAM_INT("isa", init_sql_alloc_size, 0);
           SPIDER_PARAM_INT_WITH_MAX("idl", internal_delayed, 0, 1);
           SPIDER_PARAM_LONGLONG("ilm", internal_limit, 0);
@@ -1374,7 +1487,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_LONG_LIST_WITH_MAX("lst", link_statuses, 0, 3);
           SPIDER_PARAM_LONG_LIST_WITH_MAX("mkd", monitoring_kind, 0, 3);
           SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
-            "mlt", monitoring_limit, 0, 9223372036854775807);
+            "mlt", monitoring_limit, 0, 9223372036854775807LL);
           SPIDER_PARAM_INT("mod", max_order, 0);
           SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
             "msi", monitoring_sid, 0, 4294967295);
@@ -1389,7 +1502,13 @@ int spider_parse_connect_info(
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           SPIDER_PARAM_INT_WITH_MAX("sbm", sts_bg_mode, 0, 1);
 #endif
+          SPIDER_PARAM_STR_LIST("sca", tgt_ssl_cas);
+          SPIDER_PARAM_STR_LIST("sch", tgt_ssl_ciphers);
           SPIDER_PARAM_INT_WITH_MAX("scm", select_column_mode, 0, 1);
+          SPIDER_PARAM_STR_LIST("scp", tgt_ssl_capaths);
+          SPIDER_PARAM_STR_LIST("scr", tgt_ssl_certs);
+          SPIDER_PARAM_STR_LIST("sky", tgt_ssl_keys);
+          SPIDER_PARAM_LONG_LIST_WITH_MAX("svc", tgt_ssl_vscs, 0, 1);
           SPIDER_PARAM_INT("srt", scan_rate, 0);
           SPIDER_PARAM_INT_WITH_MAX("slm", selupd_lock_mode, 0, 2);
           SPIDER_PARAM_INT_WITH_MAX("stc", semi_table_lock_conn, 0, 1);
@@ -1428,12 +1547,14 @@ int spider_parse_connect_info(
           SPIDER_PARAM_STR_LIST("socket", tgt_sockets);
           SPIDER_PARAM_HINT(
             "idx", key_hint, 3, table->s->keys, spider_db_append_key_hint);
+          SPIDER_PARAM_STR_LIST("ssl_ca", tgt_ssl_cas);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
           goto error;
         case 7:
           SPIDER_PARAM_STR_LIST("wrapper", tgt_wrappers);
+          SPIDER_PARAM_STR_LIST("ssl_key", tgt_ssl_keys);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1454,6 +1575,7 @@ int spider_parse_connect_info(
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           SPIDER_PARAM_INT("bgs_mode", bgs_mode, 0);
 #endif
+          SPIDER_PARAM_STR_LIST("ssl_cert", tgt_ssl_certs);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1471,6 +1593,8 @@ int spider_parse_connect_info(
           SPIDER_PARAM_DOUBLE("crd_weight", crd_weight, 1);
           SPIDER_PARAM_LONGLONG("split_read", split_read, 0);
           SPIDER_PARAM_INT_WITH_MAX("quick_mode", quick_mode, 0, 2);
+          SPIDER_PARAM_STR_LIST("ssl_cipher", tgt_ssl_ciphers);
+          SPIDER_PARAM_STR_LIST("ssl_capath", tgt_ssl_capaths);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1491,6 +1615,13 @@ int spider_parse_connect_info(
           SPIDER_PARAM_DOUBLE("sts_interval", sts_interval, 0);
           SPIDER_PARAM_DOUBLE("crd_interval", crd_interval, 0);
           SPIDER_PARAM_INT_WITH_MAX("low_mem_read", low_mem_read, 0, 1);
+          SPIDER_PARAM_STR_LIST("default_file", tgt_default_files);
+          error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
+          my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
+            MYF(0), tmp_ptr);
+          goto error;
+        case 13:
+          SPIDER_PARAM_STR_LIST("default_group", tgt_default_groups);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1529,7 +1660,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_INT_WITH_MAX(
             "use_pushdown_udf", use_pushdown_udf, 0, 1);
           SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
-            "monitoring_limit", monitoring_limit, 0, 9223372036854775807);
+            "monitoring_limit", monitoring_limit, 0, 9223372036854775807LL);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1563,6 +1694,13 @@ int spider_parse_connect_info(
         case 20:
           SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
             "monitoring_server_id", monitoring_sid, 0, 4294967295);
+          error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
+          my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
+            MYF(0), tmp_ptr);
+          goto error;
+        case 22:
+          SPIDER_PARAM_LONG_LIST_WITH_MAX(
+            "ssl_verify_server_cert", tgt_ssl_vscs, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1606,8 +1744,24 @@ int spider_parse_connect_info(
     share->link_count = share->tgt_sockets_length;
   if (share->link_count < share->tgt_wrappers_length)
     share->link_count = share->tgt_wrappers_length;
+  if (share->link_count < share->tgt_ssl_cas_length)
+    share->link_count = share->tgt_ssl_cas_length;
+  if (share->link_count < share->tgt_ssl_capaths_length)
+    share->link_count = share->tgt_ssl_capaths_length;
+  if (share->link_count < share->tgt_ssl_certs_length)
+    share->link_count = share->tgt_ssl_certs_length;
+  if (share->link_count < share->tgt_ssl_ciphers_length)
+    share->link_count = share->tgt_ssl_ciphers_length;
+  if (share->link_count < share->tgt_ssl_keys_length)
+    share->link_count = share->tgt_ssl_keys_length;
+  if (share->link_count < share->tgt_default_files_length)
+    share->link_count = share->tgt_default_files_length;
+  if (share->link_count < share->tgt_default_groups_length)
+    share->link_count = share->tgt_default_groups_length;
   if (share->link_count < share->tgt_ports_length)
     share->link_count = share->tgt_ports_length;
+  if (share->link_count < share->tgt_ssl_vscs_length)
+    share->link_count = share->tgt_ssl_vscs_length;
   if (share->link_count < share->link_statuses_length)
     share->link_count = share->link_statuses_length;
   if (share->link_count < share->monitoring_kind_length)
@@ -1672,9 +1826,63 @@ int spider_parse_connect_info(
     &share->tgt_wrappers_charlen,
     share->link_count)))
     goto error;
+  if ((error_num = spider_increase_string_list(
+    &share->tgt_ssl_cas,
+    &share->tgt_ssl_cas_lengths,
+    &share->tgt_ssl_cas_length,
+    &share->tgt_ssl_cas_charlen,
+    share->link_count)))
+    goto error;
+  if ((error_num = spider_increase_string_list(
+    &share->tgt_ssl_capaths,
+    &share->tgt_ssl_capaths_lengths,
+    &share->tgt_ssl_capaths_length,
+    &share->tgt_ssl_capaths_charlen,
+    share->link_count)))
+    goto error;
+  if ((error_num = spider_increase_string_list(
+    &share->tgt_ssl_certs,
+    &share->tgt_ssl_certs_lengths,
+    &share->tgt_ssl_certs_length,
+    &share->tgt_ssl_certs_charlen,
+    share->link_count)))
+    goto error;
+  if ((error_num = spider_increase_string_list(
+    &share->tgt_ssl_ciphers,
+    &share->tgt_ssl_ciphers_lengths,
+    &share->tgt_ssl_ciphers_length,
+    &share->tgt_ssl_ciphers_charlen,
+    share->link_count)))
+    goto error;
+  if ((error_num = spider_increase_string_list(
+    &share->tgt_ssl_keys,
+    &share->tgt_ssl_keys_lengths,
+    &share->tgt_ssl_keys_length,
+    &share->tgt_ssl_keys_charlen,
+    share->link_count)))
+    goto error;
+  if ((error_num = spider_increase_string_list(
+    &share->tgt_default_files,
+    &share->tgt_default_files_lengths,
+    &share->tgt_default_files_length,
+    &share->tgt_default_files_charlen,
+    share->link_count)))
+    goto error;
+  if ((error_num = spider_increase_string_list(
+    &share->tgt_default_groups,
+    &share->tgt_default_groups_lengths,
+    &share->tgt_default_groups_length,
+    &share->tgt_default_groups_charlen,
+    share->link_count)))
+    goto error;
   if ((error_num = spider_increase_long_list(
     &share->tgt_ports,
     &share->tgt_ports_length,
+    share->link_count)))
+    goto error;
+  if ((error_num = spider_increase_long_list(
+    &share->tgt_ssl_vscs,
+    &share->tgt_ssl_vscs_length,
     share->link_count)))
     goto error;
   if ((error_num = spider_increase_long_list(
@@ -1704,10 +1912,12 @@ int spider_parse_connect_info(
   if (!(share_alter->tmp_server_names = (char **)
     my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
       &share_alter->tmp_server_names,
-      sizeof(char *) * 8 * share->link_count,
+      sizeof(char *) * 15 * share->link_count,
       &share_alter->tmp_server_names_lengths,
-      sizeof(uint *) * 8 * share->link_count,
+      sizeof(uint *) * 15 * share->link_count,
       &share_alter->tmp_tgt_ports,
+      sizeof(long) * share->link_count,
+      &share_alter->tmp_tgt_ssl_vscs,
       sizeof(long) * share->link_count,
       &share_alter->tmp_link_statuses,
       sizeof(long) * share->link_count,
@@ -1748,8 +1958,38 @@ int spider_parse_connect_info(
     share_alter->tmp_tgt_sockets + share->link_count;
   memcpy(share_alter->tmp_tgt_wrappers, share->tgt_wrappers,
     sizeof(char *) * share->link_count);
+  share_alter->tmp_tgt_ssl_cas =
+    share_alter->tmp_tgt_wrappers + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_cas, share->tgt_ssl_cas,
+    sizeof(char *) * share->link_count);
+  share_alter->tmp_tgt_ssl_capaths =
+    share_alter->tmp_tgt_ssl_cas + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_capaths, share->tgt_ssl_capaths,
+    sizeof(char *) * share->link_count);
+  share_alter->tmp_tgt_ssl_certs =
+    share_alter->tmp_tgt_ssl_capaths + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_certs, share->tgt_ssl_certs,
+    sizeof(char *) * share->link_count);
+  share_alter->tmp_tgt_ssl_ciphers =
+    share_alter->tmp_tgt_ssl_certs + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_ciphers, share->tgt_ssl_ciphers,
+    sizeof(char *) * share->link_count);
+  share_alter->tmp_tgt_ssl_keys =
+    share_alter->tmp_tgt_ssl_ciphers + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_keys, share->tgt_ssl_keys,
+    sizeof(char *) * share->link_count);
+  share_alter->tmp_tgt_default_files =
+    share_alter->tmp_tgt_ssl_keys + share->link_count;
+  memcpy(share_alter->tmp_tgt_default_files, share->tgt_default_files,
+    sizeof(char *) * share->link_count);
+  share_alter->tmp_tgt_default_groups =
+    share_alter->tmp_tgt_default_files + share->link_count;
+  memcpy(share_alter->tmp_tgt_default_groups, share->tgt_default_groups,
+    sizeof(char *) * share->link_count);
 
   memcpy(share_alter->tmp_tgt_ports, share->tgt_ports,
+    sizeof(long) * share->link_count);
+  memcpy(share_alter->tmp_tgt_ssl_vscs, share->tgt_ssl_vscs,
     sizeof(long) * share->link_count);
   memcpy(share_alter->tmp_link_statuses, share->link_statuses,
     sizeof(long) * share->link_count);
@@ -1789,6 +2029,41 @@ int spider_parse_connect_info(
   memcpy(share_alter->tmp_tgt_wrappers_lengths,
     share->tgt_wrappers_lengths,
     sizeof(uint) * share->link_count);
+  share_alter->tmp_tgt_ssl_cas_lengths =
+    share_alter->tmp_tgt_wrappers_lengths + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_cas_lengths,
+    share->tgt_ssl_cas_lengths,
+    sizeof(uint) * share->link_count);
+  share_alter->tmp_tgt_ssl_capaths_lengths =
+    share_alter->tmp_tgt_ssl_cas_lengths + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_capaths_lengths,
+    share->tgt_ssl_capaths_lengths,
+    sizeof(uint) * share->link_count);
+  share_alter->tmp_tgt_ssl_certs_lengths =
+    share_alter->tmp_tgt_ssl_capaths_lengths + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_certs_lengths,
+    share->tgt_ssl_certs_lengths,
+    sizeof(uint) * share->link_count);
+  share_alter->tmp_tgt_ssl_ciphers_lengths =
+    share_alter->tmp_tgt_ssl_certs_lengths + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_ciphers_lengths,
+    share->tgt_ssl_ciphers_lengths,
+    sizeof(uint) * share->link_count);
+  share_alter->tmp_tgt_ssl_keys_lengths =
+    share_alter->tmp_tgt_ssl_ciphers_lengths + share->link_count;
+  memcpy(share_alter->tmp_tgt_ssl_keys_lengths,
+    share->tgt_ssl_keys_lengths,
+    sizeof(uint) * share->link_count);
+  share_alter->tmp_tgt_default_files_lengths =
+    share_alter->tmp_tgt_ssl_keys_lengths + share->link_count;
+  memcpy(share_alter->tmp_tgt_default_files_lengths,
+    share->tgt_default_files_lengths,
+    sizeof(uint) * share->link_count);
+  share_alter->tmp_tgt_default_groups_lengths =
+    share_alter->tmp_tgt_default_files_lengths + share->link_count;
+  memcpy(share_alter->tmp_tgt_default_groups_lengths,
+    share->tgt_default_groups_lengths,
+    sizeof(uint) * share->link_count);
 
   share_alter->tmp_server_names_charlen = share->server_names_charlen;
   share_alter->tmp_tgt_table_names_charlen = share->tgt_table_names_charlen;
@@ -1798,6 +2073,15 @@ int spider_parse_connect_info(
   share_alter->tmp_tgt_passwords_charlen = share->tgt_passwords_charlen;
   share_alter->tmp_tgt_sockets_charlen = share->tgt_sockets_charlen;
   share_alter->tmp_tgt_wrappers_charlen = share->tgt_wrappers_charlen;
+  share_alter->tmp_tgt_ssl_cas_charlen = share->tgt_ssl_cas_charlen;
+  share_alter->tmp_tgt_ssl_capaths_charlen = share->tgt_ssl_capaths_charlen;
+  share_alter->tmp_tgt_ssl_certs_charlen = share->tgt_ssl_certs_charlen;
+  share_alter->tmp_tgt_ssl_ciphers_charlen = share->tgt_ssl_ciphers_charlen;
+  share_alter->tmp_tgt_ssl_keys_charlen = share->tgt_ssl_keys_charlen;
+  share_alter->tmp_tgt_default_files_charlen =
+    share->tgt_default_files_charlen;
+  share_alter->tmp_tgt_default_groups_charlen =
+    share->tgt_default_groups_charlen;
 
   share_alter->tmp_server_names_length = share->server_names_length;
   share_alter->tmp_tgt_table_names_length = share->tgt_table_names_length;
@@ -1807,7 +2091,16 @@ int spider_parse_connect_info(
   share_alter->tmp_tgt_passwords_length = share->tgt_passwords_length;
   share_alter->tmp_tgt_sockets_length = share->tgt_sockets_length;
   share_alter->tmp_tgt_wrappers_length = share->tgt_wrappers_length;
+  share_alter->tmp_tgt_ssl_cas_length = share->tgt_ssl_cas_length;
+  share_alter->tmp_tgt_ssl_capaths_length = share->tgt_ssl_capaths_length;
+  share_alter->tmp_tgt_ssl_certs_length = share->tgt_ssl_certs_length;
+  share_alter->tmp_tgt_ssl_ciphers_length = share->tgt_ssl_ciphers_length;
+  share_alter->tmp_tgt_ssl_keys_length = share->tgt_ssl_keys_length;
+  share_alter->tmp_tgt_default_files_length = share->tgt_default_files_length;
+  share_alter->tmp_tgt_default_groups_length =
+    share->tgt_default_groups_length;
   share_alter->tmp_tgt_ports_length = share->tgt_ports_length;
+  share_alter->tmp_tgt_ssl_vscs_length = share->tgt_ssl_vscs_length;
   share_alter->tmp_link_statuses_length = share->link_statuses_length;
   /* copy for tables end */
 
@@ -1926,6 +2219,90 @@ int spider_parse_connect_info(
           MYF(0), share->tgt_wrappers[roop_count], "wrapper");
         goto error;
       }
+
+      DBUG_PRINT("info",
+        ("spider tgt_ssl_cas_lengths[%d] = %ld", roop_count,
+        share->tgt_ssl_cas_lengths[roop_count]));
+      if (share->tgt_ssl_cas_lengths[roop_count] >
+        SPIDER_CONNECT_INFO_MAX_LEN)
+      {
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR,
+          MYF(0), share->tgt_ssl_cas[roop_count], "ssl_ca");
+        goto error;
+      }
+
+      DBUG_PRINT("info",
+        ("spider tgt_ssl_capaths_lengths[%d] = %ld", roop_count,
+        share->tgt_ssl_capaths_lengths[roop_count]));
+      if (share->tgt_ssl_capaths_lengths[roop_count] >
+        SPIDER_CONNECT_INFO_MAX_LEN)
+      {
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR,
+          MYF(0), share->tgt_ssl_capaths[roop_count], "ssl_capath");
+        goto error;
+      }
+
+      DBUG_PRINT("info",
+        ("spider tgt_ssl_certs_lengths[%d] = %ld", roop_count,
+        share->tgt_ssl_certs_lengths[roop_count]));
+      if (share->tgt_ssl_certs_lengths[roop_count] >
+        SPIDER_CONNECT_INFO_MAX_LEN)
+      {
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR,
+          MYF(0), share->tgt_ssl_certs[roop_count], "ssl_cert");
+        goto error;
+      }
+
+      DBUG_PRINT("info",
+        ("spider tgt_ssl_ciphers_lengths[%d] = %ld", roop_count,
+        share->tgt_ssl_ciphers_lengths[roop_count]));
+      if (share->tgt_ssl_ciphers_lengths[roop_count] >
+        SPIDER_CONNECT_INFO_MAX_LEN)
+      {
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR,
+          MYF(0), share->tgt_ssl_ciphers[roop_count], "ssl_cipher");
+        goto error;
+      }
+
+      DBUG_PRINT("info",
+        ("spider tgt_ssl_keys_lengths[%d] = %ld", roop_count,
+        share->tgt_ssl_keys_lengths[roop_count]));
+      if (share->tgt_ssl_keys_lengths[roop_count] >
+        SPIDER_CONNECT_INFO_MAX_LEN)
+      {
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR,
+          MYF(0), share->tgt_ssl_keys[roop_count], "ssl_key");
+        goto error;
+      }
+
+      DBUG_PRINT("info",
+        ("spider tgt_default_files_lengths[%d] = %ld", roop_count,
+        share->tgt_default_files_lengths[roop_count]));
+      if (share->tgt_default_files_lengths[roop_count] >
+        SPIDER_CONNECT_INFO_MAX_LEN)
+      {
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR,
+          MYF(0), share->tgt_default_files[roop_count], "default_file");
+        goto error;
+      }
+
+      DBUG_PRINT("info",
+        ("spider tgt_default_groups_lengths[%d] = %ld", roop_count,
+        share->tgt_default_groups_lengths[roop_count]));
+      if (share->tgt_default_groups_lengths[roop_count] >
+        SPIDER_CONNECT_INFO_MAX_LEN)
+      {
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR,
+          MYF(0), share->tgt_default_groups[roop_count], "default_group");
+        goto error;
+      }
     }
   }
 
@@ -2017,6 +2394,38 @@ int spider_set_connect_info_default(
       }
     }
 
+    if (
+      !share->tgt_default_files[roop_count] &&
+      share->tgt_default_groups[roop_count] &&
+      (my_defaults_file || my_defaults_extra_file)
+    ) {
+      DBUG_PRINT("info",("spider create default tgt_default_files"));
+      if (my_defaults_extra_file)
+      {
+        share->tgt_default_files_lengths[roop_count] =
+          strlen(my_defaults_extra_file);
+        if (
+          !(share->tgt_default_files[roop_count] = spider_create_string(
+            my_defaults_extra_file,
+            share->tgt_default_files_lengths[roop_count]))
+        ) {
+          my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        }
+      } else {
+        share->tgt_default_files_lengths[roop_count] =
+          strlen(my_defaults_file);
+        if (
+          !(share->tgt_default_files[roop_count] = spider_create_string(
+            my_defaults_file,
+            share->tgt_default_files_lengths[roop_count]))
+        ) {
+          my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        }
+      }
+    }
+
     if (share->tgt_ports[roop_count] == -1)
     {
       share->tgt_ports[roop_count] = MYSQL_PORT;
@@ -2027,6 +2436,9 @@ int spider_set_connect_info_default(
     {
       share->tgt_ports[roop_count] = 65535;
     }
+
+    if (share->tgt_ssl_vscs[roop_count] == -1)
+      share->tgt_ssl_vscs[roop_count] = 0;
 
     if (
       !share->tgt_sockets[roop_count] &&
@@ -2169,7 +2581,15 @@ int spider_create_conn_keys(
       + 5 + 1
       + share->tgt_sockets_lengths[roop_count] + 1
       + share->tgt_usernames_lengths[roop_count] + 1
-      + share->tgt_passwords_lengths[roop_count];
+      + share->tgt_passwords_lengths[roop_count] + 1
+      + share->tgt_ssl_cas_lengths[roop_count] + 1
+      + share->tgt_ssl_capaths_lengths[roop_count] + 1
+      + share->tgt_ssl_certs_lengths[roop_count] + 1
+      + share->tgt_ssl_ciphers_lengths[roop_count] + 1
+      + share->tgt_ssl_keys_lengths[roop_count] + 1
+      + 1 + 1
+      + share->tgt_default_files_lengths[roop_count] + 1
+      + share->tgt_default_groups_lengths[roop_count];
     share->conn_keys_charlen += conn_keys_lengths[roop_count] + 1;
   }
   if (!(share->conn_keys = (char **)
@@ -2216,6 +2636,57 @@ int spider_create_conn_keys(
       DBUG_PRINT("info",("spider tgt_passwords[%d]=%s", roop_count,
         share->tgt_passwords[roop_count]));
       tmp_name = strmov(tmp_name + 1, share->tgt_passwords[roop_count]);
+    } else
+      tmp_name++;
+    if (share->tgt_ssl_cas[roop_count])
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_cas[%d]=%s", roop_count,
+        share->tgt_ssl_cas[roop_count]));
+      tmp_name = strmov(tmp_name + 1, share->tgt_ssl_cas[roop_count]);
+    } else
+      tmp_name++;
+    if (share->tgt_ssl_capaths[roop_count])
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_capaths[%d]=%s", roop_count,
+        share->tgt_ssl_capaths[roop_count]));
+      tmp_name = strmov(tmp_name + 1, share->tgt_ssl_capaths[roop_count]);
+    } else
+      tmp_name++;
+    if (share->tgt_ssl_certs[roop_count])
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_certs[%d]=%s", roop_count,
+        share->tgt_ssl_certs[roop_count]));
+      tmp_name = strmov(tmp_name + 1, share->tgt_ssl_certs[roop_count]);
+    } else
+      tmp_name++;
+    if (share->tgt_ssl_ciphers[roop_count])
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_ciphers[%d]=%s", roop_count,
+        share->tgt_ssl_ciphers[roop_count]));
+      tmp_name = strmov(tmp_name + 1, share->tgt_ssl_ciphers[roop_count]);
+    } else
+      tmp_name++;
+    if (share->tgt_ssl_keys[roop_count])
+    {
+      DBUG_PRINT("info",("spider tgt_ssl_keys[%d]=%s", roop_count,
+        share->tgt_ssl_keys[roop_count]));
+      tmp_name = strmov(tmp_name + 1, share->tgt_ssl_keys[roop_count]);
+    } else
+      tmp_name++;
+    tmp_name++;
+    *tmp_name = '0' + share->tgt_ssl_vscs[roop_count];
+    if (share->tgt_default_files[roop_count])
+    {
+      DBUG_PRINT("info",("spider tgt_default_files[%d]=%s", roop_count,
+        share->tgt_default_files[roop_count]));
+      tmp_name = strmov(tmp_name + 1, share->tgt_default_files[roop_count]);
+    } else
+      tmp_name++;
+    if (share->tgt_default_groups[roop_count])
+    {
+      DBUG_PRINT("info",("spider tgt_default_groups[%d]=%s", roop_count,
+        share->tgt_default_groups[roop_count]));
+      tmp_name = strmov(tmp_name + 1, share->tgt_default_groups[roop_count]);
     } else
       tmp_name++;
     tmp_name++;
@@ -3003,9 +3474,9 @@ int spider_open_all_tables(
   int error_num, roop_count, *need_mon;
   char tables_key[MAX_KEY_LENGTH];
   SPIDER_SHARE tmp_share;
-  char *tmp_connect_info[8];
-  uint tmp_connect_info_length[8];
-  long tmp_long[3];
+  char *tmp_connect_info[15];
+  uint tmp_connect_info_length[15];
+  long tmp_long[4];
   longlong tmp_longlong[2];
   SPIDER_CONN *conn, **conns;
   ha_spider *spider;
@@ -3097,9 +3568,9 @@ int spider_open_all_tables(
       if (!(share = (SPIDER_SHARE *)
         my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
           &share, sizeof(*share),
-          &connect_info, sizeof(char *) * 8,
-          &connect_info_length, sizeof(uint) * 8,
-          &long_info, sizeof(long) * 3,
+          &connect_info, sizeof(char *) * 15,
+          &connect_info_length, sizeof(uint) * 15,
+          &long_info, sizeof(long) * 4,
           &longlong_info, sizeof(longlong) * 2,
           &conns, sizeof(SPIDER_CONN *),
           &need_mon, sizeof(int),
@@ -3960,9 +4431,17 @@ void spider_set_tmp_share_pointer(
   tmp_share->tgt_passwords = &tmp_connect_info[5];
   tmp_share->tgt_sockets = &tmp_connect_info[6];
   tmp_share->tgt_wrappers = &tmp_connect_info[7];
+  tmp_share->tgt_ssl_cas = &tmp_connect_info[8];
+  tmp_share->tgt_ssl_capaths = &tmp_connect_info[9];
+  tmp_share->tgt_ssl_certs = &tmp_connect_info[10];
+  tmp_share->tgt_ssl_ciphers = &tmp_connect_info[11];
+  tmp_share->tgt_ssl_keys = &tmp_connect_info[12];
+  tmp_share->tgt_default_files = &tmp_connect_info[13];
+  tmp_share->tgt_default_groups = &tmp_connect_info[14];
   tmp_share->tgt_ports = &tmp_long[0];
-  tmp_share->link_statuses = &tmp_long[1];
-  tmp_share->monitoring_kind = &tmp_long[2];
+  tmp_share->tgt_ssl_vscs = &tmp_long[1];
+  tmp_share->link_statuses = &tmp_long[2];
+  tmp_share->monitoring_kind = &tmp_long[3];
   tmp_share->monitoring_limit = &tmp_longlong[0];
   tmp_share->monitoring_sid = &tmp_longlong[1];
   tmp_share->server_names_lengths = &tmp_connect_info_length[0];
@@ -3973,6 +4452,13 @@ void spider_set_tmp_share_pointer(
   tmp_share->tgt_passwords_lengths = &tmp_connect_info_length[5];
   tmp_share->tgt_sockets_lengths = &tmp_connect_info_length[6];
   tmp_share->tgt_wrappers_lengths = &tmp_connect_info_length[7];
+  tmp_share->tgt_ssl_cas_lengths = &tmp_connect_info_length[8];
+  tmp_share->tgt_ssl_capaths_lengths = &tmp_connect_info_length[9];
+  tmp_share->tgt_ssl_certs_lengths = &tmp_connect_info_length[10];
+  tmp_share->tgt_ssl_ciphers_lengths = &tmp_connect_info_length[11];
+  tmp_share->tgt_ssl_keys_lengths = &tmp_connect_info_length[12];
+  tmp_share->tgt_default_files_lengths = &tmp_connect_info_length[13];
+  tmp_share->tgt_default_groups_lengths = &tmp_connect_info_length[14];
   tmp_share->server_names_length = 1;
   tmp_share->tgt_table_names_length = 1;
   tmp_share->tgt_dbs_length = 1;
@@ -3981,7 +4467,15 @@ void spider_set_tmp_share_pointer(
   tmp_share->tgt_passwords_length = 1;
   tmp_share->tgt_sockets_length = 1;
   tmp_share->tgt_wrappers_length = 1;
+  tmp_share->tgt_ssl_cas_length = 1;
+  tmp_share->tgt_ssl_capaths_length = 1;
+  tmp_share->tgt_ssl_certs_length = 1;
+  tmp_share->tgt_ssl_ciphers_length = 1;
+  tmp_share->tgt_ssl_keys_length = 1;
+  tmp_share->tgt_default_files_length = 1;
+  tmp_share->tgt_default_groups_length = 1;
   tmp_share->tgt_ports_length = 1;
+  tmp_share->tgt_ssl_vscs_length = 1;
   tmp_share->link_statuses_length = 1;
   tmp_share->monitoring_kind_length = 1;
   tmp_share->monitoring_limit_length = 1;

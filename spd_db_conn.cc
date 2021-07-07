@@ -282,6 +282,35 @@ int spider_db_connect(
   mysql_options(conn->db_conn, MYSQL_OPT_CONNECT_TIMEOUT,
     &net_timeout);
 
+  if (
+    conn->tgt_ssl_ca_length |
+    conn->tgt_ssl_capath_length |
+    conn->tgt_ssl_cert_length |
+    conn->tgt_ssl_key_length
+  ) {
+    mysql_ssl_set(conn->db_conn, conn->tgt_ssl_key, conn->tgt_ssl_cert,
+      conn->tgt_ssl_ca, conn->tgt_ssl_capath, conn->tgt_ssl_cipher);
+    if (conn->tgt_ssl_vsc)
+    {
+      my_bool verify_flg = TRUE;
+      mysql_options(conn->db_conn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
+        &verify_flg);
+    }
+  }
+
+  if (conn->tgt_default_file)
+  {
+    DBUG_PRINT("info",("spider tgt_default_file=%s", conn->tgt_default_file));
+    mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_FILE,
+      conn->tgt_default_file);
+  }
+  if (conn->tgt_default_group)
+  {
+    DBUG_PRINT("info",("spider tgt_default_group=%s",
+      conn->tgt_default_group));
+    mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_GROUP,
+      conn->tgt_default_group);
+  }
 
   /* tgt_db not use */
   if (!mysql_real_connect(conn->db_conn,
@@ -6917,6 +6946,36 @@ int spider_db_udf_direct_sql_connect(
     &net_timeout);
   mysql_options(conn->db_conn, MYSQL_OPT_CONNECT_TIMEOUT,
     &net_timeout);
+
+  if (
+    conn->tgt_ssl_ca_length |
+    conn->tgt_ssl_capath_length |
+    conn->tgt_ssl_cert_length |
+    conn->tgt_ssl_key_length
+  ) {
+    mysql_ssl_set(conn->db_conn, conn->tgt_ssl_key, conn->tgt_ssl_cert,
+      conn->tgt_ssl_ca, conn->tgt_ssl_capath, conn->tgt_ssl_cipher);
+    if (conn->tgt_ssl_vsc)
+    {
+      my_bool verify_flg = TRUE;
+      mysql_options(conn->db_conn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
+        &verify_flg);
+    }
+  }
+
+  if (conn->tgt_default_file)
+  {
+    DBUG_PRINT("info",("spider tgt_default_file=%s", conn->tgt_default_file));
+    mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_FILE,
+      conn->tgt_default_file);
+  }
+  if (conn->tgt_default_group)
+  {
+    DBUG_PRINT("info",("spider tgt_default_group=%s",
+      conn->tgt_default_group));
+    mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_GROUP,
+      conn->tgt_default_group);
+  }
 
   if (!mysql_real_connect(conn->db_conn,
                           direct_sql->tgt_host,

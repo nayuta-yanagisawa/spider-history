@@ -46,7 +46,15 @@ typedef struct st_spider_alter_table
   char               **tmp_tgt_passwords;
   char               **tmp_tgt_sockets;
   char               **tmp_tgt_wrappers;
+  char               **tmp_tgt_ssl_cas;
+  char               **tmp_tgt_ssl_capaths;
+  char               **tmp_tgt_ssl_certs;
+  char               **tmp_tgt_ssl_ciphers;
+  char               **tmp_tgt_ssl_keys;
+  char               **tmp_tgt_default_files;
+  char               **tmp_tgt_default_groups;
   long               *tmp_tgt_ports;
+  long               *tmp_tgt_ssl_vscs;
   long               *tmp_link_statuses;
 
   uint               *tmp_server_names_lengths;
@@ -57,6 +65,13 @@ typedef struct st_spider_alter_table
   uint               *tmp_tgt_passwords_lengths;
   uint               *tmp_tgt_sockets_lengths;
   uint               *tmp_tgt_wrappers_lengths;
+  uint               *tmp_tgt_ssl_cas_lengths;
+  uint               *tmp_tgt_ssl_capaths_lengths;
+  uint               *tmp_tgt_ssl_certs_lengths;
+  uint               *tmp_tgt_ssl_ciphers_lengths;
+  uint               *tmp_tgt_ssl_keys_lengths;
+  uint               *tmp_tgt_default_files_lengths;
+  uint               *tmp_tgt_default_groups_lengths;
 
   uint               tmp_server_names_charlen;
   uint               tmp_tgt_table_names_charlen;
@@ -66,6 +81,13 @@ typedef struct st_spider_alter_table
   uint               tmp_tgt_passwords_charlen;
   uint               tmp_tgt_sockets_charlen;
   uint               tmp_tgt_wrappers_charlen;
+  uint               tmp_tgt_ssl_cas_charlen;
+  uint               tmp_tgt_ssl_capaths_charlen;
+  uint               tmp_tgt_ssl_certs_charlen;
+  uint               tmp_tgt_ssl_ciphers_charlen;
+  uint               tmp_tgt_ssl_keys_charlen;
+  uint               tmp_tgt_default_files_charlen;
+  uint               tmp_tgt_default_groups_charlen;
 
   uint               tmp_server_names_length;
   uint               tmp_tgt_table_names_length;
@@ -75,7 +97,15 @@ typedef struct st_spider_alter_table
   uint               tmp_tgt_passwords_length;
   uint               tmp_tgt_sockets_length;
   uint               tmp_tgt_wrappers_length;
+  uint               tmp_tgt_ssl_cas_length;
+  uint               tmp_tgt_ssl_capaths_length;
+  uint               tmp_tgt_ssl_certs_length;
+  uint               tmp_tgt_ssl_ciphers_length;
+  uint               tmp_tgt_ssl_keys_length;
+  uint               tmp_tgt_default_files_length;
+  uint               tmp_tgt_default_groups_length;
   uint               tmp_tgt_ports_length;
+  uint               tmp_tgt_ssl_vscs_length;
   uint               tmp_link_statuses_length;
 } SPIDER_ALTER_TABLE;
 
@@ -123,13 +153,28 @@ typedef struct st_spider_conn
   char               *tgt_password;
   char               *tgt_socket;
   char               *tgt_wrapper;
+  char               *tgt_ssl_ca;
+  char               *tgt_ssl_capath;
+  char               *tgt_ssl_cert;
+  char               *tgt_ssl_cipher;
+  char               *tgt_ssl_key;
+  char               *tgt_default_file;
+  char               *tgt_default_group;
   long               tgt_port;
+  long               tgt_ssl_vsc;
 
   uint               tgt_host_length;
   uint               tgt_username_length;
   uint               tgt_password_length;
   uint               tgt_socket_length;
   uint               tgt_wrapper_length;
+  uint               tgt_ssl_ca_length;
+  uint               tgt_ssl_capath_length;
+  uint               tgt_ssl_cert_length;
+  uint               tgt_ssl_cipher_length;
+  uint               tgt_ssl_key_length;
+  uint               tgt_default_file_length;
+  uint               tgt_default_group_length;
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   volatile
@@ -354,8 +399,16 @@ typedef struct st_spider_share
   char               **tgt_passwords;
   char               **tgt_sockets;
   char               **tgt_wrappers;
+  char               **tgt_ssl_cas;
+  char               **tgt_ssl_capaths;
+  char               **tgt_ssl_certs;
+  char               **tgt_ssl_ciphers;
+  char               **tgt_ssl_keys;
+  char               **tgt_default_files;
+  char               **tgt_default_groups;
   char               **conn_keys;
   long               *tgt_ports;
+  long               *tgt_ssl_vscs;
   long               *link_statuses;
   long               *monitoring_kind;
   longlong           *monitoring_limit;
@@ -369,6 +422,13 @@ typedef struct st_spider_share
   uint               *tgt_passwords_lengths;
   uint               *tgt_sockets_lengths;
   uint               *tgt_wrappers_lengths;
+  uint               *tgt_ssl_cas_lengths;
+  uint               *tgt_ssl_capaths_lengths;
+  uint               *tgt_ssl_certs_lengths;
+  uint               *tgt_ssl_ciphers_lengths;
+  uint               *tgt_ssl_keys_lengths;
+  uint               *tgt_default_files_lengths;
+  uint               *tgt_default_groups_lengths;
   uint               *conn_keys_lengths;
 
   uint               server_names_charlen;
@@ -379,6 +439,13 @@ typedef struct st_spider_share
   uint               tgt_passwords_charlen;
   uint               tgt_sockets_charlen;
   uint               tgt_wrappers_charlen;
+  uint               tgt_ssl_cas_charlen;
+  uint               tgt_ssl_capaths_charlen;
+  uint               tgt_ssl_certs_charlen;
+  uint               tgt_ssl_ciphers_charlen;
+  uint               tgt_ssl_keys_charlen;
+  uint               tgt_default_files_charlen;
+  uint               tgt_default_groups_charlen;
   uint               conn_keys_charlen;
 
   uint               server_names_length;
@@ -389,8 +456,16 @@ typedef struct st_spider_share
   uint               tgt_passwords_length;
   uint               tgt_sockets_length;
   uint               tgt_wrappers_length;
+  uint               tgt_ssl_cas_length;
+  uint               tgt_ssl_capaths_length;
+  uint               tgt_ssl_certs_length;
+  uint               tgt_ssl_ciphers_length;
+  uint               tgt_ssl_keys_length;
+  uint               tgt_default_files_length;
+  uint               tgt_default_groups_length;
   uint               conn_keys_length;
   uint               tgt_ports_length;
+  uint               tgt_ssl_vscs_length;
   uint               link_statuses_length;
   uint               monitoring_kind_length;
   uint               monitoring_limit_length;
@@ -441,8 +516,16 @@ typedef struct st_spider_direct_sql
   char                 *tgt_password;
   char                 *tgt_socket;
   char                 *tgt_wrapper;
+  char                 *tgt_ssl_ca;
+  char                 *tgt_ssl_capath;
+  char                 *tgt_ssl_cert;
+  char                 *tgt_ssl_cipher;
+  char                 *tgt_ssl_key;
+  char                 *tgt_default_file;
+  char                 *tgt_default_group;
   char                 *conn_key;
   long                 tgt_port;
+  long                 tgt_ssl_vsc;
 
   uint                 server_name_length;
   uint                 tgt_default_db_name_length;
@@ -451,6 +534,13 @@ typedef struct st_spider_direct_sql
   uint                 tgt_password_length;
   uint                 tgt_socket_length;
   uint                 tgt_wrapper_length;
+  uint                 tgt_ssl_ca_length;
+  uint                 tgt_ssl_capath_length;
+  uint                 tgt_ssl_cert_length;
+  uint                 tgt_ssl_cipher_length;
+  uint                 tgt_ssl_key_length;
+  uint                 tgt_default_file_length;
+  uint                 tgt_default_group_length;
   uint                 conn_key_length;
 
   pthread_mutex_t               *bg_mutex;
