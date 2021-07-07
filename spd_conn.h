@@ -28,7 +28,7 @@ void spider_free_conn_from_trx(
   SPIDER_CONN *conn,
   bool another,
   bool trx_free,
-  int *roopCount
+  int *roop_count
 );
 
 SPIDER_CONN *spider_create_conn(

@@ -46,12 +46,12 @@ int spider_free_trx_conn(
   SPIDER_TRX *trx,
   bool trx_free
 ) {
-  int roopCount = 0;
+  int roop_count = 0;
   SPIDER_CONN *conn;
   DBUG_ENTER("spider_free_trx_conn");
-  while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash, roopCount)))
+  while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash, roop_count)))
   {
-    spider_free_conn_from_trx(trx, conn, FALSE, trx_free, &roopCount);
+    spider_free_conn_from_trx(trx, conn, FALSE, trx_free, &roop_count);
   }
   DBUG_RETURN(0);
 }
@@ -61,18 +61,18 @@ int spider_free_trx_another_conn(
   bool lock
 ) {
   int error_num, tmp_error_num;
-  int roopCount = 0;
+  int roop_count = 0;
   SPIDER_CONN *conn;
   ha_spider tmp_spider;
   DBUG_ENTER("spider_free_trx_another_conn");
   error_num = 0;
   while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_another_conn_hash,
-    roopCount)))
+    roop_count)))
   {
     tmp_spider.conn = conn;
     if (lock && (tmp_error_num = spider_db_unlock_tables(&tmp_spider)))
       error_num = tmp_error_num;
-    spider_free_conn_from_trx(trx, conn, TRUE, TRUE, &roopCount);
+    spider_free_conn_from_trx(trx, conn, TRUE, TRUE, &roop_count);
   }
   DBUG_RETURN(error_num);
 }
@@ -1113,7 +1113,6 @@ int spider_internal_xa_prepare(
   int table_xa_key_length;
   int error_num;
   SPIDER_CONN *conn;
-  ha_spider *spider;
   uint force_commit = THDVAR(thd, force_commit);
   Open_tables_state open_tables_backup;
   DBUG_ENTER("spider_internal_xa_prepare");
@@ -1157,25 +1156,22 @@ int spider_internal_xa_prepare(
           DBUG_RETURN(error_num);
         conn->join_trx = 0;
       } else {
-        pthread_mutex_lock(&conn->user_ha_mutex);
-        spider = (ha_spider*) hash_element(&conn->user_ha_hash, 0);
-        pthread_mutex_unlock(&conn->user_ha_mutex);
         /*
           insert into mysql.spider_xa_member
             (format_id, gtrid_length, bqual_length, data,
             scheme, host, port, socket, username, password) values
             (trx->xid.format_id, trx->xid.gtrid_length,
             trx->xid.bqual_length, trx->xid.data,
-            spider->share->tgt_wrapper,
-            spider->share->tgt_host,
-            spider->share->tgt_port,
-            spider->share->tgt_socket,
-            spider->share->tgt_username,
-            spider->share->tgt_password)
+            conn->tgt_wrapper,
+            conn->tgt_host,
+            conn->tgt_port,
+            conn->tgt_socket,
+            conn->tgt_username,
+            conn->tgt_password)
         */
         if (
           (error_num = spider_insert_xa_member(
-            table_xa_member, &trx->xid, spider->share))
+            table_xa_member, &trx->xid, conn))
         )
           goto error;
 

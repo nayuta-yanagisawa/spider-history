@@ -579,6 +579,32 @@ int spider_parse_connect_info(
       {
         case 0:
           continue;
+        case 3:
+          SPIDER_PARAM_INT("bsz", bulk_size, 0);
+          SPIDER_PARAM_DOUBLE("civ", crd_interval, 0);
+          SPIDER_PARAM_INT_WITH_MAX("cmd", crd_mode, 0, 3);
+          SPIDER_PARAM_INT_WITH_MAX("ctp", crd_type, 0, 2);
+          SPIDER_PARAM_DOUBLE("cwg", crd_weight, 1);
+          SPIDER_PARAM_INT("isa", init_sql_alloc_size, 0);
+          SPIDER_PARAM_INT_WITH_MAX("idl", internal_delayed, 0, 1);
+          SPIDER_PARAM_LONGLONG("ilm", internal_limit, 0);
+          SPIDER_PARAM_LONGLONG("ios", internal_offset, 0);
+          SPIDER_PARAM_INT_WITH_MAX("iom", internal_optimize, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX("iol", internal_optimize_local, 0, 1);
+          SPIDER_PARAM_INT("mod", max_order, 0);
+          SPIDER_PARAM_INT_WITH_MAX("msr", multi_split_read, 0, 1);
+          SPIDER_PARAM_LONGLONG("prt", priority, 0);
+          SPIDER_PARAM_INT_WITH_MAX("qch", query_cache, 0, 2);
+          SPIDER_PARAM_DOUBLE("rrt", read_rate, 0);
+          SPIDER_PARAM_INT_WITH_MAX("rsa", reset_sql_alloc, 0, 1);
+          SPIDER_PARAM_INT("srt", scan_rate, 0);
+          SPIDER_PARAM_INT_WITH_MAX("slm", selupd_lock_mode, 0, 2);
+          SPIDER_PARAM_INT_WITH_MAX("stl", semi_table_lock, 0, 1);
+          SPIDER_PARAM_STR("srv", server_name);
+          SPIDER_PARAM_LONGLONG("srd", split_read, 0);
+          SPIDER_PARAM_DOUBLE("siv", sts_interval, 0);
+          SPIDER_PARAM_INT_WITH_MAX("smd", sts_mode, 1, 2);
+          SPIDER_PARAM_STR("tbl", tgt_table_name);
         case 4:
           SPIDER_PARAM_STR("host", tgt_host);
           SPIDER_PARAM_STR("user", tgt_username);

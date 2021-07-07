@@ -196,7 +196,7 @@ void spider_store_xa_status(
 void spider_store_xa_member_pk(
   TABLE *table,
   XID *xid,
-  SPIDER_SHARE *share
+  SPIDER_CONN *conn
 ) {
   DBUG_ENTER("spider_store_xa_member_pk");
   table->field[0]->store(xid->formatID);
@@ -206,14 +206,14 @@ void spider_store_xa_member_pk(
     (uint) xid->gtrid_length + xid->bqual_length,
     system_charset_info);
   table->field[5]->store(
-    share->tgt_host,
-    (uint) share->tgt_host_length,
+    conn->tgt_host,
+    (uint) conn->tgt_host_length,
     system_charset_info);
   table->field[6]->store(
-    share->tgt_port);
+    conn->tgt_port);
   table->field[7]->store(
-    share->tgt_socket,
-    (uint) share->tgt_socket_length,
+    conn->tgt_socket,
+    (uint) conn->tgt_socket_length,
     system_charset_info);
   DBUG_VOID_RETURN;
 }
@@ -221,21 +221,21 @@ void spider_store_xa_member_pk(
 void spider_store_xa_member_info(
   TABLE *table,
   XID *xid,
-  SPIDER_SHARE *share
+  SPIDER_CONN *conn
 ) {
   DBUG_ENTER("spider_store_xa_member_info");
   table->field[2]->store(xid->bqual_length);
   table->field[4]->store(
-    share->tgt_wrapper,
-    (uint) share->tgt_wrapper_length,
+    conn->tgt_wrapper,
+    (uint) conn->tgt_wrapper_length,
     system_charset_info);
   table->field[8]->store(
-    share->tgt_username,
-    (uint) share->tgt_username_length,
+    conn->tgt_username,
+    (uint) conn->tgt_username_length,
     system_charset_info);
   table->field[9]->store(
-    share->tgt_password,
-    (uint) share->tgt_password_length,
+    conn->tgt_password,
+    (uint) conn->tgt_password_length,
     system_charset_info);
   DBUG_VOID_RETURN;
 }
@@ -406,14 +406,14 @@ int spider_insert_xa(
 int spider_insert_xa_member(
   TABLE *table,
   XID *xid,
-  SPIDER_SHARE *share
+  SPIDER_CONN *conn
 ) {
   int error_num;
   char table_key[MAX_KEY_LENGTH];
   DBUG_ENTER("spider_insert_xa_member");
   table->use_all_columns();
   empty_record(table);
-  spider_store_xa_member_pk(table, xid, share);
+  spider_store_xa_member_pk(table, xid, conn);
 
   if ((error_num = spider_check_sys_table(table, table_key)))
   {
@@ -423,7 +423,7 @@ int spider_insert_xa_member(
       DBUG_RETURN(error_num);
     }
     table->use_all_columns();
-    spider_store_xa_member_info(table, xid, share);
+    spider_store_xa_member_info(table, xid, conn);
     if ((error_num = table->file->ha_write_row(table->record[0])))
     {
       table->file->print_error(error_num, MYF(0));

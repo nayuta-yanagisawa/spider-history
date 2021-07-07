@@ -71,6 +71,19 @@ typedef struct st_spider_conn
   bool               ignore_dup_key;
   char               *error_str;
   int                error_length;
+
+  char               *tgt_host;
+  char               *tgt_username;
+  char               *tgt_password;
+  char               *tgt_socket;
+  char               *tgt_wrapper;
+  long               tgt_port;
+
+  uint               tgt_host_length;
+  uint               tgt_username_length;
+  uint               tgt_password_length;
+  uint               tgt_socket_length;
+  uint               tgt_wrapper_length;
 } SPIDER_CONN;
 
 typedef struct st_spider_transaction

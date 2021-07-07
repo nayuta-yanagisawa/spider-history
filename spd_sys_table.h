@@ -99,13 +99,13 @@ void spider_store_xa_status(
 void spider_store_xa_member_pk(
   TABLE *table,
   XID *xid,
-  SPIDER_SHARE *share
+  SPIDER_CONN *conn
 );
 
 void spider_store_xa_member_info(
   TABLE *table,
   XID *xid,
-  SPIDER_SHARE *share
+  SPIDER_CONN *conn
 );
 
 void spider_store_tables_name(
@@ -133,7 +133,7 @@ int spider_insert_xa(
 int spider_insert_xa_member(
   TABLE *table,
   XID *xid,
-  SPIDER_SHARE *share
+  SPIDER_CONN *conn
 );
 
 int spider_insert_tables(

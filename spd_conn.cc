@@ -63,7 +63,7 @@ void spider_free_conn_from_trx(
   SPIDER_CONN *conn,
   bool another,
   bool trx_free,
-  int *roopCount
+  int *roop_count
 ) {
   ha_spider *spider;
   DBUG_ENTER("spider_free_conn_from_trx");
@@ -107,8 +107,8 @@ void spider_free_conn_from_trx(
       /* conn_recycle_mode == 0 */
       spider_free_conn(conn);
     }
-  } else
-    (*roopCount)++;
+  } else if (roop_count)
+    (*roop_count)++;
   DBUG_VOID_RETURN;
 }
 
@@ -117,13 +117,19 @@ SPIDER_CONN *spider_create_conn(
   int *error_num
 ) {
   SPIDER_CONN *conn;
-  char *tmp_name;
+  char *tmp_name, *tmp_host, *tmp_username, *tmp_password, *tmp_socket;
+  char *tmp_wrapper;
   DBUG_ENTER("spider_create_conn");
 
   if (!(conn = (SPIDER_CONN *)
        my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
                         &conn, sizeof(*conn),
                         &tmp_name, share->conn_key_length + 1,
+                        &tmp_host, share->tgt_host_length + 1,
+                        &tmp_username, share->tgt_username_length + 1,
+                        &tmp_password, share->tgt_password_length + 1,
+                        &tmp_socket, share->tgt_socket_length + 1,
+                        &tmp_wrapper, share->tgt_wrapper_length + 1,
                         NullS))
   ) {
     *error_num = HA_ERR_OUT_OF_MEM;
@@ -133,6 +139,22 @@ SPIDER_CONN *spider_create_conn(
   conn->conn_key_length = share->conn_key_length;
   conn->conn_key = tmp_name;
   memcpy(conn->conn_key, share->conn_key, share->conn_key_length);
+  conn->tgt_host_length = share->tgt_host_length;
+  conn->tgt_host = tmp_host;
+  memcpy(conn->tgt_host, share->tgt_host, share->tgt_host_length);
+  conn->tgt_username_length = share->tgt_username_length;
+  conn->tgt_username = tmp_username;
+  memcpy(conn->tgt_username, share->tgt_username, share->tgt_username_length);
+  conn->tgt_password_length = share->tgt_password_length;
+  conn->tgt_password = tmp_password;
+  memcpy(conn->tgt_password, share->tgt_password, share->tgt_password_length);
+  conn->tgt_socket_length = share->tgt_socket_length;
+  conn->tgt_socket = tmp_socket;
+  memcpy(conn->tgt_socket, share->tgt_socket, share->tgt_socket_length);
+  conn->tgt_wrapper_length = share->tgt_wrapper_length;
+  conn->tgt_wrapper = tmp_wrapper;
+  memcpy(conn->tgt_wrapper, share->tgt_wrapper, share->tgt_wrapper_length);
+  conn->tgt_port = share->tgt_port;
   conn->db_conn = NULL;
   conn->join_trx = 0;
   conn->trx_isolation = -1;
