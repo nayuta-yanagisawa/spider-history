@@ -378,6 +378,8 @@ typedef struct st_spider_share
   int                query_cache;
   int                internal_delayed;
   int                bulk_size;
+  int                bulk_update_mode;
+  int                bulk_update_size;
   int                internal_optimize;
   int                internal_optimize_local;
   double             scan_rate;

@@ -1341,6 +1341,8 @@ int spider_parse_connect_info(
   share->query_cache = -1;
   share->internal_delayed = -1;
   share->bulk_size = -1;
+  share->bulk_update_mode = -1;
+  share->bulk_update_size = -1;
   share->internal_optimize = -1;
   share->internal_optimize_local = -1;
   share->scan_rate = -1;
@@ -1475,6 +1477,8 @@ int spider_parse_connect_info(
           SPIDER_PARAM_LONGLONG("bsr", bgs_second_read, 0);
 #endif
           SPIDER_PARAM_INT("bsz", bulk_size, 0);
+          SPIDER_PARAM_INT_WITH_MAX("bum", bulk_update_mode, 0, 2);
+          SPIDER_PARAM_INT("bus", bulk_update_size, 0);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
           SPIDER_PARAM_INT_WITH_MAX("cbm", crd_bg_mode, 0, 1);
 #endif
@@ -1677,6 +1681,9 @@ int spider_parse_connect_info(
             "use_pushdown_udf", use_pushdown_udf, 0, 1);
           SPIDER_PARAM_LONGLONG_LIST_WITH_MAX(
             "monitoring_limit", monitoring_limit, 0, 9223372036854775807LL);
+          SPIDER_PARAM_INT_WITH_MAX(
+            "bulk_update_mode", bulk_update_mode, 0, 2);
+          SPIDER_PARAM_INT("bulk_update_size", bulk_update_size, 0);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -2573,6 +2580,10 @@ int spider_set_connect_info_default(
     share->internal_delayed = 0;
   if (share->bulk_size == -1)
     share->bulk_size = 16000;
+  if (share->bulk_update_mode == -1)
+    share->bulk_update_mode = 0;
+  if (share->bulk_update_size == -1)
+    share->bulk_update_size = 16000;
   if (share->internal_optimize == -1)
     share->internal_optimize = 0;
   if (share->internal_optimize_local == -1)
@@ -2755,6 +2766,7 @@ SPIDER_SHARE *spider_get_share(
 ) {
   SPIDER_SHARE *share;
   TABLE_SHARE *table_share = table->s;
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
   uint length;
   int use_table_charset;
   char *tmp_name;
@@ -2968,6 +2980,9 @@ SPIDER_SHARE *spider_get_share(
         &spider->conns, sizeof(SPIDER_CONN *) * share->link_count,
         &spider->need_mons, sizeof(int) * share->link_count,
         &spider->quick_targets, sizeof(void *) * share->link_count,
+        &result_list->upd_tmp_tbls, sizeof(TABLE *) * share->link_count,
+        &result_list->upd_tmp_tbl_prms,
+          sizeof(TMP_TABLE_PARAM) * share->link_count,
         NullS))
     ) {
       share->init_error = TRUE;
@@ -2976,6 +2991,9 @@ SPIDER_SHARE *spider_get_share(
       spider_free_share(share);
       goto error_but_no_delete;
     }
+    result_list->upd_tmp_tbl = NULL;
+    result_list->upd_tmp_tbl_prm.init();
+    result_list->upd_tmp_tbl_prm.field_count = 1;
     memcpy(tmp_name, share->conn_keys[0], share->conn_keys_charlen);
 
     for (roop_count = 0; roop_count < share->link_count; roop_count++)
@@ -2983,6 +3001,8 @@ SPIDER_SHARE *spider_get_share(
       spider->conn_keys[roop_count] = tmp_name;
       *tmp_name = first_byte;
       tmp_name += share->conn_keys_lengths[roop_count] + 1;
+      result_list->upd_tmp_tbl_prms[roop_count].init();
+      result_list->upd_tmp_tbl_prms[roop_count].field_count = 1;
     }
 
     for (
@@ -3180,11 +3200,17 @@ SPIDER_SHARE *spider_get_share(
         &spider->conns, sizeof(SPIDER_CONN *) * share->link_count,
         &spider->need_mons, sizeof(int) * share->link_count,
         &spider->quick_targets, sizeof(void *) * share->link_count,
+        &result_list->upd_tmp_tbls, sizeof(TABLE *) * share->link_count,
+        &result_list->upd_tmp_tbl_prms,
+          sizeof(TMP_TABLE_PARAM) * share->link_count,
         NullS))
     ) {
       spider_free_share(share);
       goto error_but_no_delete;
     }
+    result_list->upd_tmp_tbl = NULL;
+    result_list->upd_tmp_tbl_prm.init();
+    result_list->upd_tmp_tbl_prm.field_count = 1;
     memcpy(tmp_name, share->conn_keys[0], share->conn_keys_charlen);
 
     for (roop_count = 0; roop_count < share->link_count; roop_count++)
@@ -3192,6 +3218,8 @@ SPIDER_SHARE *spider_get_share(
       spider->conn_keys[roop_count] = tmp_name;
       *tmp_name = first_byte;
       tmp_name += share->conn_keys_lengths[roop_count] + 1;
+      result_list->upd_tmp_tbl_prms[roop_count].init();
+      result_list->upd_tmp_tbl_prms[roop_count].field_count = 1;
     }
 
     for (

@@ -211,10 +211,22 @@ public:
   int write_row(
     uchar *buf
   );
+  bool start_bulk_update();
+  int exec_bulk_update(
+    uint *dup_key_found
+  );
+  void end_bulk_update();
+  int bulk_update_row(
+    const uchar *old_data,
+    uchar *new_data,
+    uint *dup_key_found
+  );
   int update_row(
     const uchar *old_data,
     uchar *new_data
   );
+  bool start_bulk_delete();
+  int end_bulk_delete();
   int delete_row(
     const uchar *buf
   );
@@ -283,4 +295,10 @@ public:
   void cond_pop();
   st_table *get_table();
   void set_select_column_mode();
+  bool check_and_start_bulk_update(
+    spider_bulk_upd_start bulk_upd_start
+  );
+  int check_and_end_bulk_update(
+    spider_bulk_upd_start bulk_upd_start
+  );
 };

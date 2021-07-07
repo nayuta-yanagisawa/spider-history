@@ -16,6 +16,7 @@
 #define MYSQL_SERVER 1
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
+#include "sql_select.h"
 #include "spd_err.h"
 #include "spd_param.h"
 #include "spd_db_include.h"
@@ -1839,4 +1840,55 @@ int spider_sys_replace(
 
 error:
   DBUG_RETURN(error_num);
+}
+
+TABLE *spider_mk_sys_tmp_table(
+  THD *thd,
+  TABLE *table,
+  TMP_TABLE_PARAM *tmp_tbl_prm,
+  const char *field_name,
+  CHARSET_INFO *cs
+) {
+  Field_blob *field;
+  Item_field *i_field;
+  List<Item> i_list;
+  TABLE *tmp_table;
+  DBUG_ENTER("spider_create_sys_tmp_table");
+
+  if (!(field = new Field_blob(
+    4294967295U, FALSE, field_name, cs, TRUE)))
+    goto error_alloc_field;
+  field->init(table);
+
+  if (!(i_field = new Item_field((Field *) field)))
+    goto error_alloc_item_field;
+
+  if (i_list.push_back(i_field))
+    goto error_push_item;
+
+  if (!(tmp_table = create_tmp_table(thd, tmp_tbl_prm,
+    i_list, (ORDER*) NULL, FALSE, FALSE, TMP_TABLE_FORCE_MYISAM,
+    HA_POS_ERROR, (char *) "")))
+    goto error_create_tmp_table;
+  DBUG_RETURN(tmp_table);
+
+error_create_tmp_table:
+error_push_item:
+  delete i_field;
+error_alloc_item_field:
+  delete field;
+error_alloc_field:
+  DBUG_RETURN(NULL);
+}
+
+void spider_rm_sys_tmp_table(
+  THD *thd,
+  TABLE *tmp_table,
+  TMP_TABLE_PARAM *tmp_tbl_prm
+) {
+  DBUG_ENTER("spider_rm_sys_tmp_table");
+  free_tmp_table(thd, tmp_table);
+  tmp_tbl_prm->cleanup();
+  tmp_tbl_prm->field_count = 1;
+  DBUG_VOID_RETURN;
 }

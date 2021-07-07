@@ -54,6 +54,7 @@ ha_spider::ha_spider(
   searched_bitmap = NULL;
   result_list.sqls = NULL;
   result_list.insert_sqls = NULL;
+  result_list.update_sqls = NULL;
   result_list.bgs_working = FALSE;
   DBUG_VOID_RETURN;
 }
@@ -76,6 +77,7 @@ ha_spider::ha_spider(
   searched_bitmap = NULL;
   result_list.sqls = NULL;
   result_list.insert_sqls = NULL;
+  result_list.update_sqls = NULL;
   result_list.bgs_working = FALSE;
   ref_length = sizeof(my_off_t);
   DBUG_VOID_RETURN;
@@ -128,8 +130,10 @@ int ha_spider::open(
   if (
     (result_list.sql.real_alloc(init_sql_alloc_size)) ||
     (result_list.insert_sql.real_alloc(init_sql_alloc_size)) ||
+    (result_list.update_sql.real_alloc(init_sql_alloc_size)) ||
     !(result_list.sqls = new String[share->link_count]) ||
-    !(result_list.insert_sqls = new String[share->link_count])
+    !(result_list.insert_sqls = new String[share->link_count]) ||
+    !(result_list.update_sqls = new String[share->link_count])
   ) {
     error_num = HA_ERR_OUT_OF_MEM;
     goto error_init_result_list;
@@ -140,17 +144,20 @@ int ha_spider::open(
     {
       if (
         result_list.sqls[roop_count].real_alloc(init_sql_alloc_size) ||
-        result_list.insert_sqls[roop_count].real_alloc(init_sql_alloc_size)
+        result_list.insert_sqls[roop_count].real_alloc(init_sql_alloc_size) ||
+        result_list.update_sqls[roop_count].real_alloc(init_sql_alloc_size)
       ) {
         error_num = HA_ERR_OUT_OF_MEM;
         goto error_init_result_list;
       }
       result_list.sqls[roop_count].set_charset(share->access_charset);
       result_list.insert_sqls[roop_count].set_charset(share->access_charset);
+      result_list.update_sqls[roop_count].set_charset(share->access_charset);
     }
   }
   result_list.sql.set_charset(share->access_charset);
   result_list.insert_sql.set_charset(share->access_charset);
+  result_list.update_sql.set_charset(share->access_charset);
 
   DBUG_PRINT("info",("spider blob_fields=%d", table_share->blob_fields));
   if (table_share->blob_fields)
@@ -210,6 +217,8 @@ int ha_spider::close()
     delete [] result_list.sqls;
   if (result_list.insert_sqls)
     delete [] result_list.insert_sqls;
+  if (result_list.update_sqls)
+    delete [] result_list.update_sqls;
 
   spider_free_share(share);
   share = NULL;
@@ -729,6 +738,25 @@ int ha_spider::reset()
     }
 */
     memset(need_mons, 0, sizeof(int) * share->link_count);
+    TABLE **tmp_table = result_list.upd_tmp_tbls;
+    for (roop_count = share->link_count - 1; roop_count >= 0; roop_count--)
+    {
+      if (tmp_table[roop_count])
+      {
+        spider_rm_sys_tmp_table(thd, tmp_table[roop_count],
+          &result_list.upd_tmp_tbl_prms[roop_count]);
+        tmp_table[roop_count] = NULL;
+      }
+    }
+    if (result_list.upd_tmp_tbl)
+    {
+      spider_rm_sys_tmp_table(thd, result_list.upd_tmp_tbl,
+        &result_list.upd_tmp_tbl_prm);
+      result_list.upd_tmp_tbl = NULL;
+    }
+    result_list.bulk_update_mode = 0;
+    result_list.bulk_update_size = 0;
+    result_list.bulk_update_start = SPD_BU_NOT_START;
   }
   quick_mode = FALSE;
   keyread = FALSE;
@@ -797,6 +825,7 @@ int ha_spider::index_init(
   bool sorted
 ) {
   int error_num, roop_count, lock_mode;
+  THD *thd = trx->thd;
   DBUG_ENTER("ha_spider::index_init");
   DBUG_PRINT("info",("spider this=%x", this));
   DBUG_PRINT("info",("spider idx=%u", idx));
@@ -805,13 +834,17 @@ int ha_spider::index_init(
   result_list.sorted = sorted;
   spider_set_result_list_param(this);
 
-  if (
-    update_request &&
-    share->have_recovery_link &&
-    result_list.lock_type == F_WRLCK &&
-    (pk_update = spider_check_pk_update(table))
-  ) {
-    bitmap_set_all(table->read_set);
+  if (result_list.lock_type == F_WRLCK)
+  {
+    check_and_start_bulk_update(SPD_BU_START_BY_INDEX_OR_RND_INIT);
+
+    if (
+      update_request &&
+      share->have_recovery_link &&
+      (pk_update = spider_check_pk_update(table))
+    ) {
+      bitmap_set_all(table->read_set);
+    }
   }
 
   result_list.sql.length(0);
@@ -848,7 +881,7 @@ int ha_spider::index_end()
   DBUG_ENTER("ha_spider::index_end");
   DBUG_PRINT("info",("spider this=%x", this));
   active_index = MAX_KEY;
-  DBUG_RETURN(0);
+  DBUG_RETURN(check_and_end_bulk_update(SPD_BU_START_BY_INDEX_OR_RND_INIT));
 }
 
 int ha_spider::index_read_map(
@@ -886,6 +919,7 @@ int ha_spider::index_read_map(
     }
   }
 #endif
+  result_list.finish_flg = FALSE;
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -945,6 +979,7 @@ int ha_spider::index_read_map(
         (roop_count != link_ok))))
       {
         if (
+          error_num != HA_ERR_END_OF_FILE &&
           share->monitoring_kind[roop_count] &&
           need_mons[roop_count]
         ) {
@@ -1046,6 +1081,7 @@ int ha_spider::index_read_map(
         if ((error_num = spider_db_store_result(this, roop_count, table)))
         {
           if (
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -1097,6 +1133,7 @@ int ha_spider::index_read_last_map(
   start_key.keypart_map = keypart_map;
   start_key.flag = HA_READ_KEY_EXACT;
   result_list.sql.length(0);
+  result_list.finish_flg = FALSE;
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -1156,6 +1193,7 @@ int ha_spider::index_read_last_map(
         (roop_count != link_ok))))
       {
         if (
+          error_num != HA_ERR_END_OF_FILE &&
           share->monitoring_kind[roop_count] &&
           need_mons[roop_count]
         ) {
@@ -1257,6 +1295,7 @@ int ha_spider::index_read_last_map(
         if ((error_num = spider_db_store_result(this, roop_count, table)))
         {
           if (
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -1323,6 +1362,7 @@ int ha_spider::index_first(
   DBUG_PRINT("info",("spider this=%x", this));
   if (!result_list.sql.length())
   {
+    result_list.finish_flg = FALSE;
     if (keyread)
       result_list.keyread = TRUE;
     else
@@ -1383,6 +1423,7 @@ int ha_spider::index_first(
           (roop_count != link_ok))))
         {
           if (
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -1484,6 +1525,7 @@ int ha_spider::index_first(
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
+              error_num != HA_ERR_END_OF_FILE &&
               share->monitoring_kind[roop_count] &&
               need_mons[roop_count]
             ) {
@@ -1531,6 +1573,7 @@ int ha_spider::index_last(
   DBUG_PRINT("info",("spider this=%x", this));
   if (!result_list.sql.length())
   {
+    result_list.finish_flg = FALSE;
     if (keyread)
       result_list.keyread = TRUE;
     else
@@ -1591,6 +1634,7 @@ int ha_spider::index_last(
           (roop_count != link_ok))))
         {
           if (
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -1692,6 +1736,7 @@ int ha_spider::index_last(
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
+              error_num != HA_ERR_END_OF_FILE &&
               share->monitoring_kind[roop_count] &&
               need_mons[roop_count]
             ) {
@@ -1756,6 +1801,7 @@ int ha_spider::read_range_first(
   DBUG_ENTER("ha_spider::read_range_first");
   DBUG_PRINT("info",("spider this=%x", this));
   result_list.sql.length(0);
+  result_list.finish_flg = FALSE;
   if (keyread)
     result_list.keyread = TRUE;
   else
@@ -1815,6 +1861,7 @@ int ha_spider::read_range_first(
         (roop_count != link_ok))))
       {
         if (
+          error_num != HA_ERR_END_OF_FILE &&
           share->monitoring_kind[roop_count] &&
           need_mons[roop_count]
         ) {
@@ -1916,6 +1963,7 @@ int ha_spider::read_range_first(
         if ((error_num = spider_db_store_result(this, roop_count, table)))
         {
           if (
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -1979,6 +2027,7 @@ int ha_spider::read_multi_range_first(
   )
     DBUG_RETURN(error_num);
 
+  result_list.finish_flg = FALSE;
   result_list.sql.length(0);
   result_list.desc_flg = FALSE;
   result_list.sorted = sorted;
@@ -2052,6 +2101,7 @@ int ha_spider::read_multi_range_first(
             (roop_count != link_ok));
           if (
             error_num &&
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -2151,6 +2201,7 @@ int ha_spider::read_multi_range_first(
             error_num = spider_db_store_result(this, roop_count, table);
             if (
               error_num &&
+              error_num != HA_ERR_END_OF_FILE &&
               share->monitoring_kind[roop_count] &&
               need_mons[roop_count]
             ) {
@@ -2194,6 +2245,16 @@ int ha_spider::read_multi_range_first(
         break;
       }
       result_list.sql.length(result_list.where_pos);
+    }
+    if (error_num)
+    {
+      if (error_num == HA_ERR_END_OF_FILE)
+      {
+        result_list.finish_flg = TRUE;
+        result_list.current->finish_flg = TRUE;
+        table->status = STATUS_NOT_FOUND;
+      }
+      DBUG_RETURN(error_num);
     }
   } else {
     bool tmp_high_priority = high_priority;
@@ -2277,6 +2338,7 @@ int ha_spider::read_multi_range_first(
           (roop_count != link_ok))))
         {
           if (
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -2378,6 +2440,7 @@ int ha_spider::read_multi_range_first(
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
+              error_num != HA_ERR_END_OF_FILE &&
               share->monitoring_kind[roop_count] &&
               need_mons[roop_count]
             ) {
@@ -2481,6 +2544,7 @@ int ha_spider::read_multi_range_next(
             (roop_count != link_ok));
           if (
             error_num &&
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -2580,6 +2644,7 @@ int ha_spider::read_multi_range_next(
             error_num = spider_db_store_result(this, roop_count, table);
             if (
               error_num &&
+              error_num != HA_ERR_END_OF_FILE &&
               share->monitoring_kind[roop_count] &&
               need_mons[roop_count]
             ) {
@@ -2620,6 +2685,16 @@ int ha_spider::read_multi_range_next(
         break;
       }
     }
+    if (error_num)
+    {
+      if (error_num == HA_ERR_END_OF_FILE)
+      {
+        result_list.finish_flg = TRUE;
+        result_list.current->finish_flg = TRUE;
+        table->status = STATUS_NOT_FOUND;
+      }
+      DBUG_RETURN(error_num);
+    }
   } else {
     DBUG_RETURN(spider_db_seek_next(table->record[0], this, search_link_idx,
       table));
@@ -2631,8 +2706,12 @@ int ha_spider::rnd_init(
   bool scan
 ) {
   int error_num, roop_count, lock_mode;
+  THD *thd = trx->thd;
   DBUG_ENTER("ha_spider::rnd_init");
   DBUG_PRINT("info",("spider this=%x", this));
+  if (result_list.lock_type == F_WRLCK)
+    check_and_start_bulk_update(SPD_BU_START_BY_INDEX_OR_RND_INIT);
+
   lock_mode = spider_conn_lock_mode(this);
   rnd_scan_and_first = scan;
   if (
@@ -2728,7 +2807,7 @@ int ha_spider::rnd_end()
 {
   DBUG_ENTER("ha_spider::rnd_end");
   DBUG_PRINT("info",("spider this=%x", this));
-  DBUG_RETURN(0);
+  DBUG_RETURN(check_and_end_bulk_update(SPD_BU_START_BY_INDEX_OR_RND_INIT));
 }
 
 int ha_spider::rnd_next(
@@ -2744,6 +2823,7 @@ int ha_spider::rnd_next(
 
   if (rnd_scan_and_first)
   {
+    result_list.finish_flg = FALSE;
     if (
       (error_num = spider_db_append_select(this)) ||
       (error_num = spider_db_append_select_columns(this))
@@ -2797,6 +2877,7 @@ int ha_spider::rnd_next(
           (roop_count != link_ok))))
         {
           if (
+            error_num != HA_ERR_END_OF_FILE &&
             share->monitoring_kind[roop_count] &&
             need_mons[roop_count]
           ) {
@@ -2898,6 +2979,7 @@ int ha_spider::rnd_next(
           if ((error_num = spider_db_store_result(this, roop_count, table)))
           {
             if (
+              error_num != HA_ERR_END_OF_FILE &&
               share->monitoring_kind[roop_count] &&
               need_mons[roop_count]
             ) {
@@ -3624,6 +3706,41 @@ int ha_spider::write_row(
   DBUG_RETURN(spider_db_bulk_insert(this, table, FALSE));
 }
 
+bool ha_spider::start_bulk_update(
+) {
+  DBUG_ENTER("ha_spider::start_bulk_update");
+  DBUG_PRINT("info",("spider this=%x", this));
+  DBUG_RETURN(check_and_start_bulk_update(SPD_BU_START_BY_BULK_INIT));
+}
+
+int ha_spider::exec_bulk_update(
+  uint *dup_key_found
+) {
+  DBUG_ENTER("ha_spider::exec_bulk_update");
+  DBUG_PRINT("info",("spider this=%x", this));
+  *dup_key_found = 0;
+  DBUG_RETURN(spider_db_bulk_update_end(this));
+}
+
+void ha_spider::end_bulk_update(
+) {
+  DBUG_ENTER("ha_spider::end_bulk_update");
+  DBUG_PRINT("info",("spider this=%x", this));
+  VOID(check_and_end_bulk_update(SPD_BU_START_BY_BULK_INIT));
+  DBUG_VOID_RETURN;
+}
+
+int ha_spider::bulk_update_row(
+  const uchar *old_data,
+  uchar *new_data,
+  uint *dup_key_found
+) {
+  DBUG_ENTER("ha_spider::bulk_update_row");
+  DBUG_PRINT("info",("spider this=%x", this));
+  *dup_key_found = 0;
+  DBUG_RETURN(update_row(old_data, new_data));
+}
+
 int ha_spider::update_row(
   const uchar *old_data,
   uchar *new_data
@@ -3656,6 +3773,20 @@ int ha_spider::update_row(
     pthread_mutex_unlock(&share->auto_increment_mutex);
   }
   DBUG_RETURN(0);
+}
+
+bool ha_spider::start_bulk_delete(
+) {
+  DBUG_ENTER("ha_spider::start_bulk_delete");
+  DBUG_PRINT("info",("spider this=%x", this));
+  DBUG_RETURN(check_and_start_bulk_update(SPD_BU_START_BY_BULK_INIT));
+}
+
+int ha_spider::end_bulk_delete(
+) {
+  DBUG_ENTER("ha_spider::end_bulk_delete");
+  DBUG_PRINT("info",("spider this=%x", this));
+  DBUG_RETURN(check_and_end_bulk_update(SPD_BU_START_BY_BULK_INIT));
 }
 
 int ha_spider::delete_row(
@@ -4322,4 +4453,60 @@ void ha_spider::set_select_column_mode()
     }
   }
   DBUG_VOID_RETURN;
+}
+
+bool ha_spider::check_and_start_bulk_update(
+  spider_bulk_upd_start bulk_upd_start
+) {
+  DBUG_ENTER("ha_spider::check_and_start_bulk_update");
+  DBUG_PRINT("info",("spider this=%x", this));
+  DBUG_PRINT("info",("spider bulk_update_start=%d",
+    result_list.bulk_update_start));
+  if (result_list.bulk_update_start == SPD_BU_NOT_START)
+  {
+    THD *thd = ha_thd();
+    int bulk_update_mode = THDVAR(thd, bulk_update_mode) == -1 ?
+      share->bulk_update_mode : THDVAR(thd, bulk_update_mode);
+    longlong split_read = THDVAR(thd, split_read) == -1 ?
+      share->split_read : THDVAR(thd, split_read);
+    result_list.bulk_update_size = THDVAR(thd, bulk_update_size) == -1 ?
+      share->bulk_update_size : THDVAR(thd, bulk_update_size);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    int bgs_mode = THDVAR(thd, bgs_mode) < 0 ?
+      share->bgs_mode : THDVAR(thd, bgs_mode);
+#endif
+    if (
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+      bgs_mode ||
+#endif
+      split_read != 9223372036854775807LL
+    )
+      result_list.bulk_update_mode = 2;
+    else
+      result_list.bulk_update_mode = bulk_update_mode;
+    result_list.bulk_update_start = bulk_upd_start;
+    DBUG_RETURN(FALSE);
+  }
+  DBUG_RETURN(TRUE);
+}
+
+int ha_spider::check_and_end_bulk_update(
+  spider_bulk_upd_start bulk_upd_start
+) {
+  int error_num = 0;
+  DBUG_ENTER("ha_spider::check_and_end_bulk_update");
+  DBUG_PRINT("info",("spider this=%x", this));
+  DBUG_PRINT("info",("spider bulk_update_start=%d",
+    result_list.bulk_update_start));
+  DBUG_PRINT("info",("spider bulk_update_mode=%d",
+    result_list.bulk_update_mode));
+  if (result_list.bulk_update_start == bulk_upd_start)
+  {
+    if (result_list.bulk_update_mode)
+      error_num = spider_db_bulk_update_end(this);
+    result_list.bulk_update_size = 0;
+    result_list.bulk_update_mode = 0;
+    result_list.bulk_update_start = SPD_BU_NOT_START;
+  }
+  DBUG_RETURN(error_num);
 }

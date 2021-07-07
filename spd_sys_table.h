@@ -287,3 +287,17 @@ int spider_sys_replace(
   TABLE *table,
   bool *modified_non_trans_table
 );
+
+TABLE *spider_mk_sys_tmp_table(
+  THD *thd,
+  TABLE *table,
+  TMP_TABLE_PARAM *tmp_tbl_prm,
+  const char *field_name,
+  CHARSET_INFO *cs
+);
+
+void spider_rm_sys_tmp_table(
+  THD *thd,
+  TABLE *tmp_table,
+  TMP_TABLE_PARAM *tmp_tbl_prm
+);

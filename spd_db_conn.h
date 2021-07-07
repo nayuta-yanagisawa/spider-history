@@ -88,6 +88,20 @@ int spider_db_set_names(
   int link_idx
 );
 
+int spider_db_query_with_set_names(
+  String *sql,
+  ha_spider *spider,
+  SPIDER_CONN *conn,
+  int link_idx
+);
+
+int spider_db_query_for_bulk_update(
+  String *sql,
+  ha_spider *spider,
+  SPIDER_CONN *conn,
+  int link_idx
+);
+
 size_t spider_db_real_escape_string(
   SPIDER_CONN *conn,
   char *to,
@@ -221,17 +235,20 @@ int spider_db_append_insert(
 );
 
 int spider_db_append_insert_for_recovery(
+  String *insert_sql,
   ha_spider *spider,
   const TABLE *table,
   int link_idx
 );
 
 int spider_db_append_update(
+  String *str,
   ha_spider *spider,
   int link_idx
 );
 
 int spider_db_append_delete(
+  String *str,
   ha_spider *spider
 );
 
@@ -253,11 +270,13 @@ int spider_db_append_into(
 );
 
 int spider_db_append_update_set(
+  String *str,
   ha_spider *spider,
   TABLE *table
 );
 
 int spider_db_append_update_where(
+  String *str,
   ha_spider *spider,
   const TABLE *table,
   my_ptrdiff_t ptr_diff
@@ -548,15 +567,36 @@ int spider_db_update_auto_increment(
   int link_idx
 );
 
+int spider_db_bulk_update_size_limit(
+  ha_spider *spider,
+  TABLE *table
+);
+
+int spider_db_bulk_update_end(
+  ha_spider *spider
+);
+
+int spider_db_bulk_update(
+  ha_spider *spider,
+  TABLE *table,
+  my_ptrdiff_t ptr_diff
+);
+
 int spider_db_update(
   ha_spider *spider,
   TABLE *table,
   const uchar *old_data
 );
 
+int spider_db_bulk_delete(
+  ha_spider *spider,
+  TABLE *table,
+  my_ptrdiff_t ptr_diff
+);
+
 int spider_db_delete(
   ha_spider *spider,
-  const TABLE *table,
+  TABLE *table,
   const uchar *buf
 );
 

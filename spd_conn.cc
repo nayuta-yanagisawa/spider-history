@@ -754,8 +754,12 @@ int spider_bg_conn_search(
       pthread_cond_wait(&conn->bg_conn_sync_cond, &conn->bg_conn_sync_mutex);
       pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
       conn->bg_caller_sync_wait = FALSE;
-    } else
+    } else {
+      DBUG_PRINT("info",("spider bg current->finish_flg=%s",
+        result_list->current ?
+        (result_list->current->finish_flg ? "TRUE" : "FALSE") : "NULL"));
       pthread_mutex_unlock(&conn->bg_conn_mutex);
+    }
   } else {
     DBUG_PRINT("info",("spider bg search"));
     if (result_list->current->finish_flg)

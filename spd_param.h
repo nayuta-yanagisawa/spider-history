@@ -46,6 +46,8 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(selupd_lock_mode, int);
 extern DECLARE_MYSQL_THDVAR_BASIC(sync_autocommit, char);
 extern DECLARE_MYSQL_THDVAR_BASIC(internal_sql_log_off, char);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(bulk_size, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(bulk_update_mode, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(bulk_update_size, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_optimize, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(internal_optimize_local, int);
 extern DECLARE_MYSQL_THDVAR_BASIC(use_flash_logs, char);

@@ -21,6 +21,12 @@
 #define SPIDER_DB_ROW MYSQL_ROW
 #define SPIDER_DB_ROW_OFFSET MYSQL_ROW_OFFSET
 
+enum spider_bulk_upd_start {
+  SPD_BU_NOT_START,
+  SPD_BU_START_BY_INDEX_OR_RND_INIT,
+  SPD_BU_START_BY_BULK_INIT
+};
+
 typedef struct st_spider_position
 {
   SPIDER_DB_ROW          row;
@@ -78,6 +84,12 @@ typedef struct st_spider_result_list
   String                 *insert_sqls;
   int                    insert_pos;
   int                    insert_table_name_pos;
+  String                 update_sql;
+  String                 *update_sqls;
+  TABLE                  *upd_tmp_tbl;
+  TABLE                  **upd_tmp_tbls;
+  TMP_TABLE_PARAM        upd_tmp_tbl_prm;
+  TMP_TABLE_PARAM        *upd_tmp_tbl_prms;
   bool                   sorted;
   bool                   desc_flg;
   longlong               current_row_num;
@@ -92,6 +104,9 @@ typedef struct st_spider_result_list
   int                    quick_mode;
   longlong               quick_page_size;
   int                    low_mem_read;
+  int                    bulk_update_mode;
+  int                    bulk_update_size;
+  spider_bulk_upd_start  bulk_update_start;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   /* 0:nomal 1:store 2:store end */
   volatile

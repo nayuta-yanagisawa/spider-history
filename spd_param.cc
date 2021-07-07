@@ -512,6 +512,42 @@ MYSQL_THDVAR_INT(
 
 /*
  -1 :use table parameter
+  0 : Send "update" and "delete" statements one by one.
+  1 : Send collected multiple "update" and "delete" statements.
+      (Collected statements are sent one by one)
+  2 : Send collected multiple "update" and "delete" statements.
+      (Collected statements are sent together)
+ */
+MYSQL_THDVAR_INT(
+  bulk_update_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "The mode of bulk updating and deleting", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0-:bulk update size
+ */
+MYSQL_THDVAR_INT(
+  bulk_update_size, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Bulk update size", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2147483647, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
   0 :off
   1 :on
  */
@@ -1243,6 +1279,8 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(sync_autocommit),
   MYSQL_SYSVAR(internal_sql_log_off),
   MYSQL_SYSVAR(bulk_size),
+  MYSQL_SYSVAR(bulk_update_mode),
+  MYSQL_SYSVAR(bulk_update_size),
   MYSQL_SYSVAR(internal_optimize),
   MYSQL_SYSVAR(internal_optimize_local),
   MYSQL_SYSVAR(use_flash_logs),
@@ -1309,7 +1347,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x020d,
+  0x020e,
   NULL,
   spider_system_variables,
   NULL
