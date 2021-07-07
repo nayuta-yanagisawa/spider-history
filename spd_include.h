@@ -54,6 +54,7 @@ typedef struct st_spider_conn
   uint               conn_key_length;
   SPIDER_DB_CONN     *db_conn;
   pthread_mutex_t    mta_conn_mutex;
+  volatile bool      mta_conn_mutex_unlock_later;
   uint               join_trx;
   int                trx_isolation;
   bool               semi_trx_isolation_chk;

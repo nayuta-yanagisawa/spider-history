@@ -31,6 +31,10 @@
 #include "spd_conn.h"
 #include "spd_db_conn.h"
 
+#define SPIDER_CAN_BG_SEARCH (LL(1) << 37)
+#define SPIDER_CAN_BG_INSERT (LL(1) << 38)
+#define SPIDER_CAN_BG_UPDATE (LL(1) << 39)
+
 extern handlerton *spider_hton_ptr;
 
 ha_spider::ha_spider(
@@ -1809,6 +1813,9 @@ ulonglong ha_spider::table_flags() const
     HA_NO_COPY_ON_ALTER |
     HA_BINLOG_ROW_CAPABLE |
     HA_BINLOG_STMT_CAPABLE |
+    SPIDER_CAN_BG_SEARCH |
+    SPIDER_CAN_BG_INSERT |
+    SPIDER_CAN_BG_UPDATE |
     (share ? share->additional_table_flags : 0)
   );
 }
@@ -2587,7 +2594,7 @@ void ha_spider::set_select_column_mode()
   KEY *key_info;
   KEY_PART_INFO *key_part;
   Field *field;
-  THD *thd = ha_thd();
+  THD *thd = trx->thd;
   DBUG_ENTER("ha_spider::set_select_column_mode");
 #ifndef DBUG_OFF
   for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;

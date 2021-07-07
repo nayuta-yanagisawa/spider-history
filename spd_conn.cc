@@ -943,7 +943,9 @@ void *spider_bg_sts_action(
       }
       if (conn)
       {
+/*
         pthread_mutex_lock(&conn->mta_conn_mutex);
+*/
 #ifdef WITH_PARTITION_STORAGE_ENGINE
         VOID(spider_get_sts(share, share->bg_sts_try_time, &spider,
           share->bg_sts_interval, share->bg_sts_mode,
@@ -954,7 +956,9 @@ void *spider_bg_sts_action(
           share->bg_sts_interval, share->bg_sts_mode,
           2));
 #endif
+/*
         pthread_mutex_unlock(&conn->mta_conn_mutex);
+*/
       }
     }
     share->bg_sts_thd_wait = TRUE;
@@ -1067,7 +1071,9 @@ void *spider_bg_crd_action(
       }
       if (conn)
       {
+/*
         pthread_mutex_lock(&conn->mta_conn_mutex);
+*/
 #ifdef WITH_PARTITION_STORAGE_ENGINE
         VOID(spider_get_crd(share, share->bg_crd_try_time, &spider, &table,
           share->bg_crd_interval, share->bg_crd_mode,
@@ -1078,7 +1084,9 @@ void *spider_bg_crd_action(
           share->bg_crd_interval, share->bg_crd_mode,
           2));
 #endif
+/*
         pthread_mutex_unlock(&conn->mta_conn_mutex);
+*/
       }
     }
     share->bg_crd_thd_wait = TRUE;
