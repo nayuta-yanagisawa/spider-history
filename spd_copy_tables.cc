@@ -1,4 +1,4 @@
-/* Copyright (C) 2009 Kentoku Shiba
+/* Copyright (C) 2009-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -14,8 +14,20 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #define MYSQL_SERVER 1
+#include "mysql_version.h"
+#ifdef HAVE_HANDLERSOCKET
+#include "hstcpcli.hpp"
+#endif
+#if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
+#else
+#include "sql_priv.h"
+#include "probes_mysql.h"
+#include "sql_class.h"
+#include "sql_base.h"
+#include "sql_partition.h"
+#endif
 #include "spd_err.h"
 #include "spd_param.h"
 #include "spd_db_include.h"
@@ -348,7 +360,11 @@ int spider_udf_get_copy_tgt_tables(
 ) {
   int error_num, roop_count;
   TABLE *table_tables = NULL;
+#if MYSQL_VERSION_ID < 50500
   Open_tables_state open_tables_backup;
+#else
+  Open_tables_backup open_tables_backup;
+#endif
   char table_key[MAX_KEY_LENGTH];
   SPIDER_COPY_TABLE_CONN *table_conn = NULL, *src_table_conn_prev = NULL,
     *dst_table_conn_prev = NULL;
@@ -570,7 +586,7 @@ int spider_udf_get_copy_tgt_conns(
       if (
         !(table_conn->conn = spider_get_conn(
           share, 0, share->conn_keys[0], trx, NULL, FALSE, FALSE,
-          &error_num))
+          SPIDER_CONN_KIND_MYSQL, &error_num))
       ) {
         my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0), share->server_names[0]);
         DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
@@ -788,11 +804,16 @@ long long spider_copy_tables_body(
   if (
     thd->open_tables != 0 ||
     thd->temporary_tables != 0 ||
-    thd->handler_tables != 0 ||
+    thd->handler_tables_hash.records != 0 ||
     thd->derived_tables != 0 ||
     thd->lock != 0 ||
+#if MYSQL_VERSION_ID < 50500
     thd->locked_tables != 0 ||
     thd->prelocked_mode != NON_PRELOCKED ||
+#else
+    thd->locked_tables_list.locked_tables() ||
+    thd->locked_tables_mode != LTM_NONE ||
+#endif
     thd->m_reprepare_observer != NULL
   ) {
     my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
@@ -875,7 +896,11 @@ long long spider_copy_tables_body(
   DBUG_PRINT("info",("spider table_name=%s", table_list->table_name));
   DBUG_PRINT("info",("spider table_name_length=%d",
     table_list->table_name_length));
+#if MYSQL_VERSION_ID < 50500
   if (open_and_lock_tables(thd, table_list))
+#else
+  if (open_and_lock_tables(thd, table_list, FALSE, 0))
+#endif
   {
     my_printf_error(ER_SPIDER_UDF_CANT_OPEN_TABLE_NUM,
       ER_SPIDER_UDF_CANT_OPEN_TABLE_STR, MYF(0), table_list->db,
@@ -928,7 +953,7 @@ long long spider_copy_tables_body(
     spider_udf_ct_bulk_insert_rows : copy_tables->bulk_insert_rows;
   if (
     spider_db_append_key_order_str(select_sql, key_info, 0, FALSE) ||
-    spider_db_append_limit(select_sql, 0, bulk_insert_rows)
+    spider_db_append_limit(NULL, select_sql, 0, bulk_insert_rows)
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;

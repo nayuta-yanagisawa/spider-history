@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2010 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -40,11 +40,26 @@ public:
   SPIDER_TRX         *trx;
   ulonglong          spider_thread_id;
   ulonglong          trx_conn_adjustment;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  ulonglong          trx_hs_r_conn_adjustment;
+  ulonglong          trx_hs_w_conn_adjustment;
+#endif
+  uint               sql_kinds;
+  uint               *sql_kind;
+  uint               conn_kinds;
+  uint               *conn_kind;
   char               **conn_keys;
   SPIDER_CONN        **conns;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  char               **hs_r_conn_keys;
+  SPIDER_CONN        **hs_r_conns;
+  char               **hs_w_conn_keys;
+  SPIDER_CONN        **hs_w_conns;
+#endif
   void               **quick_targets;
   int                *need_mons;
   int                search_link_idx;
+  int                result_link_idx;
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;
   String             *blob_buff;
@@ -99,6 +114,37 @@ public:
   bool               pk_update;
   bool               force_auto_increment;
   int                bka_mode;
+
+  uchar              *m_handler_opened;
+  uint               *m_handler_id;
+  char               **m_handler_cid;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  uchar              *r_handler_opened;
+  uint               *r_handler_id;
+  uint               *r_handler_index;
+  uchar              *w_handler_opened;
+  uint               *w_handler_id;
+  uint               *w_handler_index;
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  uchar              *do_hs_direct_update;
+  uint32             **hs_r_ret_fields;
+  uint32             **hs_w_ret_fields;
+  size_t             *hs_r_ret_fields_num;
+  size_t             *hs_w_ret_fields_num;
+  uint32             *hs_pushed_ret_fields;
+  size_t             hs_pushed_ret_fields_num;
+  uchar              *tmp_column_bitmap;
+#endif
+#endif
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  bool               do_direct_update;
+  uint               direct_update_kinds;
+#endif
+
+  /* for fulltext search */
+  uint               ft_init_flags;
+  String             *ft_init_key;
+  bool               ft_init_and_first;
 
   ha_spider();
   ha_spider(
@@ -228,6 +274,16 @@ public:
     uchar *buf,
     uchar *pos
   );
+  int ft_init();
+  void ft_end();
+  FT_INFO *ft_init_ext(
+    uint flags,
+    uint inx,
+    String *key
+  );
+  int ft_read(
+    uchar *buf
+  );
   int info(
     uint flag
   );
@@ -290,12 +346,43 @@ public:
     const uchar *old_data,
     uchar *new_data
   );
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  int direct_update_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data
+  );
+  int direct_update_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data,
+    uint *update_rows
+  );
+#endif
   bool start_bulk_delete();
   int end_bulk_delete();
   int delete_row(
     const uchar *buf
   );
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  int direct_delete_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted
+  );
+  int direct_delete_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uint *delete_rows
+  );
+#endif
   int delete_all_rows();
+  int truncate();
   double scan_time();
   double read_time(
     uint index,
@@ -358,7 +445,13 @@ public:
     const COND* cond
   );
   void cond_pop();
-  st_table *get_table();
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  int info_push(
+    uint info_type,
+    void *info
+  );
+#endif
+  TABLE *get_table();
   void set_searched_bitmap();
   void set_clone_searched_bitmap();
   void set_select_column_mode();
@@ -373,4 +466,15 @@ public:
   );
   uint check_partitioned();
   int drop_tmp_tables();
+  bool handler_opened(
+    int link_idx,
+    uint tgt_conn_kind
+  );
+  void set_handler_opened(
+    int link_idx
+  );
+  int close_opened_handler(
+    int link_idx,
+    bool release_conn
+  );
 };

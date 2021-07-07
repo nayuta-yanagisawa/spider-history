@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2010 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -14,8 +14,20 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #define MYSQL_SERVER 1
+#include "mysql_version.h"
+#ifdef HAVE_HANDLERSOCKET
+#include "hstcpcli.hpp"
+#endif
+#if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
+#else
+#include "sql_priv.h"
+#include "probes_mysql.h"
+#include "sql_class.h"
+#include "key.h"
+#include "sql_base.h"
+#endif
 #include "sql_select.h"
 #include "spd_err.h"
 #include "spd_param.h"
@@ -23,6 +35,7 @@
 #include "spd_include.h"
 #include "spd_sys_table.h"
 
+#if MYSQL_VERSION_ID < 50500
 TABLE *spider_open_sys_table(
   THD *thd,
   char *table_name,
@@ -31,7 +44,19 @@ TABLE *spider_open_sys_table(
   Open_tables_state *open_tables_backup,
   bool need_lock,
   int *error_num
-) {
+)
+#else
+TABLE *spider_open_sys_table(
+  THD *thd,
+  char *table_name,
+  int table_name_length,
+  bool write,
+  Open_tables_backup *open_tables_backup,
+  bool need_lock,
+  int *error_num
+)
+#endif
+{
   TABLE *table;
   TABLE_SHARE *table_share;
   TABLE_LIST tables;
@@ -39,21 +64,34 @@ TABLE *spider_open_sys_table(
   uint table_key_length;
   DBUG_ENTER("spider_open_sys_table");
 
+#if MYSQL_VERSION_ID < 50500
   memset(&tables, 0, sizeof(TABLE_LIST));
   tables.db = (char*)"mysql";
   tables.db_length = sizeof("mysql") - 1;
   tables.alias = tables.table_name = table_name;
   tables.table_name_length = table_name_length;
   tables.lock_type = (write ? TL_WRITE : TL_READ);
+#else
+  tables.init_one_table(
+    "mysql", sizeof("mysql") - 1, table_name, table_name_length, table_name,
+    (write ? TL_WRITE : TL_READ));
+#endif
 
+#if MYSQL_VERSION_ID < 50500
   if (need_lock)
   {
+#endif
+#if MYSQL_VERSION_ID < 50500
     if (!(table = open_performance_schema_table(thd, &tables,
       open_tables_backup)))
+#else
+    if (!(table = open_log_table(thd, &tables, open_tables_backup)))
+#endif
     {
       *error_num = my_errno;
       DBUG_RETURN(NULL);
     }
+#if MYSQL_VERSION_ID < 50500
   } else {
     thd->reset_n_backup_open_tables_state(open_tables_backup);
 
@@ -80,6 +118,7 @@ TABLE *spider_open_sys_table(
       goto error;
     }
   }
+#endif
   if (table_name_length == SPIDER_SYS_XA_TABLE_NAME_LEN)
   {
     if (
@@ -154,21 +193,36 @@ error_col_num_chk:
   DBUG_RETURN(NULL);
 }
 
+#if MYSQL_VERSION_ID < 50500
 void spider_close_sys_table(
   THD *thd,
   TABLE *table,
   Open_tables_state *open_tables_backup,
   bool need_lock
-) {
+)
+#else
+void spider_close_sys_table(
+  THD *thd,
+  TABLE *table,
+  Open_tables_backup *open_tables_backup,
+  bool need_lock
+)
+#endif
+{
   DBUG_ENTER("spider_close_sys_table");
+#if MYSQL_VERSION_ID < 50500
   if (need_lock)
+  {
     close_performance_schema_table(thd, open_tables_backup);
-  else {
+  } else {
     table->file->ha_reset();
     closefrm(table, TRUE);
     my_free(table, MYF(0));
     thd->restore_backup_open_tables_state(open_tables_backup);
   }
+#else
+  close_log_table(thd, open_tables_backup);
+#endif
   DBUG_VOID_RETURN;
 }
 
@@ -1668,7 +1722,11 @@ int spider_sys_update_tables_link_status(
 ) {
   int error_num;
   TABLE *table_tables = NULL;
+#if MYSQL_VERSION_ID < 50500
   Open_tables_state open_tables_backup;
+#else
+  Open_tables_backup open_tables_backup;
+#endif
   DBUG_ENTER("spider_get_ping_table_tgt");
   if (
     !(table_tables = spider_open_sys_table(

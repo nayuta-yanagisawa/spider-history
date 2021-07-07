@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -290,12 +290,28 @@ bool spider_check_pk_update(
   TABLE *table
 );
 
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+bool spider_check_hs_pk_update(
+  ha_spider *spider,
+  key_range *key
+);
+#endif
+#endif
+
 void spider_set_tmp_share_pointer(
   SPIDER_SHARE *tmp_share,
   char **tmp_connect_info,
   uint *tmp_connect_info_length,
   long *tmp_long,
   longlong *tmp_longlong
+);
+
+void spider_get_select_limit(
+  ha_spider *spider,
+  st_select_lex **select_lex,
+  longlong *select_limit,
+  longlong *offset_limit
 );
 
 longlong spider_split_read_param(

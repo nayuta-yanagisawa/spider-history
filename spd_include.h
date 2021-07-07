@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -12,6 +12,52 @@
   You should have received a copy of the GNU General Public License
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
+
+#if MYSQL_VERSION_ID < 50500
+#else
+#define my_free(A,B) my_free(A)
+#ifdef pthread_mutex_t
+#undef pthread_mutex_t
+#endif
+#define pthread_mutex_t mysql_mutex_t
+#ifdef pthread_mutex_lock
+#undef pthread_mutex_lock
+#endif
+#define pthread_mutex_lock mysql_mutex_lock
+#ifdef pthread_mutex_trylock
+#undef pthread_mutex_trylock
+#endif
+#define pthread_mutex_trylock mysql_mutex_trylock
+#ifdef pthread_mutex_unlock
+#undef pthread_mutex_unlock
+#endif
+#define pthread_mutex_unlock mysql_mutex_unlock
+#ifdef pthread_mutex_destroy
+#undef pthread_mutex_destroy
+#endif
+#define pthread_mutex_destroy mysql_mutex_destroy
+#ifdef pthread_cond_t
+#undef pthread_cond_t
+#endif
+#define pthread_cond_t mysql_cond_t
+#ifdef pthread_cond_wait
+#undef pthread_cond_wait
+#endif
+#define pthread_cond_wait mysql_cond_wait
+#ifdef pthread_cond_signal
+#undef pthread_cond_signal
+#endif
+#define pthread_cond_signal mysql_cond_signal
+#ifdef pthread_cond_broadcast
+#undef pthread_cond_broadcast
+#endif
+#define pthread_cond_broadcast mysql_cond_broadcast
+#ifdef pthread_cond_destroy
+#undef pthread_cond_destroy
+#endif
+#define pthread_cond_destroy mysql_cond_destroy
+#define my_sprintf(A,B) sprintf B
+#endif
 
 #define spider_set_bit(BITMAP, BIT) \
   ((BITMAP)[(BIT) / 8] |= (1 << ((BIT) & 7)))
@@ -114,10 +160,15 @@ typedef struct st_spider_alter_table
 /* database connection */
 typedef struct st_spider_conn
 {
+  uint               conn_kind;
   char               *conn_key;
   uint               conn_key_length;
   int                link_idx;
   SPIDER_DB_CONN     *db_conn;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  SPIDER_HS_CONN     hs_conn;
+#endif
+  uint               opened_handlers;
   pthread_mutex_t    mta_conn_mutex;
   volatile bool      mta_conn_mutex_lock_already;
   volatile bool      mta_conn_mutex_unlock_later;
@@ -164,6 +215,10 @@ typedef struct st_spider_conn
   char               *tgt_default_group;
   long               tgt_port;
   long               tgt_ssl_vsc;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  char               *hs_sock;
+  long               hs_port;
+#endif
 
   uint               tgt_host_length;
   uint               tgt_username_length;
@@ -177,6 +232,9 @@ typedef struct st_spider_conn
   uint               tgt_ssl_key_length;
   uint               tgt_default_file_length;
   uint               tgt_default_group_length;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  uint               hs_sock_length;
+#endif
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   volatile
@@ -273,11 +331,19 @@ typedef struct st_spider_transaction
   XID                xid;
   HASH               trx_conn_hash;
   HASH               trx_another_conn_hash;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  HASH               trx_hs_r_conn_hash;
+  HASH               trx_hs_w_conn_hash;
+#endif
   HASH               trx_alter_table_hash;
   XID_STATE          internal_xid_state;
   SPIDER_CONN        *join_trx_top;
   ulonglong          spider_thread_id;
   ulonglong          trx_conn_adjustment;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  ulonglong          trx_hs_r_conn_adjustment;
+  ulonglong          trx_hs_w_conn_adjustment;
+#endif
   uint               locked_connections;
   pthread_mutex_t    *udf_table_mutexes;
   CHARSET_INFO       *udf_access_charset;
@@ -452,6 +518,12 @@ typedef struct st_spider_share
   char               **tgt_default_files;
   char               **tgt_default_groups;
   char               **conn_keys;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  char               **hs_read_socks;
+  char               **hs_write_socks;
+  char               **hs_read_conn_keys;
+  char               **hs_write_conn_keys;
+#endif
   long               *tgt_ports;
   long               *tgt_ssl_vscs;
   long               *link_statuses;
@@ -464,6 +536,13 @@ typedef struct st_spider_share
 #endif
   longlong           *monitoring_limit;
   longlong           *monitoring_sid;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  long               *use_hs_reads;
+  long               *use_hs_writes;
+  long               *hs_read_ports;
+  long               *hs_write_ports;
+#endif
+  long               *use_handlers;
 
   uint               *server_names_lengths;
   uint               *tgt_table_names_lengths;
@@ -481,6 +560,12 @@ typedef struct st_spider_share
   uint               *tgt_default_files_lengths;
   uint               *tgt_default_groups_lengths;
   uint               *conn_keys_lengths;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  uint               *hs_read_socks_lengths;
+  uint               *hs_write_socks_lengths;
+  uint               *hs_read_conn_keys_lengths;
+  uint               *hs_write_conn_keys_lengths;
+#endif
 
   uint               server_names_charlen;
   uint               tgt_table_names_charlen;
@@ -498,6 +583,12 @@ typedef struct st_spider_share
   uint               tgt_default_files_charlen;
   uint               tgt_default_groups_charlen;
   uint               conn_keys_charlen;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  uint               hs_read_socks_charlen;
+  uint               hs_write_socks_charlen;
+  uint               hs_read_conn_keys_charlen;
+  uint               hs_write_conn_keys_charlen;
+#endif
 
   uint               server_names_length;
   uint               tgt_table_names_length;
@@ -515,6 +606,12 @@ typedef struct st_spider_share
   uint               tgt_default_files_length;
   uint               tgt_default_groups_length;
   uint               conn_keys_length;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  uint               hs_read_socks_length;
+  uint               hs_write_socks_length;
+  uint               hs_read_conn_keys_length;
+  uint               hs_write_conn_keys_length;
+#endif
   uint               tgt_ports_length;
   uint               tgt_ssl_vscs_length;
   uint               link_statuses_length;
@@ -527,6 +624,13 @@ typedef struct st_spider_share
 #endif
   uint               monitoring_limit_length;
   uint               monitoring_sid_length;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  uint               use_hs_reads_length;
+  uint               use_hs_writes_length;
+  uint               hs_read_ports_length;
+  uint               hs_write_ports_length;
+#endif
+  uint               use_handlers_length;
 
   SPIDER_ALTER_TABLE alter_table;
 #ifdef WITH_PARTITION_STORAGE_ENGINE

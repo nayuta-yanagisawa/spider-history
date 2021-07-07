@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2010 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -13,6 +13,17 @@
   along with this program; if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+#define SPIDER_HS_CONN dena::hstcpcli_ptr
+#define SPIDER_HS_CONN_CREATE dena::hstcpcli_i::create
+#define SPIDER_HS_SOCKARGS dena::socket_args
+#define SPIDER_HS_UINT32_INFO dena::uint32_info
+#ifndef HANDLERSOCKET_MYSQL_UTIL
+#define SPIDER_HS_VECTOR std::vector
+#endif
+#define SPIDER_HS_STRING_REF dena::string_ref
+#endif
+
 #include <mysql.h>
 
 #define SPIDER_DB_CONN MYSQL
@@ -20,6 +31,18 @@
 #define SPIDER_DB_RESULT MYSQL_RES
 #define SPIDER_DB_ROW MYSQL_ROW
 #define SPIDER_DB_ROW_OFFSET MYSQL_ROW_OFFSET
+
+#define SPIDER_CONN_KIND_MYSQL (1 << 0)
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+#define SPIDER_CONN_KIND_HS_READ (1 << 2)
+#define SPIDER_CONN_KIND_HS_WRITE (1 << 3)
+#endif
+
+#define SPIDER_SQL_KIND_SQL (1 << 0)
+#define SPIDER_SQL_KIND_HANDLER (1 << 1)
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+#define SPIDER_SQL_KIND_HS (1 << 2)
+#endif
 
 enum spider_bulk_upd_start {
   SPD_BU_NOT_START,
@@ -77,11 +100,41 @@ typedef struct st_spider_result_list
   KEY                    *key_info;
   int                    key_order;
   String                 sql;
+  String                 sql_part;
+  String                 ha_sql;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  String                 hs_sql;
+  bool                   hs_adding_keys;
+#ifndef HANDLERSOCKET_MYSQL_UTIL
+  SPIDER_HS_VECTOR<SPIDER_HS_STRING_REF> hs_keys;
+  SPIDER_HS_VECTOR<SPIDER_HS_STRING_REF> hs_upds;
+#else
+  bool                   hs_da_init;
+  DYNAMIC_ARRAY          hs_keys;
+  DYNAMIC_ARRAY          hs_upds;
+#endif
+  DYNAMIC_ARRAY          hs_strs;
+  uint                   hs_strs_pos;
+  int                    hs_limit;
+  int                    hs_skip;
+  ulonglong              hs_upd_rows;
+  bool                   hs_has_result;
+  SPIDER_HS_CONN         *hs_conn;
+#endif
   String                 *sqls;
   int                    where_pos;
   int                    order_pos;
   int                    limit_pos;
   int                    table_name_pos;
+  int                    ha_read_pos;
+  int                    ha_next_pos;
+  int                    ha_where_pos;
+  int                    ha_limit_pos;
+  int                    ha_table_name_pos;
+  uint                   ha_sql_handler_id;
+  bool                   have_sql_kind_backup;
+  uint                   *sql_kind_backup;
+  uint                   sql_kinds_backup;
   bool                   use_union;
   String                 insert_sql;
   String                 *insert_sqls;

@@ -100,7 +100,10 @@ am_libspider_a_OBJECTS = libspider_a-spd_param.$(OBJEXT) \
 	libspider_a-spd_udf.$(OBJEXT) \
 	libspider_a-spd_ping_table.$(OBJEXT) \
 	libspider_a-spd_copy_tables.$(OBJEXT) \
-	libspider_a-ha_spider.$(OBJEXT)
+	libspider_a-ha_spider.$(OBJEXT) libspider_a-config.$(OBJEXT) \
+	libspider_a-escape.$(OBJEXT) libspider_a-fatal.$(OBJEXT) \
+	libspider_a-hstcpcli.$(OBJEXT) libspider_a-socket.$(OBJEXT) \
+	libspider_a-string_util.$(OBJEXT)
 libspider_a_OBJECTS = $(am_libspider_a_OBJECTS)
 LTLIBRARIES = $(lib_LTLIBRARIES) $(pkgplugin_LTLIBRARIES)
 ha_spider_la_LIBADD =
@@ -109,7 +112,10 @@ am_ha_spider_la_OBJECTS = ha_spider_la-spd_param.lo \
 	ha_spider_la-spd_db_conn.lo ha_spider_la-spd_conn.lo \
 	ha_spider_la-spd_table.lo ha_spider_la-spd_direct_sql.lo \
 	ha_spider_la-spd_udf.lo ha_spider_la-spd_ping_table.lo \
-	ha_spider_la-spd_copy_tables.lo ha_spider_la-ha_spider.lo
+	ha_spider_la-spd_copy_tables.lo ha_spider_la-ha_spider.lo \
+	ha_spider_la-config.lo ha_spider_la-escape.lo \
+	ha_spider_la-fatal.lo ha_spider_la-hstcpcli.lo \
+	ha_spider_la-socket.lo ha_spider_la-string_util.lo
 ha_spider_la_OBJECTS = $(am_ha_spider_la_OBJECTS)
 AM_V_lt = $(am__v_lt_$(V))
 am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
@@ -410,8 +416,6 @@ plugin_partition_shared_target = @plugin_partition_shared_target@
 plugin_partition_static_target = @plugin_partition_static_target@
 plugin_spider_shared_target = @plugin_spider_shared_target@
 plugin_spider_static_target = @plugin_spider_static_target@
-plugin_vp_shared_target = @plugin_vp_shared_target@
-plugin_vp_static_target = @plugin_vp_static_target@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
 psdir = @psdir@
@@ -446,25 +450,40 @@ yassl_h_ln_cmd = @yassl_h_ln_cmd@
 yassl_libs = @yassl_libs@
 yassl_taocrypt_extra_cxxflags = @yassl_taocrypt_extra_cxxflags@
 zlib_dir = @zlib_dir@
+HAVE_HANDLERSOCKET = "-DHAVE_HANDLERSOCKET"
 pkgplugindir = $(pkglibdir)/plugin
 INCLUDES = -I$(MYSQL_INC)$(top_srcdir)/include \
                  -I$(MYSQL_INC)$(top_srcdir)/regex \
                  -I$(MYSQL_INC)$(top_srcdir)/sql \
                  -I$(MYSQL_INC)$(top_srcdir)/extra/yassl/include \
-                 $(MYSQL_INCLUDE_PATH)
+                 -I./hs_client \
+                 $(MYSQL_INCLUDE_PATH) \
+                 $(HANDLERSOCKET_INCLUDE_PATH)
 
 noinst_HEADERS = ha_spider.h spd_conn.h spd_db_conn.h \
                  spd_db_include.h spd_err.h spd_sys_table.h \
                  spd_table.h spd_trx.h spd_include.h spd_param.h \
                  spd_direct_sql.h spd_udf.h spd_ping_table.h \
-                 spd_copy_tables.h
+                 spd_copy_tables.h \
+                 hs_client/allocator.hpp hs_client/config.hpp \
+                 hs_client/mutex.hpp hs_client/string_util.hpp \
+                 hs_client/auto_addrinfo.hpp hs_client/escape.hpp \
+                 hs_client/socket.hpp hs_client/thread.hpp \
+                 hs_client/auto_file.hpp hs_client/fatal.hpp \
+                 hs_client/string_buffer.hpp hs_client/util.hpp \
+                 hs_client/auto_ptrcontainer.hpp \
+                 hs_client/hstcpcli.hpp hs_client/string_ref.hpp
 
 lib_LTLIBRARIES = $(PLUGIN_SPIDER_LTLIBRARIES_TARGET)
 EXTRA_LTLIBRARIES = ha_spider.la
 pkgplugin_LTLIBRARIES = @plugin_spider_shared_target@
 ha_spider_la_LDFLAGS = -shared -module -rpath $(pkgplugindir)
-ha_spider_la_CXXFLAGS = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
-ha_spider_la_CFLAGS = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN
+ha_spider_la_CXXFLAGS = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN \
+                        $(HAVE_HANDLERSOCKET)
+
+ha_spider_la_CFLAGS = $(AM_CFLAGS) -DMYSQL_DYNAMIC_PLUGIN \
+                        $(HAVE_HANDLERSOCKET)
+
 ha_spider_la_SOURCES = \
                    spd_param.cc \
                    spd_sys_table.cc \
@@ -476,13 +495,19 @@ ha_spider_la_SOURCES = \
                    spd_udf.cc \
                    spd_ping_table.cc \
                    spd_copy_tables.cc \
-                   ha_spider.cc
+                   ha_spider.cc \
+                   hs_client/config.cpp \
+                   hs_client/escape.cpp \
+                   hs_client/fatal.cpp \
+                   hs_client/hstcpcli.cpp \
+                   hs_client/socket.cpp \
+                   hs_client/string_util.cpp
 
 lib_LIBRARIES = $(PLUGIN_SPIDER_LIBRARIES_TARGET)
 EXTRA_LIBRARIES = libspider.a
 noinst_LIBRARIES = @plugin_spider_static_target@
-libspider_a_CXXFLAGS = $(AM_CFLAGS)
-libspider_a_CFLAGS = $(AM_CFLAGS)
+libspider_a_CXXFLAGS = $(AM_CFLAGS) $(HAVE_HANDLERSOCKET)
+libspider_a_CFLAGS = $(AM_CFLAGS) $(HAVE_HANDLERSOCKET)
 libspider_a_SOURCES = \
                    spd_param.cc \
                    spd_sys_table.cc \
@@ -494,13 +519,19 @@ libspider_a_SOURCES = \
                    spd_udf.cc \
                    spd_ping_table.cc \
                    spd_copy_tables.cc \
-                   ha_spider.cc
+                   ha_spider.cc \
+                   hs_client/config.cpp \
+                   hs_client/escape.cpp \
+                   hs_client/fatal.cpp \
+                   hs_client/hstcpcli.cpp \
+                   hs_client/socket.cpp \
+                   hs_client/string_util.cpp
 
 EXTRA_DIST = plug.in
 all: all-am
 
 .SUFFIXES:
-.SUFFIXES: .cc .lo .o .obj
+.SUFFIXES: .cc .cpp .lo .o .obj
 $(srcdir)/Makefile.in:  $(srcdir)/Makefile.am  $(am__configure_deps)
 	@for dep in $?; do \
 	  case '$(am__configure_deps)' in \
@@ -641,7 +672,12 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-config.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-escape.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-fatal.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-ha_spider.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-hstcpcli.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-socket.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_conn.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_copy_tables.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_db_conn.Plo@am__quote@
@@ -652,7 +688,13 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_table.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_trx.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-spd_udf.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ha_spider_la-string_util.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-config.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-escape.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-fatal.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-ha_spider.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-hstcpcli.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-socket.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_conn.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_copy_tables.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_db_conn.Po@am__quote@
@@ -663,6 +705,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_table.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_trx.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-spd_udf.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/libspider_a-string_util.Po@am__quote@
 
 .cc.o:
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -864,6 +907,102 @@ libspider_a-ha_spider.obj: ha_spider.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-ha_spider.obj `if test -f 'ha_spider.cc'; then $(CYGPATH_W) 'ha_spider.cc'; else $(CYGPATH_W) '$(srcdir)/ha_spider.cc'; fi`
 
+libspider_a-config.o: hs_client/config.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-config.o -MD -MP -MF $(DEPDIR)/libspider_a-config.Tpo -c -o libspider_a-config.o `test -f 'hs_client/config.cpp' || echo '$(srcdir)/'`hs_client/config.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-config.Tpo $(DEPDIR)/libspider_a-config.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/config.cpp' object='libspider_a-config.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-config.o `test -f 'hs_client/config.cpp' || echo '$(srcdir)/'`hs_client/config.cpp
+
+libspider_a-config.obj: hs_client/config.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-config.obj -MD -MP -MF $(DEPDIR)/libspider_a-config.Tpo -c -o libspider_a-config.obj `if test -f 'hs_client/config.cpp'; then $(CYGPATH_W) 'hs_client/config.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/config.cpp'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-config.Tpo $(DEPDIR)/libspider_a-config.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/config.cpp' object='libspider_a-config.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-config.obj `if test -f 'hs_client/config.cpp'; then $(CYGPATH_W) 'hs_client/config.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/config.cpp'; fi`
+
+libspider_a-escape.o: hs_client/escape.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-escape.o -MD -MP -MF $(DEPDIR)/libspider_a-escape.Tpo -c -o libspider_a-escape.o `test -f 'hs_client/escape.cpp' || echo '$(srcdir)/'`hs_client/escape.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-escape.Tpo $(DEPDIR)/libspider_a-escape.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/escape.cpp' object='libspider_a-escape.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-escape.o `test -f 'hs_client/escape.cpp' || echo '$(srcdir)/'`hs_client/escape.cpp
+
+libspider_a-escape.obj: hs_client/escape.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-escape.obj -MD -MP -MF $(DEPDIR)/libspider_a-escape.Tpo -c -o libspider_a-escape.obj `if test -f 'hs_client/escape.cpp'; then $(CYGPATH_W) 'hs_client/escape.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/escape.cpp'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-escape.Tpo $(DEPDIR)/libspider_a-escape.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/escape.cpp' object='libspider_a-escape.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-escape.obj `if test -f 'hs_client/escape.cpp'; then $(CYGPATH_W) 'hs_client/escape.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/escape.cpp'; fi`
+
+libspider_a-fatal.o: hs_client/fatal.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-fatal.o -MD -MP -MF $(DEPDIR)/libspider_a-fatal.Tpo -c -o libspider_a-fatal.o `test -f 'hs_client/fatal.cpp' || echo '$(srcdir)/'`hs_client/fatal.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-fatal.Tpo $(DEPDIR)/libspider_a-fatal.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/fatal.cpp' object='libspider_a-fatal.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-fatal.o `test -f 'hs_client/fatal.cpp' || echo '$(srcdir)/'`hs_client/fatal.cpp
+
+libspider_a-fatal.obj: hs_client/fatal.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-fatal.obj -MD -MP -MF $(DEPDIR)/libspider_a-fatal.Tpo -c -o libspider_a-fatal.obj `if test -f 'hs_client/fatal.cpp'; then $(CYGPATH_W) 'hs_client/fatal.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/fatal.cpp'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-fatal.Tpo $(DEPDIR)/libspider_a-fatal.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/fatal.cpp' object='libspider_a-fatal.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-fatal.obj `if test -f 'hs_client/fatal.cpp'; then $(CYGPATH_W) 'hs_client/fatal.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/fatal.cpp'; fi`
+
+libspider_a-hstcpcli.o: hs_client/hstcpcli.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-hstcpcli.o -MD -MP -MF $(DEPDIR)/libspider_a-hstcpcli.Tpo -c -o libspider_a-hstcpcli.o `test -f 'hs_client/hstcpcli.cpp' || echo '$(srcdir)/'`hs_client/hstcpcli.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-hstcpcli.Tpo $(DEPDIR)/libspider_a-hstcpcli.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/hstcpcli.cpp' object='libspider_a-hstcpcli.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-hstcpcli.o `test -f 'hs_client/hstcpcli.cpp' || echo '$(srcdir)/'`hs_client/hstcpcli.cpp
+
+libspider_a-hstcpcli.obj: hs_client/hstcpcli.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-hstcpcli.obj -MD -MP -MF $(DEPDIR)/libspider_a-hstcpcli.Tpo -c -o libspider_a-hstcpcli.obj `if test -f 'hs_client/hstcpcli.cpp'; then $(CYGPATH_W) 'hs_client/hstcpcli.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/hstcpcli.cpp'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-hstcpcli.Tpo $(DEPDIR)/libspider_a-hstcpcli.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/hstcpcli.cpp' object='libspider_a-hstcpcli.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-hstcpcli.obj `if test -f 'hs_client/hstcpcli.cpp'; then $(CYGPATH_W) 'hs_client/hstcpcli.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/hstcpcli.cpp'; fi`
+
+libspider_a-socket.o: hs_client/socket.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-socket.o -MD -MP -MF $(DEPDIR)/libspider_a-socket.Tpo -c -o libspider_a-socket.o `test -f 'hs_client/socket.cpp' || echo '$(srcdir)/'`hs_client/socket.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-socket.Tpo $(DEPDIR)/libspider_a-socket.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/socket.cpp' object='libspider_a-socket.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-socket.o `test -f 'hs_client/socket.cpp' || echo '$(srcdir)/'`hs_client/socket.cpp
+
+libspider_a-socket.obj: hs_client/socket.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-socket.obj -MD -MP -MF $(DEPDIR)/libspider_a-socket.Tpo -c -o libspider_a-socket.obj `if test -f 'hs_client/socket.cpp'; then $(CYGPATH_W) 'hs_client/socket.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/socket.cpp'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-socket.Tpo $(DEPDIR)/libspider_a-socket.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/socket.cpp' object='libspider_a-socket.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-socket.obj `if test -f 'hs_client/socket.cpp'; then $(CYGPATH_W) 'hs_client/socket.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/socket.cpp'; fi`
+
+libspider_a-string_util.o: hs_client/string_util.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-string_util.o -MD -MP -MF $(DEPDIR)/libspider_a-string_util.Tpo -c -o libspider_a-string_util.o `test -f 'hs_client/string_util.cpp' || echo '$(srcdir)/'`hs_client/string_util.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-string_util.Tpo $(DEPDIR)/libspider_a-string_util.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/string_util.cpp' object='libspider_a-string_util.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-string_util.o `test -f 'hs_client/string_util.cpp' || echo '$(srcdir)/'`hs_client/string_util.cpp
+
+libspider_a-string_util.obj: hs_client/string_util.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -MT libspider_a-string_util.obj -MD -MP -MF $(DEPDIR)/libspider_a-string_util.Tpo -c -o libspider_a-string_util.obj `if test -f 'hs_client/string_util.cpp'; then $(CYGPATH_W) 'hs_client/string_util.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/string_util.cpp'; fi`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/libspider_a-string_util.Tpo $(DEPDIR)/libspider_a-string_util.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/string_util.cpp' object='libspider_a-string_util.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(libspider_a_CXXFLAGS) $(CXXFLAGS) -c -o libspider_a-string_util.obj `if test -f 'hs_client/string_util.cpp'; then $(CYGPATH_W) 'hs_client/string_util.cpp'; else $(CYGPATH_W) '$(srcdir)/hs_client/string_util.cpp'; fi`
+
 ha_spider_la-spd_param.lo: spd_param.cc
 @am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-spd_param.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-spd_param.Tpo -c -o ha_spider_la-spd_param.lo `test -f 'spd_param.cc' || echo '$(srcdir)/'`spd_param.cc
 @am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-spd_param.Tpo $(DEPDIR)/ha_spider_la-spd_param.Plo
@@ -951,6 +1090,78 @@ ha_spider_la-ha_spider.lo: ha_spider.cc
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='ha_spider.cc' object='ha_spider_la-ha_spider.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-ha_spider.lo `test -f 'ha_spider.cc' || echo '$(srcdir)/'`ha_spider.cc
+
+ha_spider_la-config.lo: hs_client/config.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-config.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-config.Tpo -c -o ha_spider_la-config.lo `test -f 'hs_client/config.cpp' || echo '$(srcdir)/'`hs_client/config.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-config.Tpo $(DEPDIR)/ha_spider_la-config.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/config.cpp' object='ha_spider_la-config.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-config.lo `test -f 'hs_client/config.cpp' || echo '$(srcdir)/'`hs_client/config.cpp
+
+ha_spider_la-escape.lo: hs_client/escape.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-escape.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-escape.Tpo -c -o ha_spider_la-escape.lo `test -f 'hs_client/escape.cpp' || echo '$(srcdir)/'`hs_client/escape.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-escape.Tpo $(DEPDIR)/ha_spider_la-escape.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/escape.cpp' object='ha_spider_la-escape.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-escape.lo `test -f 'hs_client/escape.cpp' || echo '$(srcdir)/'`hs_client/escape.cpp
+
+ha_spider_la-fatal.lo: hs_client/fatal.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-fatal.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-fatal.Tpo -c -o ha_spider_la-fatal.lo `test -f 'hs_client/fatal.cpp' || echo '$(srcdir)/'`hs_client/fatal.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-fatal.Tpo $(DEPDIR)/ha_spider_la-fatal.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/fatal.cpp' object='ha_spider_la-fatal.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-fatal.lo `test -f 'hs_client/fatal.cpp' || echo '$(srcdir)/'`hs_client/fatal.cpp
+
+ha_spider_la-hstcpcli.lo: hs_client/hstcpcli.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-hstcpcli.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-hstcpcli.Tpo -c -o ha_spider_la-hstcpcli.lo `test -f 'hs_client/hstcpcli.cpp' || echo '$(srcdir)/'`hs_client/hstcpcli.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-hstcpcli.Tpo $(DEPDIR)/ha_spider_la-hstcpcli.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/hstcpcli.cpp' object='ha_spider_la-hstcpcli.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-hstcpcli.lo `test -f 'hs_client/hstcpcli.cpp' || echo '$(srcdir)/'`hs_client/hstcpcli.cpp
+
+ha_spider_la-socket.lo: hs_client/socket.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-socket.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-socket.Tpo -c -o ha_spider_la-socket.lo `test -f 'hs_client/socket.cpp' || echo '$(srcdir)/'`hs_client/socket.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-socket.Tpo $(DEPDIR)/ha_spider_la-socket.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/socket.cpp' object='ha_spider_la-socket.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-socket.lo `test -f 'hs_client/socket.cpp' || echo '$(srcdir)/'`hs_client/socket.cpp
+
+ha_spider_la-string_util.lo: hs_client/string_util.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -MT ha_spider_la-string_util.lo -MD -MP -MF $(DEPDIR)/ha_spider_la-string_util.Tpo -c -o ha_spider_la-string_util.lo `test -f 'hs_client/string_util.cpp' || echo '$(srcdir)/'`hs_client/string_util.cpp
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/ha_spider_la-string_util.Tpo $(DEPDIR)/ha_spider_la-string_util.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='hs_client/string_util.cpp' object='ha_spider_la-string_util.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LIBTOOL) $(AM_V_lt) --tag=CXX $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(ha_spider_la_CXXFLAGS) $(CXXFLAGS) -c -o ha_spider_la-string_util.lo `test -f 'hs_client/string_util.cpp' || echo '$(srcdir)/'`hs_client/string_util.cpp
+
+.cpp.o:
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/$*.Tpo $(DEPDIR)/$*.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXXCOMPILE) -c -o $@ $<
+
+.cpp.obj:
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ `$(CYGPATH_W) '$<'`
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/$*.Tpo $(DEPDIR)/$*.Po
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(CXXCOMPILE) -c -o $@ `$(CYGPATH_W) '$<'`
+
+.cpp.lo:
+@am__fastdepCXX_TRUE@	$(AM_V_CXX)$(LTCXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
+@am__fastdepCXX_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/$*.Tpo $(DEPDIR)/$*.Plo
+@am__fastdepCXX_FALSE@	$(AM_V_CXX) @AM_BACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	source='$<' object='$@' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCXX_FALSE@	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCXX_FALSE@	$(LTCXXCOMPILE) -c -o $@ $<
 
 mostlyclean-libtool:
 	-rm -f *.lo

@@ -17,7 +17,7 @@ AC_DEFUN([MYSQL_PATH_TEST],[
         -f $withval/include/mysql/plugin.h -a \
         -f $withval/include/mysql.h -a \
         -f $withval/include/errmsg.h -a \
-        -f $withval/sql/mysql_priv.h ;
+        \( -f $withval/sql/mysql_priv.h -o -f $withval/sql/sql_priv.h \) ;
       then
         MYSQL_INC="$withval/"
         AC_MSG_RESULT([yes])
@@ -40,7 +40,7 @@ AC_DEFUN([MYSQL_PATH_TEST],[
         -f ../../include/mysql/plugin.h -a \
         -f ../../include/mysql.h -a \
         -f ../../include/errmsg.h -a \
-        -f ../../sql/mysql_priv.h ;
+        \( -f ../../sql/mysql_priv.h -o ../../sql/sql_priv.h \) ;
       then
         MYSQL_INC="../../"
         AC_MSG_RESULT([no])
@@ -60,6 +60,7 @@ AC_DEFUN([MYSQL_INCLUDE_PATH_TEST],[
     [AS_HELP_STRING([--with-mysql-include=PATH],[mysql include directory PATH])],
     [
       if test \
+        -f $withval/mysql_version.h -a \
         -f $withval/my_config.h ;
       then
         MYSQL_INCLUDE_PATH="-I $withval/"
@@ -70,6 +71,7 @@ AC_DEFUN([MYSQL_INCLUDE_PATH_TEST],[
     ],
     [
       if test \
+        -f ../../include/mysql_version.h -a \
         -f ../../include/my_config.h ;
       then
         MYSQL_INCLUDE_PATH="-I ../../include/"

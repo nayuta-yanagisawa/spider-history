@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2010 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -83,14 +83,16 @@
 #define ER_SPIDER_UDF_COPY_TABLE_SRC_NOT_FOUND_STR "Source table is not found"
 #define ER_SPIDER_UDF_COPY_TABLE_DST_NOT_FOUND_NUM 12705
 #define ER_SPIDER_UDF_COPY_TABLE_DST_NOT_FOUND_STR "Destination table is not found"
-#define ER_SPIDER_UDF_COPY_TABLE_SRC_NG_STATUS_NUM 12705
+#define ER_SPIDER_UDF_COPY_TABLE_SRC_NG_STATUS_NUM 12706
 #define ER_SPIDER_UDF_COPY_TABLE_SRC_NG_STATUS_STR "Source table is NG status"
-#define ER_SPIDER_UDF_COPY_TABLE_DST_NG_STATUS_NUM 12706
+#define ER_SPIDER_UDF_COPY_TABLE_DST_NG_STATUS_NUM 12707
 #define ER_SPIDER_UDF_COPY_TABLE_DST_NG_STATUS_STR "Destination table is NG status"
-#define ER_SPIDER_UDF_CANT_OPEN_TABLE_NUM 12707
+#define ER_SPIDER_UDF_CANT_OPEN_TABLE_NUM 12708
 #define ER_SPIDER_UDF_CANT_OPEN_TABLE_STR "Can't open table %s.%s"
-#define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_NUM 12708
+#define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_NUM 12709
 #define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_STR "Table %s.%s needs PK for copying"
+#define ER_SPIDER_HS_STR "Error from HS %s"
+#define ER_SPIDER_HS_NUM 12711
 #define ER_SPIDER_COND_SKIP_NUM 12801
 
 #define ER_SPIDER_UNKNOWN_NUM 12500

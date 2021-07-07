@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2010 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -37,6 +37,7 @@
 #define SPIDER_SYS_TABLES_IDX1_COL_CNT 1
 #define SPIDER_SYS_LINK_MON_TABLE_COL_CNT 19
 
+#if MYSQL_VERSION_ID < 50500
 TABLE *spider_open_sys_table(
   THD *thd,
   char *table_name,
@@ -53,6 +54,24 @@ void spider_close_sys_table(
   Open_tables_state *open_tables_backup,
   bool need_lock
 );
+#else
+TABLE *spider_open_sys_table(
+  THD *thd,
+  char *table_name,
+  int table_name_length,
+  bool write,
+  Open_tables_backup *open_tables_backup,
+  bool need_lock,
+  int *error_num
+);
+
+void spider_close_sys_table(
+  THD *thd,
+  TABLE *table,
+  Open_tables_backup *open_tables_backup,
+  bool need_lock
+);
+#endif
 
 int spider_sys_index_init(
   TABLE *table,

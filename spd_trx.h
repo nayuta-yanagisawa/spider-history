@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -207,7 +207,8 @@ int spider_end_trx(
 
 int spider_check_trx_and_get_conn(
   THD *thd,
-  ha_spider *spider
+  ha_spider *spider,
+  bool use_conn_kind
 );
 
 THD *spider_create_tmp_thd();

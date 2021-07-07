@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2010 Kentoku Shiba
+/* Copyright (C) 2009-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -14,8 +14,19 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #define MYSQL_SERVER 1
+#include "mysql_version.h"
+#ifdef HAVE_HANDLERSOCKET
+#include "hstcpcli.hpp"
+#endif
+#if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
+#else
+#include "sql_priv.h"
+#include "probes_mysql.h"
+#include "sql_class.h"
+#include "sql_partition.h"
+#endif
 #include "spd_err.h"
 #include "spd_param.h"
 #include "spd_db_include.h"
@@ -29,6 +40,13 @@
 #include "spd_ping_table.h"
 #include "spd_direct_sql.h"
 #include "spd_udf.h"
+
+#ifdef HAVE_PSI_INTERFACE
+extern PSI_mutex_key spd_key_mutex_mon_list_caller;
+extern PSI_mutex_key spd_key_mutex_mon_list_receptor;
+extern PSI_mutex_key spd_key_mutex_mon_list_monitor;
+extern PSI_mutex_key spd_key_mutex_mon_list_update_status;
+#endif
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 extern pthread_mutex_t spider_global_trx_mutex;
@@ -57,7 +75,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
   DBUG_PRINT("info",("spider hash key=%s", str->c_ptr()));
   DBUG_PRINT("info",("spider hash key length=%ld", str->length()));
   pthread_mutex_lock(&spider_udf_table_mon_mutexes[mutex_hash]);
-  if (!(table_mon_list = (SPIDER_TABLE_MON_LIST *) hash_search(
+  if (!(table_mon_list = (SPIDER_TABLE_MON_LIST *) my_hash_search(
     &spider_udf_table_mon_list_hash[mutex_hash],
     (uchar*) str->c_ptr(), str->length())))
   {
@@ -114,6 +132,9 @@ void spider_release_ping_table_mon_list(
   char link_idx_str[SPIDER_SQL_INT_LEN];
   int link_idx_str_length;
   DBUG_ENTER("spider_release_ping_table_mon_list");
+  DBUG_PRINT("info", ("spider conv_name=%s", conv_name));
+  DBUG_PRINT("info", ("spider conv_name_length=%u", conv_name_length));
+  DBUG_PRINT("info", ("spider link_idx=%d", link_idx));
   link_idx_str_length = my_sprintf(link_idx_str, (link_idx_str, "%010ld",
     link_idx));
 #ifdef _MSC_VER
@@ -131,7 +152,7 @@ void spider_release_ping_table_mon_list(
   mutex_hash = spider_udf_calc_hash(conv_name_str.c_ptr_safe(),
     spider_udf_table_mon_mutex_count);
   pthread_mutex_lock(&spider_udf_table_mon_mutexes[mutex_hash]);
-  if ((table_mon_list = (SPIDER_TABLE_MON_LIST *) hash_search(
+  if ((table_mon_list = (SPIDER_TABLE_MON_LIST *) my_hash_search(
     &spider_udf_table_mon_list_hash[mutex_hash],
     (uchar*) conv_name_str.c_ptr(), conv_name_str.length())))
   {
@@ -141,7 +162,7 @@ void spider_release_ping_table_mon_list(
         pthread_cond_wait(&spider_udf_table_mon_conds[mutex_hash],
           &spider_udf_table_mon_mutexes[mutex_hash]);
       else {
-        hash_delete(&spider_udf_table_mon_list_hash[mutex_hash],
+        my_hash_delete(&spider_udf_table_mon_list_hash[mutex_hash],
           (uchar*) table_mon_list);
         spider_ping_table_free_mon_list(table_mon_list);
         break;
@@ -164,11 +185,15 @@ int spider_get_ping_table_mon(
 ) {
   int error_num;
   TABLE *table_link_mon = NULL;
+#if MYSQL_VERSION_ID < 50500
   Open_tables_state open_tables_backup;
+#else
+  Open_tables_backup open_tables_backup;
+#endif
   char table_key[MAX_KEY_LENGTH];
   SPIDER_TABLE_MON *table_mon, *table_mon_prev = NULL;
   SPIDER_SHARE *tmp_share;
-  char **tmp_connect_info;
+  char **tmp_connect_info, *tmp_ptr;
   uint *tmp_connect_info_length;
   long *tmp_long;
   longlong *tmp_longlong;
@@ -189,9 +214,65 @@ int spider_get_ping_table_mon(
   if ((error_num = spider_get_sys_table_by_idx(table_link_mon, table_key,
     table_link_mon->s->primary_key, 3)))
   {
-    table_link_mon->file->print_error(error_num, MYF(0));
-    goto error;
+    if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
+    {
+      table_link_mon->file->print_error(error_num, MYF(0));
+      goto error;
+    }
+  } else
+    goto create_table_mon;
+  if (link_idx > 0)
+  {
+    spider_store_tables_link_idx(table_link_mon, 0);
+    if ((error_num = spider_get_sys_table_by_idx(table_link_mon, table_key,
+      table_link_mon->s->primary_key, 3)))
+    {
+      if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
+      {
+        table_link_mon->file->print_error(error_num, MYF(0));
+        goto error;
+      }
+    } else
+      goto create_table_mon;
   }
+  if ((tmp_ptr = strstr(name, "#P#")))
+  {
+    *tmp_ptr = '\0';
+    spider_store_tables_name(table_link_mon, name, strlen(name));
+    spider_store_tables_link_idx(table_link_mon, link_idx);
+    *tmp_ptr = '#';
+    if ((error_num = spider_get_sys_table_by_idx(table_link_mon, table_key,
+      table_link_mon->s->primary_key, 3)))
+    {
+      if (error_num != HA_ERR_KEY_NOT_FOUND && error_num != HA_ERR_END_OF_FILE)
+      {
+        table_link_mon->file->print_error(error_num, MYF(0));
+        goto error;
+      }
+    } else
+      goto create_table_mon;
+
+    if (link_idx > 0)
+    {
+      spider_store_tables_link_idx(table_link_mon, 0);
+      if ((error_num = spider_get_sys_table_by_idx(table_link_mon, table_key,
+        table_link_mon->s->primary_key, 3)))
+      {
+        if (
+          error_num != HA_ERR_KEY_NOT_FOUND &&
+          error_num != HA_ERR_END_OF_FILE
+        ) {
+          table_link_mon->file->print_error(error_num, MYF(0));
+          goto error;
+        }
+      } else
+        goto create_table_mon;
+    }
+  }
+  table_link_mon->file->print_error(error_num, MYF(0));
+  goto error;
+
+create_table_mon:
   do {
     if (!(table_mon = (SPIDER_TABLE_MON *)
       my_multi_malloc(MYF(MY_WME | MY_ZEROFILL),
@@ -293,7 +374,11 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
   int *error_num
 ) {
   TABLE *table_tables = NULL;
+#if MYSQL_VERSION_ID < 50500
   Open_tables_state open_tables_backup;
+#else
+  Open_tables_backup open_tables_backup;
+#endif
   char table_key[MAX_KEY_LENGTH];
 
   SPIDER_TABLE_MON_LIST *table_mon_list = NULL;
@@ -377,23 +462,43 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
   if (tmp_share->link_statuses[0] == SPIDER_LINK_STATUS_NG)
     table_mon_list->mon_status = SPIDER_LINK_MON_NG;
 
+#if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&table_mon_list->caller_mutex, MY_MUTEX_INIT_FAST))
+#else
+  if (mysql_mutex_init(spd_key_mutex_mon_list_caller,
+    &table_mon_list->caller_mutex, MY_MUTEX_INIT_FAST))
+#endif
   {
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_caller_mutex_init;
   }
+#if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&table_mon_list->receptor_mutex, MY_MUTEX_INIT_FAST))
+#else
+  if (mysql_mutex_init(spd_key_mutex_mon_list_receptor,
+    &table_mon_list->receptor_mutex, MY_MUTEX_INIT_FAST))
+#endif
   {
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_receptor_mutex_init;
   }
+#if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&table_mon_list->monitor_mutex, MY_MUTEX_INIT_FAST))
+#else
+  if (mysql_mutex_init(spd_key_mutex_mon_list_monitor,
+    &table_mon_list->monitor_mutex, MY_MUTEX_INIT_FAST))
+#endif
   {
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_monitor_mutex_init;
   }
+#if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&table_mon_list->update_status_mutex,
     MY_MUTEX_INIT_FAST))
+#else
+  if (mysql_mutex_init(spd_key_mutex_mon_list_update_status,
+    &table_mon_list->update_status_mutex, MY_MUTEX_INIT_FAST))
+#endif
   {
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_update_status_mutex_init;
@@ -403,11 +508,11 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
   DBUG_RETURN(table_mon_list);
 
 error_update_status_mutex_init:
-  VOID(pthread_mutex_destroy(&table_mon_list->monitor_mutex));
+  pthread_mutex_destroy(&table_mon_list->monitor_mutex);
 error_monitor_mutex_init:
-  VOID(pthread_mutex_destroy(&table_mon_list->receptor_mutex));
+  pthread_mutex_destroy(&table_mon_list->receptor_mutex);
 error_receptor_mutex_init:
-  VOID(pthread_mutex_destroy(&table_mon_list->caller_mutex));
+  pthread_mutex_destroy(&table_mon_list->caller_mutex);
 error_caller_mutex_init:
 error:
   if (table_tables)
@@ -436,7 +541,7 @@ SPIDER_CONN *spider_get_ping_table_tgt_conn(
   if (
     !(conn = spider_get_conn(
       share, 0, share->conn_keys[0], trx, NULL, FALSE, FALSE,
-      error_num))
+      SPIDER_CONN_KIND_MYSQL, error_num))
   ) {
 #ifndef WITHOUT_SPIDER_BG_SEARCH
     if (trx == spider_global_trx)
@@ -487,11 +592,16 @@ long long spider_ping_table_body(
   if (
     thd->open_tables != 0 ||
     thd->temporary_tables != 0 ||
-    thd->handler_tables != 0 ||
+    thd->handler_tables_hash.records != 0 ||
     thd->derived_tables != 0 ||
     thd->lock != 0 ||
+#if MYSQL_VERSION_ID < 50500
     thd->locked_tables != 0 ||
     thd->prelocked_mode != NON_PRELOCKED ||
+#else
+    thd->locked_tables_list.locked_tables() ||
+    thd->locked_tables_mode != LTM_NONE ||
+#endif
     thd->m_reprepare_observer != NULL
   ) {
     my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
@@ -603,9 +713,9 @@ long long spider_ping_table_body(
         {
           table_mon_list->mon_status = SPIDER_LINK_MON_NG;
           table_mon_list->share->link_statuses[0] = SPIDER_LINK_STATUS_NG;
-          VOID(spider_sys_update_tables_link_status(trx->thd,
+          spider_sys_update_tables_link_status(trx->thd,
             conv_name.c_ptr(), conv_name_length, link_idx,
-            SPIDER_LINK_STATUS_NG, TRUE));
+            SPIDER_LINK_STATUS_NG, TRUE);
         }
         pthread_mutex_unlock(&table_mon_list->update_status_mutex);
       }
@@ -671,9 +781,9 @@ long long spider_ping_table_body(
             {
               table_mon_list->mon_status = SPIDER_LINK_MON_NG;
               table_mon_list->share->link_statuses[0] = SPIDER_LINK_STATUS_NG;
-              VOID(spider_sys_update_tables_link_status(trx->thd,
+              spider_sys_update_tables_link_status(trx->thd,
                 conv_name.c_ptr(), conv_name_length, link_idx,
-                SPIDER_LINK_STATUS_NG, TRUE));
+                SPIDER_LINK_STATUS_NG, TRUE);
             }
             pthread_mutex_unlock(&table_mon_list->update_status_mutex);
           }
@@ -748,7 +858,11 @@ my_bool spider_ping_table_init_body(
   if (!(trx = spider_get_trx(thd, &error_num)))
   {
     my_error(error_num, MYF(0));
+#if MYSQL_VERSION_ID < 50500
     strcpy(message, thd->main_da.message());
+#else
+    strcpy(message, thd->stmt_da->message());
+#endif
     goto error;
   }
 
@@ -764,7 +878,9 @@ my_bool spider_ping_table_init_body(
 
 error:
   if (mon_table_result)
+  {
     my_free(mon_table_result, MYF(0));
+  }
   DBUG_RETURN(TRUE);
 }
 
@@ -775,7 +891,9 @@ void spider_ping_table_deinit_body(
     (SPIDER_MON_TABLE_RESULT *) initid->ptr;
   DBUG_ENTER("spider_ping_table_deinit_body");
   if (mon_table_result)
+  {
     my_free(mon_table_result, MYF(0));
+  }
   DBUG_VOID_RETURN;
 }
 
@@ -787,10 +905,10 @@ void spider_ping_table_free_mon_list(
   {
     spider_ping_table_free_mon(table_mon_list->first);
     spider_free_tmp_share_alloc(table_mon_list->share);
-    VOID(pthread_mutex_destroy(&table_mon_list->update_status_mutex));
-    VOID(pthread_mutex_destroy(&table_mon_list->monitor_mutex));
-    VOID(pthread_mutex_destroy(&table_mon_list->receptor_mutex));
-    VOID(pthread_mutex_destroy(&table_mon_list->caller_mutex));
+    pthread_mutex_destroy(&table_mon_list->update_status_mutex);
+    pthread_mutex_destroy(&table_mon_list->monitor_mutex);
+    pthread_mutex_destroy(&table_mon_list->receptor_mutex);
+    pthread_mutex_destroy(&table_mon_list->caller_mutex);
     my_free(table_mon_list, MYF(0));
   }
   DBUG_VOID_RETURN;
@@ -943,8 +1061,8 @@ int spider_ping_table_mon_from_table(
               DBUG_PRINT("info", (
                 "spider share->link_statuses[%d]=SPIDER_LINK_STATUS_NG", link_idx));
               share->link_statuses[link_idx] = SPIDER_LINK_STATUS_NG;
-              VOID(spider_sys_update_tables_link_status(thd, conv_name,
-                conv_name_length, link_idx, SPIDER_LINK_STATUS_NG, need_lock));
+              spider_sys_update_tables_link_status(thd, conv_name,
+                conv_name_length, link_idx, SPIDER_LINK_STATUS_NG, need_lock);
             }
             pthread_mutex_unlock(&table_mon_list->update_status_mutex);
           }

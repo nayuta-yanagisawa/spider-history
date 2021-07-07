@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2010 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -14,9 +14,20 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #define MYSQL_SERVER 1
+#include "mysql_version.h"
+#ifdef HAVE_HANDLERSOCKET
+#include "hstcpcli.hpp"
+#endif
+#if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
-#include <my_getopt.h>
 #include <mysql/plugin.h>
+#else
+#include "sql_priv.h"
+#include "probes_mysql.h"
+#include "sql_class.h"
+#include "sql_partition.h"
+#endif
+#include <my_getopt.h>
 #include "spd_err.h"
 #include "spd_db_include.h"
 #include "spd_include.h"
@@ -25,8 +36,13 @@
 #include "spd_trx.h"
 
 typedef DECLARE_MYSQL_THDVAR_SIMPLE(thdvar_int_t, int);
+#if MYSQL_VERSION_ID < 50500
 extern bool throw_bounds_warning(THD *thd, bool fixed, bool unsignd,
   const char *name, long long val);
+#else
+extern bool throw_bounds_warning(THD *thd, const char *name, bool fixed,
+  bool is_unsignd, longlong v);
+#endif
 
 my_bool spider_support_xa;
 uint spider_table_init_error_interval;
@@ -113,7 +129,7 @@ MYSQL_THDVAR_UINT(
 );
 
 /*
-  0: week
+  0: weak
   1: strict
  */
 MYSQL_THDVAR_UINT(
@@ -399,8 +415,14 @@ static int spider_param_semi_table_lock_check(
     (long) ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->blk_sz;
   options.arg_type = REQUIRED_ARG;
   *((int *) save) = (int) getopt_ll_limit_value(tmp, &options, &fixed);
+#if MYSQL_VERSION_ID < 50500
   DBUG_RETURN(throw_bounds_warning(thd, fixed, FALSE,
     ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->name, (long long) tmp));
+#else
+  DBUG_RETURN(throw_bounds_warning(thd,
+    ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->name, fixed, FALSE,
+    (longlong) tmp));
+#endif
 }
 
 /*
@@ -449,8 +471,14 @@ static int spider_param_semi_table_lock_connection_check(
     (long) ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->blk_sz;
   options.arg_type = REQUIRED_ARG;
   *((int *) save) = (int) getopt_ll_limit_value(tmp, &options, &fixed);
+#if MYSQL_VERSION_ID < 50500
   DBUG_RETURN(throw_bounds_warning(thd, fixed, FALSE,
     ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->name, (long long) tmp));
+#else
+  DBUG_RETURN(throw_bounds_warning(thd,
+    ((MYSQL_SYSVAR_NAME(thdvar_int_t) *) var)->name, fixed, FALSE,
+    (longlong) tmp));
+#endif
 }
 
 /*
@@ -1054,7 +1082,7 @@ MYSQL_THDVAR_INT(
   NULL, /* update */
   -1, /* def */
   -1, /* min */
-  2, /* max */
+  3, /* max */
   0 /* blk */
 );
 
@@ -1369,6 +1397,125 @@ MYSQL_SYSVAR_LONGLONG(
   0
 );
 
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+/*
+  0: no recycle
+  1: recycle in instance
+  2: recycle in thread
+ */
+MYSQL_THDVAR_UINT(
+  hs_r_conn_recycle_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Handlersocket connection recycle mode", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  2, /* def */
+  0, /* min */
+  2, /* max */
+  0 /* blk */
+);
+
+/*
+  0: weak
+  1: strict
+ */
+MYSQL_THDVAR_UINT(
+  hs_r_conn_recycle_strict, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Strict handlersocket connection recycle", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  0, /* def */
+  0, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
+/*
+  0: no recycle
+  1: recycle in instance
+  2: recycle in thread
+ */
+MYSQL_THDVAR_UINT(
+  hs_w_conn_recycle_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Handlersocket connection recycle mode", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  2, /* def */
+  0, /* min */
+  2, /* max */
+  0 /* blk */
+);
+
+/*
+  0: weak
+  1: strict
+ */
+MYSQL_THDVAR_UINT(
+  hs_w_conn_recycle_strict, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Strict handlersocket connection recycle", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  0, /* def */
+  0, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :not use
+  1 :use handlersocket
+ */
+MYSQL_THDVAR_INT(
+  use_hs_read, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Use handlersocket for reading", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :not use
+  1 :use handlersocket
+ */
+MYSQL_THDVAR_INT(
+  use_hs_write, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Use handlersocket for writing", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+#endif
+
+/*
+ -1 :use table parameter
+  0 :not use
+  1 :use handler
+ */
+MYSQL_THDVAR_INT(
+  use_handler, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Use handler for reading", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  3, /* max */
+  0 /* blk */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -1459,6 +1606,15 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(bka_mode),
   MYSQL_SYSVAR(udf_ct_bulk_insert_interval),
   MYSQL_SYSVAR(udf_ct_bulk_insert_rows),
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  MYSQL_SYSVAR(hs_r_conn_recycle_mode),
+  MYSQL_SYSVAR(hs_r_conn_recycle_strict),
+  MYSQL_SYSVAR(hs_w_conn_recycle_mode),
+  MYSQL_SYSVAR(hs_w_conn_recycle_strict),
+  MYSQL_SYSVAR(use_hs_read),
+  MYSQL_SYSVAR(use_hs_write),
+#endif
+  MYSQL_SYSVAR(use_handler),
   NULL
 };
 
@@ -1472,7 +1628,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0217,
+  0x0218,
   NULL,
   spider_system_variables,
   NULL

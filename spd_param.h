@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2010 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software); you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -100,3 +100,12 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(connect_retry_interval, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(connect_retry_count, int);
 extern DECLARE_MYSQL_THDVAR_BASIC(bka_engine, char *);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(bka_mode, int);
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+extern DECLARE_MYSQL_THDVAR_SIMPLE(hs_r_conn_recycle_mode, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(hs_r_conn_recycle_strict, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(hs_w_conn_recycle_mode, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(hs_w_conn_recycle_strict, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(use_hs_read, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(use_hs_write, int);
+#endif
+extern DECLARE_MYSQL_THDVAR_SIMPLE(use_handler, int);

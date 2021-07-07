@@ -1,4 +1,4 @@
-/* Copyright (C) 2009 Kentoku Shiba
+/* Copyright (C) 2009-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -14,8 +14,21 @@
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA */
 
 #define MYSQL_SERVER 1
+#include "mysql_version.h"
+#ifdef HAVE_HANDLERSOCKET
+#include "hstcpcli.hpp"
+#endif
+#if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
+#else
+#include "sql_priv.h"
+#include "probes_mysql.h"
+#include "sql_class.h"
+#include "sql_partition.h"
+#include "sql_base.h"
+#include "sql_servers.h"
+#endif
 #include "spd_err.h"
 #include "spd_param.h"
 #include "spd_db_include.h"
@@ -27,6 +40,12 @@
 #include "spd_table.h"
 #include "spd_direct_sql.h"
 #include "spd_udf.h"
+
+#ifdef HAVE_PSI_INTERFACE
+extern PSI_mutex_key spd_key_mutex_mta_conn;
+extern PSI_mutex_key spd_key_mutex_bg_direct_sql;
+extern PSI_cond_key spd_key_cond_bg_direct_sql;
+#endif
 
 extern HASH spider_open_connections;
 extern pthread_mutex_t spider_conn_mutex;
@@ -366,15 +385,20 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
 
+#if MYSQL_VERSION_ID < 50500
   if (pthread_mutex_init(&conn->mta_conn_mutex, MY_MUTEX_INIT_FAST))
+#else
+  if (mysql_mutex_init(spd_key_mutex_mta_conn, &conn->mta_conn_mutex,
+    MY_MUTEX_INIT_FAST))
+#endif
   {
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_mta_conn_mutex_init;
   }
 
   if (
-    hash_init(&conn->lock_table_hash, system_charset_info, 32, 0, 0,
-              (hash_get_key) spider_ha_get_key, 0, 0)
+    my_hash_init(&conn->lock_table_hash, system_charset_info, 32, 0, 0,
+              (my_hash_get_key) spider_ha_get_key, 0, 0)
   ) {
     *error_num = HA_ERR_OUT_OF_MEM;
     goto error_init_lock_table_hash;
@@ -387,9 +411,9 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
   DBUG_RETURN(conn);
 
 error:
-  hash_free(&conn->lock_table_hash);
+  my_hash_free(&conn->lock_table_hash);
 error_init_lock_table_hash:
-  VOID(pthread_mutex_destroy(&conn->mta_conn_mutex));
+  pthread_mutex_destroy(&conn->mta_conn_mutex);
 error_mta_conn_mutex_init:
   my_free(conn, MYF(0));
 error_alloc_conn:
@@ -405,7 +429,7 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
   DBUG_ENTER("spider_udf_direct_sql_get_conn");
 
   if (
-    !(conn = (SPIDER_CONN*) hash_search(&trx->trx_conn_hash,
+    !(conn = (SPIDER_CONN*) my_hash_search(&trx->trx_conn_hash,
         (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
   ) {
     if (
@@ -413,7 +437,7 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
       THDVAR(trx->thd, conn_recycle_strict)
     ) {
       pthread_mutex_lock(&spider_conn_mutex);
-      if (!(conn = (SPIDER_CONN*) hash_search(&spider_open_connections,
+      if (!(conn = (SPIDER_CONN*) my_hash_search(&spider_open_connections,
                                              (uchar*) direct_sql->conn_key,
                                              direct_sql->conn_key_length)))
       {
@@ -422,7 +446,7 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
         if(!(conn = spider_udf_direct_sql_create_conn(direct_sql, error_num)))
           goto error;
       } else {
-        hash_delete(&spider_open_connections, (uchar*) conn);
+        my_hash_delete(&spider_open_connections, (uchar*) conn);
         pthread_mutex_unlock(&spider_conn_mutex);
         DBUG_PRINT("info",("spider get global conn"));
       }
@@ -883,12 +907,16 @@ set_default:
     goto error;
 
   if (param_string)
+  {
     my_free(param_string, MYF(0));
+  }
   DBUG_RETURN(0);
 
 error:
   if (param_string)
+  {
     my_free(param_string, MYF(0));
+  }
 error_alloc_param_string:
   DBUG_RETURN(error_num);
 }
@@ -1043,37 +1071,69 @@ void spider_udf_free_direct_sql_alloc(
   }
 #endif
   if (direct_sql->server_name)
+  {
     my_free(direct_sql->server_name, MYF(0));
+  }
   if (direct_sql->tgt_default_db_name)
+  {
     my_free(direct_sql->tgt_default_db_name, MYF(0));
+  }
   if (direct_sql->tgt_host)
+  {
     my_free(direct_sql->tgt_host, MYF(0));
+  }
   if (direct_sql->tgt_username)
+  {
     my_free(direct_sql->tgt_username, MYF(0));
+  }
   if (direct_sql->tgt_password)
+  {
     my_free(direct_sql->tgt_password, MYF(0));
+  }
   if (direct_sql->tgt_socket)
+  {
     my_free(direct_sql->tgt_socket, MYF(0));
+  }
   if (direct_sql->tgt_wrapper)
+  {
     my_free(direct_sql->tgt_wrapper, MYF(0));
+  }
   if (direct_sql->tgt_ssl_ca)
+  {
     my_free(direct_sql->tgt_ssl_ca, MYF(0));
+  }
   if (direct_sql->tgt_ssl_capath)
+  {
     my_free(direct_sql->tgt_ssl_capath, MYF(0));
+  }
   if (direct_sql->tgt_ssl_cert)
+  {
     my_free(direct_sql->tgt_ssl_cert, MYF(0));
+  }
   if (direct_sql->tgt_ssl_cipher)
+  {
     my_free(direct_sql->tgt_ssl_cipher, MYF(0));
+  }
   if (direct_sql->tgt_ssl_key)
+  {
     my_free(direct_sql->tgt_ssl_key, MYF(0));
+  }
   if (direct_sql->tgt_default_file)
+  {
     my_free(direct_sql->tgt_default_file, MYF(0));
+  }
   if (direct_sql->tgt_default_group)
+  {
     my_free(direct_sql->tgt_default_group, MYF(0));
+  }
   if (direct_sql->conn_key)
+  {
     my_free(direct_sql->conn_key, MYF(0));
+  }
   if (direct_sql->db_names)
+  {
     my_free(direct_sql->db_names, MYF(0));
+  }
   my_free(direct_sql, MYF(0));
   DBUG_VOID_RETURN;
 }
@@ -1273,12 +1333,22 @@ my_bool spider_direct_sql_init_body(
       strcpy(message, "spider_bg_direct_sql() out of memory");
       goto error;
     }
+#if MYSQL_VERSION_ID < 50500
     if (pthread_mutex_init(&bg_direct_sql->bg_mutex, MY_MUTEX_INIT_FAST))
+#else
+    if (mysql_mutex_init(spd_key_mutex_bg_direct_sql,
+      &bg_direct_sql->bg_mutex, MY_MUTEX_INIT_FAST))
+#endif
     {
       strcpy(message, "spider_bg_direct_sql() out of memory");
       goto error_mutex_init;
     }
+#if MYSQL_VERSION_ID < 50500
     if (pthread_cond_init(&bg_direct_sql->bg_cond, NULL))
+#else
+    if (mysql_cond_init(spd_key_cond_bg_direct_sql,
+      &bg_direct_sql->bg_cond, NULL))
+#endif
     {
       strcpy(message, "spider_bg_direct_sql() out of memory");
       goto error_cond_init;
@@ -1290,7 +1360,7 @@ my_bool spider_direct_sql_init_body(
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH
 error_cond_init:
-  VOID(pthread_mutex_destroy(&bg_direct_sql->bg_mutex));
+  pthread_mutex_destroy(&bg_direct_sql->bg_mutex);
 error_mutex_init:
   my_free(bg_direct_sql, MYF(0));
 #endif
@@ -1305,8 +1375,8 @@ void spider_direct_sql_deinit_body(
   DBUG_ENTER("spider_direct_sql_deinit_body");
   if (bg_direct_sql)
   {
-    VOID(pthread_cond_destroy(&bg_direct_sql->bg_cond));
-    VOID(pthread_mutex_destroy(&bg_direct_sql->bg_mutex));
+    pthread_cond_destroy(&bg_direct_sql->bg_cond);
+    pthread_mutex_destroy(&bg_direct_sql->bg_mutex);
     my_free(bg_direct_sql, MYF(0));
   }
   DBUG_VOID_RETURN;

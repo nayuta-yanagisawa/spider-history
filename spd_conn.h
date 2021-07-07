@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2009 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@ SPIDER_CONN *spider_create_conn(
   const SPIDER_SHARE *share,
   ha_spider *spider,
   int link_id,
+  uint conn_kind,
   int *error_num
 );
 
@@ -54,6 +55,7 @@ SPIDER_CONN *spider_get_conn(
   ha_spider *spider,
   bool another,
   bool thd_chg,
+  uint conn_kind,
   int *error_num
 );
 
@@ -182,4 +184,16 @@ int spider_conn_lock_mode(
 
 bool spider_conn_check_recovery_link(
   SPIDER_SHARE *share
+);
+
+bool spider_conn_use_handler(
+  ha_spider *spider,
+  int lock_mode,
+  int link_idx
+);
+
+bool spider_conn_need_open_handler(
+  ha_spider *spider,
+  uint idx,
+  int link_idx
 );

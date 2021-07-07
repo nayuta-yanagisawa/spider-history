@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2010 Kentoku Shiba
+/* Copyright (C) 2008-2011 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -51,6 +51,8 @@
 #define SPIDER_SQL_B_LEN (sizeof(SPIDER_SQL_B_STR) - 1)
 
 #define SPIDER_SQL_INT_LEN 20
+#define SPIDER_SQL_HANDLER_CID_LEN 6
+#define SPIDER_SQL_HANDLER_CID_FORMAT "t%05u"
 #define SPIDER_UDF_PING_TABLE_PING_ONLY (1 << 0)
 #define SPIDER_UDF_PING_TABLE_USE_WHERE (1 << 1)
 
@@ -236,9 +238,11 @@ void spider_db_append_table_name(
 );
 
 void spider_db_append_table_name_with_adjusting(
+  ha_spider *spider,
   String *str,
   SPIDER_SHARE *share,
-  int link_idx
+  int link_idx,
+  uint sql_kind
 );
 
 void spider_db_append_column_name(
@@ -248,6 +252,7 @@ void spider_db_append_column_name(
 );
 
 int spider_db_append_column_value(
+  ha_spider *spider,
   SPIDER_SHARE *share,
   String *str,
   Field *field,
@@ -370,6 +375,24 @@ int spider_db_append_minimum_select(
   ha_spider *spider
 );
 
+int spider_db_append_minimum_select_without_quote(
+  String *str,
+  const TABLE *table,
+  ha_spider *spider
+);
+
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+int spider_db_append_minimum_select_by_field_idx_list(
+  String *str,
+  const TABLE *table,
+  ha_spider *spider,
+  uint32 *field_idxs,
+  size_t field_idxs_num
+);
+#endif
+#endif
+
 int spider_db_append_select_columns(
   ha_spider *spider
 );
@@ -405,11 +428,13 @@ int spider_db_append_select_columns_with_alias(
 );
 
 int spider_db_append_null(
+  ha_spider *spider,
   SPIDER_SHARE *share,
   String *str,
   KEY_PART_INFO *key_part,
   const key_range *key,
-  const uchar **ptr
+  const uchar **ptr,
+  uint sql_kind
 );
 
 int spider_db_append_null_value(
@@ -448,13 +473,26 @@ int spider_db_append_key_hint(
   char *hint_str
 );
 
+int spider_db_append_key_where_internal(
+  const key_range *start_key,
+  const key_range *end_key,
+  ha_spider *spider,
+  uint sql_kind,
+  bool update_sql
+);
+
 int spider_db_append_key_where(
   const key_range *start_key,
   const key_range *end_key,
   ha_spider *spider
 );
 
+int spider_db_append_match_where(
+  ha_spider *spider
+);
+
 int spider_db_append_hint_after_table(
+  ha_spider *spider,
   String *str,
   String *hint
 );
@@ -467,10 +505,20 @@ int spider_db_append_key_order_str(
 );
 
 int spider_db_append_key_order(
-  ha_spider *spider
+  ha_spider *spider,
+  bool update_sql
+);
+
+int spider_db_append_limit_internal(
+  ha_spider *spider,
+  String *str,
+  longlong offset,
+  longlong limit,
+  uint sql_kind
 );
 
 int spider_db_append_limit(
+  ha_spider *spider,
   String *str,
   longlong offset,
   longlong limit
@@ -582,6 +630,10 @@ int spider_db_append_insert_tmp_bka_table(
   int *db_name_pos
 );
 
+void spider_db_append_handler_next(
+  ha_spider *spider
+);
+
 int spider_db_fetch_row(
   SPIDER_SHARE *share,
   Field *field,
@@ -589,6 +641,15 @@ int spider_db_fetch_row(
   ulong *lengths,
   my_ptrdiff_t ptr_diff
 );
+
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+int spider_db_fetch_hs_row(
+  SPIDER_SHARE *share,
+  Field *field,
+  const SPIDER_HS_STRING_REF &hs_row,
+  my_ptrdiff_t ptr_diff
+);
+#endif
 
 int spider_db_fetch_table(
   ha_spider *spider,
@@ -775,6 +836,16 @@ int spider_db_update(
   const uchar *old_data
 );
 
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+int spider_db_direct_update(
+  ha_spider *spider,
+  TABLE *table,
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  uint *update_rows
+);
+#endif
+
 int spider_db_bulk_delete(
   ha_spider *spider,
   TABLE *table,
@@ -786,6 +857,16 @@ int spider_db_delete(
   TABLE *table,
   const uchar *buf
 );
+
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+int spider_db_direct_delete(
+  ha_spider *spider,
+  TABLE *table,
+  KEY_MULTI_RANGE *ranges,
+  uint range_count,
+  uint *delete_rows
+);
+#endif
 
 int spider_db_delete_all_rows(
   ha_spider *spider
@@ -829,60 +910,93 @@ int spider_db_flush_logs(
 int spider_db_print_item_type(
   Item *item,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
 );
 
 int spider_db_open_item_cond(
   Item_cond *item_cond,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
 );
 
 int spider_db_open_item_func(
   Item_func *item_func,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
 );
 
 int spider_db_open_item_ident(
   Item_ident *item_ident,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
 );
 
 int spider_db_open_item_field(
   Item_field *item_field,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
 );
 
 int spider_db_open_item_ref(
   Item_ref *item_ref,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
 );
 
 int spider_db_open_item_row(
   Item_row *item_row,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
 );
 
 int spider_db_open_item_string(
   Item *item,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
 );
 
 int spider_db_open_item_int(
   Item *item,
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
+);
+
+int spider_db_append_condition_internal(
+  ha_spider *spider,
+  String *str,
+  char *alias,
+  uint alias_length,
+  uint sql_kind
 );
 
 int spider_db_append_condition(
   ha_spider *spider,
-  String *str
+  String *str,
+  char *alias,
+  uint alias_length
+);
+
+uint spider_db_check_ft_idx(
+  Item_func *item_func,
+  ha_spider *spider
 );
 
 int spider_db_udf_fetch_row(
@@ -1022,4 +1136,53 @@ int spider_db_udf_copy_tables(
   ha_spider *spider,
   TABLE *table,
   longlong bulk_insert_rows
+);
+
+int spider_db_open_handler(
+  ha_spider *spider,
+  SPIDER_CONN *conn,
+  int link_idx
+);
+
+int spider_db_close_handler(
+  ha_spider *spider,
+  SPIDER_CONN *conn,
+  int link_idx
+);
+
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+int spider_db_hs_request_buf_find(
+  ha_spider *spider,
+  int link_idx
+);
+
+int spider_db_hs_request_buf_insert(
+  ha_spider *spider,
+  int link_idx
+);
+
+int spider_db_hs_request_buf_update(
+  ha_spider *spider,
+  int link_idx
+);
+
+int spider_db_hs_request_buf_delete(
+  ha_spider *spider,
+  int link_idx
+);
+#endif
+
+String *spider_db_add_str_dynamic(
+  DYNAMIC_ARRAY *array,
+  uint *strs_pos,
+  const char *str,
+  uint str_len
+);
+
+void spider_db_free_str_dynamic(
+  DYNAMIC_ARRAY *array
+);
+
+void spider_db_clear_dynamic(
+  DYNAMIC_ARRAY *array
 );
