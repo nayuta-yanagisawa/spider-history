@@ -34,7 +34,8 @@ uchar *spider_ha_get_key(
 );
 
 int spider_get_server(
-  SPIDER_SHARE *share
+  SPIDER_SHARE *share,
+  int link_idx
 );
 
 int spider_free_share_alloc(
@@ -48,6 +49,37 @@ void spider_free_tmp_share_alloc(
 char *spider_get_string_between_quote(
   char *ptr,
   bool alloc
+);
+
+int spider_create_string_list(
+  char ***string_list,
+  uint **string_length_list,
+  uint *list_length,
+  char *str,
+  uint length
+);
+
+int spider_create_long_list(
+  long **long_list,
+  uint *list_length,
+  char *str,
+  uint length,
+  long min_val,
+  long max_val
+);
+
+int spider_increase_string_list(
+  char ***string_list,
+  uint **string_length_list,
+  uint *list_length,
+  uint *list_charlen,
+  uint link_count
+);
+
+int spider_increase_long_list(
+  long **long_list,
+  uint *list_length,
+  uint link_count
 );
 
 int spider_parse_connect_info(
@@ -65,7 +97,7 @@ int spider_set_connect_info_default(
   TABLE *table
 );
 
-int spider_create_conn_key(
+int spider_create_conn_keys(
   SPIDER_SHARE *share
 );
 
@@ -177,6 +209,7 @@ void spider_get_partition_info(
 
 int spider_get_sts(
   SPIDER_SHARE *share,
+  int link_idx,
   time_t tmp_time,
   ha_spider *spider,
   double sts_interval,
@@ -189,6 +222,7 @@ int spider_get_sts(
 
 int spider_get_crd(
   SPIDER_SHARE *share,
+  int link_idx,
   time_t tmp_time,
   ha_spider *spider,
   TABLE *table,

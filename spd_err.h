@@ -19,6 +19,8 @@
 #define ER_SPIDER_INVALID_CONNECT_INFO_TOO_LONG_STR "The connect info '%-.64s' for %s is too long"
 #define ER_SPIDER_INVALID_UDF_PARAM_NUM 12503
 #define ER_SPIDER_INVALID_UDF_PARAM_STR "The UDF parameter '%-.64s' is invalid"
+#define ER_SPIDER_DIFFERENT_LINK_COUNT_NUM 12504
+#define ER_SPIDER_DIFFERENT_LINK_COUNT_STR "Different multiple table link parameter's count"
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_NUM 12601
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_STR "Can't use both spider_use_consistent_snapshot = 1 and spider_internal_xa = 1"
 #define ER_SPIDER_XA_LOCKED_NUM 12602

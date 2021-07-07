@@ -34,7 +34,8 @@ int spider_db_connect(
 );
 
 int spider_db_ping(
-  ha_spider *spider
+  ha_spider *spider,
+  SPIDER_CONN *conn
 );
 
 void spider_db_disconnect(
@@ -135,11 +136,13 @@ int spider_db_xa_rollback(
 );
 
 int spider_db_lock_tables(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_unlock_tables(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_append_name_with_quote_str(
@@ -147,11 +150,11 @@ int spider_db_append_name_with_quote_str(
   char *name
 );
 
-int spider_db_create_table_name_str(
+int spider_db_create_table_names_str(
   SPIDER_SHARE *share
 );
 
-void spider_db_free_table_name_str(
+void spider_db_free_table_names_str(
   SPIDER_SHARE *share
 );
 
@@ -167,6 +170,18 @@ void spider_db_free_column_name_str(
 int spider_db_convert_key_hint_str(
   SPIDER_SHARE *share,
   TABLE_SHARE *table_share
+);
+
+void spider_db_append_table_name(
+  String *str,
+  SPIDER_SHARE *share,
+  int link_idx
+);
+
+void spider_db_append_table_name_with_adjusting(
+  String *str,
+  SPIDER_SHARE *share,
+  int link_idx
 );
 
 void spider_db_append_column_name(
@@ -191,7 +206,8 @@ int spider_db_append_insert(
 );
 
 int spider_db_append_update(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_append_delete(
@@ -199,17 +215,20 @@ int spider_db_append_delete(
 );
 
 int spider_db_append_truncate(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_append_from(
   String *str,
-  SPIDER_SHARE *share
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_append_into(
   ha_spider *spider,
-  const TABLE *table
+  const TABLE *table,
+  int link_idx
 );
 
 int spider_db_append_update_set(
@@ -226,19 +245,19 @@ int spider_db_append_update_where(
 int spider_db_append_table_select(
   String *str,
   const TABLE *table,
-  SPIDER_SHARE *share
+  ha_spider *spider
 );
 
 int spider_db_append_key_select(
   String *str,
   const KEY *key_info,
-  SPIDER_SHARE *share
+  ha_spider *spider
 );
 
 int spider_db_append_minimum_select(
   String *str,
   const TABLE *table,
-  SPIDER_SHARE *share
+  ha_spider *spider
 );
 
 int spider_db_append_select_columns(
@@ -308,29 +327,35 @@ void spider_db_free_set_names(
 );
 
 int spider_db_append_disable_keys(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_append_enable_keys(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_append_check_table(
   ha_spider *spider,
+  int link_idx,
   HA_CHECK_OPT* check_opt
 );
 
 int spider_db_append_repair_table(
   ha_spider *spider,
+  int link_idx,
   HA_CHECK_OPT* check_opt
 );
 
 int spider_db_append_analyze_table(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_append_optimize_table(
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_append_flush_tables(
@@ -380,10 +405,15 @@ int spider_db_free_result(
 
 int spider_db_store_result(
   ha_spider *spider,
+  int link_idx,
   TABLE *table
 );
 
 int spider_db_next_result(
+  SPIDER_CONN *conn
+);
+
+void spider_db_discard_result(
   SPIDER_CONN *conn
 );
 
@@ -402,12 +432,14 @@ int spider_db_seek_prev(
 int spider_db_seek_next(
   uchar *buf,
   ha_spider *spider,
+  int link_idx,
   TABLE *table
 );
 
 int spider_db_seek_last(
   uchar *buf,
   ha_spider *spider,
+  int link_idx,
   TABLE *table
 );
 
@@ -456,6 +488,7 @@ int spider_db_seek_tmp_minimum_columns(
 
 int spider_db_show_table_status(
   ha_spider *spider,
+  int link_idx,
   int sts_mode
 );
 
@@ -466,6 +499,7 @@ void spider_db_set_cardinarity(
 
 int spider_db_show_index(
   ha_spider *spider,
+  int link_idx,
   TABLE *table,
   int crd_mode
 );
@@ -473,7 +507,8 @@ int spider_db_show_index(
 ha_rows spider_db_explain_select(
   key_range *start_key,
   key_range *end_key,
-  ha_spider *spider
+  ha_spider *spider,
+  int link_idx
 );
 
 int spider_db_bulk_insert_init(

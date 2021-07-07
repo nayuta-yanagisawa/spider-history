@@ -69,11 +69,15 @@ typedef struct st_spider_result_list
   KEY                    *key_info;
   int                    key_order;
   String                 sql;
+  String                 *sqls;
   int                    where_pos;
   int                    order_pos;
   int                    limit_pos;
+  int                    table_name_pos;
   String                 insert_sql;
+  String                 *insert_sqls;
   int                    insert_pos;
+  int                    insert_table_name_pos;
   bool                   sorted;
   bool                   desc_flg;
   longlong               current_row_num;

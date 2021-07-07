@@ -108,7 +108,8 @@ int spider_start_internal_consistent_snapshot(
 );
 
 int spider_internal_start_trx(
-  ha_spider *spider
+  ha_spider *spider,
+  SPIDER_CONN *conn
 );
 
 int spider_internal_xa_commit(

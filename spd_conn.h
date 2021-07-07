@@ -37,11 +37,13 @@ void spider_free_conn_from_trx(
 
 SPIDER_CONN *spider_create_conn(
   const SPIDER_SHARE *share,
+  int link_id,
   int *error_num
 );
 
 SPIDER_CONN *spider_get_conn(
   const SPIDER_SHARE *share,
+  int link_idx,
   char *conn_key,
   SPIDER_TRX *trx,
   ha_spider *spider,
@@ -96,7 +98,9 @@ void spider_bg_conn_break(
 
 int spider_bg_conn_search(
   ha_spider *spider,
-  bool first
+  int link_idx,
+  bool first,
+  bool discard_result
 );
 
 void *spider_bg_conn_action(
@@ -127,3 +131,13 @@ void *spider_bg_crd_action(
   void *arg
 );
 #endif
+
+int spider_conn_first_link_idx(
+  THD *thd,
+  int link_count
+);
+
+int spider_conn_next_link_idx(
+  int link_idx,
+  int link_count
+);

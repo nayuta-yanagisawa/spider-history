@@ -324,117 +324,128 @@ void spider_store_tables_name(
   DBUG_VOID_RETURN;
 }
 
+void spider_store_tables_link_idx(
+  TABLE *table,
+  int link_idx
+) {
+  DBUG_ENTER("spider_store_tables_link_idx");
+  table->field[2]->set_notnull();
+  table->field[2]->store(link_idx);
+  DBUG_VOID_RETURN;
+}
+
 void spider_store_tables_priority(
   TABLE *table,
   longlong priority
 ) {
   DBUG_ENTER("spider_store_tables_priority");
   DBUG_PRINT("info",("spider priority = %lld", priority));
-  table->field[2]->store(priority, FALSE);
+  table->field[3]->store(priority, FALSE);
   DBUG_VOID_RETURN;
 }
 
 void spider_store_tables_connect_info(
   TABLE *table,
-  SPIDER_ALTER_TABLE *alter_table
+  SPIDER_ALTER_TABLE *alter_table,
+  int link_idx
 ) {
   DBUG_ENTER("spider_store_tables_connect_info");
-  if (alter_table->tmp_server_name)
-  {
-    table->field[3]->set_notnull();
-    table->field[3]->store(
-      alter_table->tmp_server_name,
-      (uint) alter_table->tmp_server_name_length,
-      system_charset_info);
-  } else {
-    table->field[3]->set_null();
-    table->field[3]->reset();
-  }
-  if (alter_table->tmp_tgt_wrapper)
+  if (alter_table->tmp_server_names[link_idx])
   {
     table->field[4]->set_notnull();
     table->field[4]->store(
-      alter_table->tmp_tgt_wrapper,
-      (uint) alter_table->tmp_tgt_wrapper_length,
+      alter_table->tmp_server_names[link_idx],
+      (uint) alter_table->tmp_server_names_lengths[link_idx],
       system_charset_info);
   } else {
     table->field[4]->set_null();
     table->field[4]->reset();
   }
-  if (alter_table->tmp_tgt_host)
+  if (alter_table->tmp_tgt_wrappers[link_idx])
   {
     table->field[5]->set_notnull();
     table->field[5]->store(
-      alter_table->tmp_tgt_host,
-      (uint) alter_table->tmp_tgt_host_length,
+      alter_table->tmp_tgt_wrappers[link_idx],
+      (uint) alter_table->tmp_tgt_wrappers_lengths[link_idx],
       system_charset_info);
   } else {
     table->field[5]->set_null();
     table->field[5]->reset();
   }
-  if (alter_table->tmp_tgt_port >= 0)
+  if (alter_table->tmp_tgt_hosts[link_idx])
   {
     table->field[6]->set_notnull();
     table->field[6]->store(
-      alter_table->tmp_tgt_port);
+      alter_table->tmp_tgt_hosts[link_idx],
+      (uint) alter_table->tmp_tgt_hosts_lengths[link_idx],
+      system_charset_info);
   } else {
     table->field[6]->set_null();
     table->field[6]->reset();
   }
-  if (alter_table->tmp_tgt_socket)
+  if (alter_table->tmp_tgt_ports[link_idx] >= 0)
   {
     table->field[7]->set_notnull();
     table->field[7]->store(
-      alter_table->tmp_tgt_socket,
-      (uint) alter_table->tmp_tgt_socket_length,
-      system_charset_info);
+      alter_table->tmp_tgt_ports[link_idx]);
   } else {
     table->field[7]->set_null();
     table->field[7]->reset();
   }
-  if (alter_table->tmp_tgt_username)
+  if (alter_table->tmp_tgt_sockets[link_idx])
   {
     table->field[8]->set_notnull();
     table->field[8]->store(
-      alter_table->tmp_tgt_username,
-      (uint) alter_table->tmp_tgt_username_length,
+      alter_table->tmp_tgt_sockets[link_idx],
+      (uint) alter_table->tmp_tgt_sockets_lengths[link_idx],
       system_charset_info);
   } else {
     table->field[8]->set_null();
     table->field[8]->reset();
   }
-  if (alter_table->tmp_tgt_password)
+  if (alter_table->tmp_tgt_usernames[link_idx])
   {
     table->field[9]->set_notnull();
     table->field[9]->store(
-      alter_table->tmp_tgt_password,
-      (uint) alter_table->tmp_tgt_password_length,
+      alter_table->tmp_tgt_usernames[link_idx],
+      (uint) alter_table->tmp_tgt_usernames_lengths[link_idx],
       system_charset_info);
   } else {
     table->field[9]->set_null();
     table->field[9]->reset();
   }
-  if (alter_table->tmp_tgt_db)
+  if (alter_table->tmp_tgt_passwords[link_idx])
   {
     table->field[10]->set_notnull();
     table->field[10]->store(
-      alter_table->tmp_tgt_db,
-      (uint) alter_table->tmp_tgt_db_length,
+      alter_table->tmp_tgt_passwords[link_idx],
+      (uint) alter_table->tmp_tgt_passwords_lengths[link_idx],
       system_charset_info);
   } else {
     table->field[10]->set_null();
     table->field[10]->reset();
   }
-  if (alter_table->tmp_tgt_table_name)
+  if (alter_table->tmp_tgt_dbs[link_idx])
   {
     table->field[11]->set_notnull();
     table->field[11]->store(
-      alter_table->tmp_tgt_table_name,
-      (uint) alter_table->tmp_tgt_table_name_length,
+      alter_table->tmp_tgt_dbs[link_idx],
+      (uint) alter_table->tmp_tgt_dbs_lengths[link_idx],
       system_charset_info);
   } else {
     table->field[11]->set_null();
     table->field[11]->reset();
+  }
+  if (alter_table->tmp_tgt_table_names[link_idx])
+  {
+    table->field[12]->set_notnull();
+    table->field[12]->store(
+      alter_table->tmp_tgt_table_names[link_idx],
+      (uint) alter_table->tmp_tgt_table_names_lengths[link_idx],
+      system_charset_info);
+  } else {
+    table->field[12]->set_null();
+    table->field[12]->reset();
   }
   DBUG_VOID_RETURN;
 }
@@ -513,18 +524,22 @@ int spider_insert_tables(
   TABLE *table,
   SPIDER_SHARE *share
 ) {
-  int error_num;
+  int error_num, roop_count;
   DBUG_ENTER("spider_insert_tables");
   table->use_all_columns();
   empty_record(table);
 
   spider_store_tables_name(table, share->table_name, share->table_name_length);
   spider_store_tables_priority(table, share->priority);
-  spider_store_tables_connect_info(table, &share->alter_table);
-  if ((error_num = table->file->ha_write_row(table->record[0])))
+  for (roop_count = 0; roop_count < share->link_count; roop_count++)
   {
-    table->file->print_error(error_num, MYF(0));
-    DBUG_RETURN(error_num);
+    spider_store_tables_link_idx(table, roop_count);
+    spider_store_tables_connect_info(table, &share->alter_table, roop_count);
+    if ((error_num = table->file->ha_write_row(table->record[0])))
+    {
+      table->file->print_error(error_num, MYF(0));
+      DBUG_RETURN(error_num);
+    }
   }
 
   DBUG_RETURN(0);
@@ -573,27 +588,37 @@ int spider_update_tables_name(
   const char *from,
   const char *to
 ) {
-  int error_num;
+  int error_num, roop_count = 0;
   char table_key[MAX_KEY_LENGTH];
   DBUG_ENTER("spider_update_tables_name");
   table->use_all_columns();
-  spider_store_tables_name(table, from, strlen(from));
-  if ((error_num = spider_check_sys_table(table, table_key)))
+  while (TRUE)
   {
-    table->file->print_error(error_num, MYF(0));
-    DBUG_RETURN(error_num);
-  } else {
-    store_record(table, record[1]);
-    table->use_all_columns();
-    spider_store_tables_name(table, to, strlen(to));
-    if (
-      (error_num = table->file->ha_update_row(
-        table->record[1], table->record[0])) &&
-      error_num != HA_ERR_RECORD_IS_THE_SAME
-    ) {
+    spider_store_tables_name(table, from, strlen(from));
+    spider_store_tables_link_idx(table, roop_count);
+    if ((error_num = spider_check_sys_table(table, table_key)))
+    {
+      if (
+        roop_count &&
+        (error_num == HA_ERR_KEY_NOT_FOUND || error_num == HA_ERR_END_OF_FILE)
+      )
+        break;
       table->file->print_error(error_num, MYF(0));
       DBUG_RETURN(error_num);
+    } else {
+      store_record(table, record[1]);
+      table->use_all_columns();
+      spider_store_tables_name(table, to, strlen(to));
+      if (
+        (error_num = table->file->ha_update_row(
+          table->record[1], table->record[0])) &&
+        error_num != HA_ERR_RECORD_IS_THE_SAME
+      ) {
+        table->file->print_error(error_num, MYF(0));
+        DBUG_RETURN(error_num);
+      }
     }
+    roop_count++;
   }
 
   DBUG_RETURN(0);
@@ -604,30 +629,77 @@ int spider_update_tables_priority(
   SPIDER_ALTER_TABLE *alter_table,
   const char *name
 ) {
-  int error_num;
+  int error_num, roop_count;
   char table_key[MAX_KEY_LENGTH];
   DBUG_ENTER("spider_update_tables_name");
   table->use_all_columns();
-  spider_store_tables_name(table, alter_table->table_name,
-    alter_table->table_name_length);
-  if ((error_num = spider_check_sys_table(table, table_key)))
+  for (roop_count = 0; roop_count < alter_table->link_count; roop_count++)
   {
-    table->file->print_error(error_num, MYF(0));
-    DBUG_RETURN(error_num);
-  } else {
-    store_record(table, record[1]);
-    table->use_all_columns();
-    spider_store_tables_name(table, name, strlen(name));
-    spider_store_tables_priority(table, alter_table->tmp_priority);
-    spider_store_tables_connect_info(table, alter_table);
-    if (
-      (error_num = table->file->ha_update_row(
-        table->record[1], table->record[0])) &&
-      error_num != HA_ERR_RECORD_IS_THE_SAME
-    ) {
-      table->file->print_error(error_num, MYF(0));
-      DBUG_RETURN(error_num);
+    spider_store_tables_name(table, alter_table->table_name,
+      alter_table->table_name_length);
+    spider_store_tables_link_idx(table, roop_count);
+    if ((error_num = spider_check_sys_table(table, table_key)))
+    {
+      if (
+        roop_count &&
+        (error_num == HA_ERR_KEY_NOT_FOUND || error_num == HA_ERR_END_OF_FILE)
+      ) {
+        /* insert for adding link */
+        spider_store_tables_name(table, name, strlen(name));
+        spider_store_tables_priority(table, alter_table->tmp_priority);
+        do {
+          spider_store_tables_link_idx(table, roop_count);
+          spider_store_tables_connect_info(table, alter_table, roop_count);
+          if ((error_num = table->file->ha_write_row(table->record[0])))
+          {
+            table->file->print_error(error_num, MYF(0));
+            DBUG_RETURN(error_num);
+          }
+          roop_count++;
+        } while (roop_count < alter_table->link_count);
+        DBUG_RETURN(0);
+      } else {
+        table->file->print_error(error_num, MYF(0));
+        DBUG_RETURN(error_num);
+      }
+    } else {
+      store_record(table, record[1]);
+      table->use_all_columns();
+      spider_store_tables_name(table, name, strlen(name));
+      spider_store_tables_priority(table, alter_table->tmp_priority);
+      spider_store_tables_connect_info(table, alter_table, roop_count);
+      if (
+        (error_num = table->file->ha_update_row(
+          table->record[1], table->record[0])) &&
+        error_num != HA_ERR_RECORD_IS_THE_SAME
+      ) {
+        table->file->print_error(error_num, MYF(0));
+        DBUG_RETURN(error_num);
+      }
     }
+  }
+  while (TRUE)
+  {
+    /* delete for subtracting link */
+    spider_store_tables_link_idx(table, roop_count);
+    if ((error_num = spider_check_sys_table(table, table_key)))
+    {
+      if (
+        roop_count &&
+        (error_num == HA_ERR_KEY_NOT_FOUND || error_num == HA_ERR_END_OF_FILE)
+      )
+        break;
+      else {
+        table->file->print_error(error_num, MYF(0));
+        DBUG_RETURN(error_num);
+      }
+      if ((error_num = table->file->ha_delete_row(table->record[0])))
+      {
+        table->file->print_error(error_num, MYF(0));
+        DBUG_RETURN(error_num);
+      }
+    }
+    roop_count++;
   }
 
   DBUG_RETURN(0);
@@ -707,20 +779,25 @@ int spider_delete_tables(
   TABLE *table,
   const char *name
 ) {
-  int error_num;
+  int error_num, roop_count = 0;
   char table_key[MAX_KEY_LENGTH];
   DBUG_ENTER("spider_delete_tables");
   table->use_all_columns();
   spider_store_tables_name(table, name, strlen(name));
 
-  if ((error_num = spider_check_sys_table(table, table_key)))
-    DBUG_RETURN(0);
-  else {
-    if ((error_num = table->file->ha_delete_row(table->record[0])))
-    {
-      table->file->print_error(error_num, MYF(0));
-      DBUG_RETURN(error_num);
+  while (TRUE)
+  {
+    spider_store_tables_link_idx(table, roop_count);
+    if ((error_num = spider_check_sys_table(table, table_key)))
+      DBUG_RETURN(0);
+    else {
+      if ((error_num = table->file->ha_delete_row(table->record[0])))
+      {
+        table->file->print_error(error_num, MYF(0));
+        DBUG_RETURN(error_num);
+      }
     }
+    roop_count++;
   }
 
   DBUG_RETURN(0);
@@ -762,56 +839,60 @@ int spider_get_sys_xid(
 int spider_get_sys_server_info(
   TABLE *table,
   SPIDER_SHARE *share,
+  int link_idx,
   MEM_ROOT *mem_root
 ) {
   char *ptr;
   DBUG_ENTER("spider_get_sys_server_info");
   if ((ptr = get_field(mem_root, table->field[4])))
   {
-    share->tgt_wrapper_length = strlen(ptr);
-    share->tgt_wrapper = spider_create_string(ptr, share->tgt_wrapper_length);
+    share->tgt_wrappers_lengths[link_idx] = strlen(ptr);
+    share->tgt_wrappers[link_idx] = spider_create_string(ptr,
+      share->tgt_wrappers_lengths[link_idx]);
   } else {
-    share->tgt_wrapper_length = 0;
-    share->tgt_wrapper = NULL;
+    share->tgt_wrappers_lengths[link_idx] = 0;
+    share->tgt_wrappers[link_idx] = NULL;
   }
   if ((ptr = get_field(mem_root, table->field[5])))
   {
-    share->tgt_host_length = strlen(ptr);
-    share->tgt_host = spider_create_string(ptr, share->tgt_host_length);
+    share->tgt_hosts_lengths[link_idx] = strlen(ptr);
+    share->tgt_hosts[link_idx] = spider_create_string(ptr,
+      share->tgt_hosts_lengths[link_idx]);
   } else {
-    share->tgt_host_length = 0;
-    share->tgt_host = NULL;
+    share->tgt_hosts_lengths[link_idx] = 0;
+    share->tgt_hosts[link_idx] = NULL;
   }
   if ((ptr = get_field(mem_root, table->field[6])))
   {
-    share->tgt_port = atol(ptr);
+    share->tgt_ports[link_idx] = atol(ptr);
   } else
-    share->tgt_port = MYSQL_PORT;
+    share->tgt_ports[link_idx] = MYSQL_PORT;
   if ((ptr = get_field(mem_root, table->field[7])))
   {
-    share->tgt_socket_length = strlen(ptr);
-    share->tgt_socket = spider_create_string(ptr, share->tgt_socket_length);
+    share->tgt_sockets_lengths[link_idx] = strlen(ptr);
+    share->tgt_sockets[link_idx] = spider_create_string(ptr,
+      share->tgt_sockets_lengths[link_idx]);
   } else {
-    share->tgt_socket_length = 0;
-    share->tgt_socket = NULL;
+    share->tgt_sockets_lengths[link_idx] = 0;
+    share->tgt_sockets[link_idx] = NULL;
   }
   if ((ptr = get_field(mem_root, table->field[8])))
   {
-    share->tgt_username_length = strlen(ptr);
-    share->tgt_username =
-      spider_create_string(ptr, share->tgt_username_length);
+    share->tgt_usernames_lengths[link_idx] = strlen(ptr);
+    share->tgt_usernames[link_idx] =
+      spider_create_string(ptr, share->tgt_usernames_lengths[link_idx]);
   } else {
-    share->tgt_username_length = 0;
-    share->tgt_username = NULL;
+    share->tgt_usernames_lengths[link_idx] = 0;
+    share->tgt_usernames[link_idx] = NULL;
   }
   if ((ptr = get_field(mem_root, table->field[9])))
   {
-    share->tgt_password_length = strlen(ptr);
-    share->tgt_password =
-      spider_create_string(ptr, share->tgt_password_length);
+    share->tgt_passwords_lengths[link_idx] = strlen(ptr);
+    share->tgt_passwords[link_idx] =
+      spider_create_string(ptr, share->tgt_passwords_lengths[link_idx]);
   } else {
-    share->tgt_password_length = 0;
-    share->tgt_password = NULL;
+    share->tgt_passwords_lengths[link_idx] = 0;
+    share->tgt_passwords[link_idx] = NULL;
   }
   DBUG_RETURN(0);
 }
@@ -869,107 +950,112 @@ int spider_get_sys_tables(
 int spider_get_sys_tables_connect_info(
   TABLE *table,
   SPIDER_SHARE *share,
+  int link_idx,
   MEM_ROOT *mem_root
 ) {
   char *ptr;
   int error_num = 0;
   DBUG_ENTER("spider_get_sys_tables_connect_info");
-  if ((ptr = get_field(mem_root, table->field[2])))
+  if ((ptr = get_field(mem_root, table->field[3])))
   {
     share->priority = my_strtoll10(ptr, (char**) NULL, &error_num);
   } else
     share->priority = 1000000;
   if (
-    !table->field[3]->is_null() &&
-    (ptr = get_field(mem_root, table->field[3]))
-  ) {
-    share->server_name_length = strlen(ptr);
-    share->server_name = spider_create_string(ptr, share->server_name_length);
-  } else {
-    share->server_name_length = 0;
-    share->server_name = NULL;
-  }
-  if (
     !table->field[4]->is_null() &&
     (ptr = get_field(mem_root, table->field[4]))
   ) {
-    share->tgt_wrapper_length = strlen(ptr);
-    share->tgt_wrapper = spider_create_string(ptr, share->tgt_wrapper_length);
+    share->server_names_lengths[link_idx] = strlen(ptr);
+    share->server_names[link_idx] =
+      spider_create_string(ptr, share->server_names_lengths[link_idx]);
   } else {
-    share->tgt_wrapper_length = 0;
-    share->tgt_wrapper = NULL;
+    share->server_names_lengths[link_idx] = 0;
+    share->server_names[link_idx] = NULL;
   }
   if (
     !table->field[5]->is_null() &&
     (ptr = get_field(mem_root, table->field[5]))
   ) {
-    share->tgt_host_length = strlen(ptr);
-    share->tgt_host = spider_create_string(ptr, share->tgt_host_length);
+    share->tgt_wrappers_lengths[link_idx] = strlen(ptr);
+    share->tgt_wrappers[link_idx] =
+      spider_create_string(ptr, share->tgt_wrappers_lengths[link_idx]);
   } else {
-    share->tgt_host_length = 0;
-    share->tgt_host = NULL;
+    share->tgt_wrappers_lengths[link_idx] = 0;
+    share->tgt_wrappers[link_idx] = NULL;
   }
   if (
     !table->field[6]->is_null() &&
     (ptr = get_field(mem_root, table->field[6]))
   ) {
-    share->tgt_port = atol(ptr);
+    share->tgt_hosts_lengths[link_idx] = strlen(ptr);
+    share->tgt_hosts[link_idx] =
+      spider_create_string(ptr, share->tgt_hosts_lengths[link_idx]);
   } else {
-    share->tgt_port = -1;
+    share->tgt_hosts_lengths[link_idx] = 0;
+    share->tgt_hosts[link_idx] = NULL;
   }
   if (
     !table->field[7]->is_null() &&
     (ptr = get_field(mem_root, table->field[7]))
   ) {
-    share->tgt_socket_length = strlen(ptr);
-    share->tgt_socket = spider_create_string(ptr, share->tgt_socket_length);
+    share->tgt_ports[link_idx] = atol(ptr);
   } else {
-    share->tgt_socket_length = 0;
-    share->tgt_socket = NULL;
+    share->tgt_ports[link_idx] = -1;
   }
   if (
     !table->field[8]->is_null() &&
     (ptr = get_field(mem_root, table->field[8]))
   ) {
-    share->tgt_username_length = strlen(ptr);
-    share->tgt_username =
-      spider_create_string(ptr, share->tgt_username_length);
+    share->tgt_sockets_lengths[link_idx] = strlen(ptr);
+    share->tgt_sockets[link_idx] =
+      spider_create_string(ptr, share->tgt_sockets_lengths[link_idx]);
   } else {
-    share->tgt_username_length = 0;
-    share->tgt_username = NULL;
+    share->tgt_sockets_lengths[link_idx] = 0;
+    share->tgt_sockets[link_idx] = NULL;
   }
   if (
     !table->field[9]->is_null() &&
     (ptr = get_field(mem_root, table->field[9]))
   ) {
-    share->tgt_password_length = strlen(ptr);
-    share->tgt_password =
-      spider_create_string(ptr, share->tgt_password_length);
+    share->tgt_usernames_lengths[link_idx] = strlen(ptr);
+    share->tgt_usernames[link_idx] =
+      spider_create_string(ptr, share->tgt_usernames_lengths[link_idx]);
   } else {
-    share->tgt_password_length = 0;
-    share->tgt_password = NULL;
+    share->tgt_usernames_lengths[link_idx] = 0;
+    share->tgt_usernames[link_idx] = NULL;
   }
   if (
     !table->field[10]->is_null() &&
     (ptr = get_field(mem_root, table->field[10]))
   ) {
-    share->tgt_db_length = strlen(ptr);
-    share->tgt_db =
-      spider_create_string(ptr, share->tgt_db_length);
+    share->tgt_passwords_lengths[link_idx] = strlen(ptr);
+    share->tgt_passwords[link_idx] =
+      spider_create_string(ptr, share->tgt_passwords_lengths[link_idx]);
   } else {
-    share->tgt_db_length = 0;
-    share->tgt_db = NULL;
+    share->tgt_passwords_lengths[link_idx] = 0;
+    share->tgt_passwords[link_idx] = NULL;
   }
   if (
     !table->field[11]->is_null() &&
     (ptr = get_field(mem_root, table->field[11]))
   ) {
-    share->tgt_table_name_length = strlen(ptr);
-    share->tgt_table_name =
-      spider_create_string(ptr, share->tgt_table_name_length);
+    share->tgt_dbs_lengths[link_idx] = strlen(ptr);
+    share->tgt_dbs[link_idx] =
+      spider_create_string(ptr, share->tgt_dbs_lengths[link_idx]);
   } else {
-    share->tgt_table_name_length = 0;
-    share->tgt_table_name = NULL;
+    share->tgt_dbs_lengths[link_idx] = 0;
+    share->tgt_dbs[link_idx] = NULL;
+  }
+  if (
+    !table->field[12]->is_null() &&
+    (ptr = get_field(mem_root, table->field[12]))
+  ) {
+    share->tgt_table_names_lengths[link_idx] = strlen(ptr);
+    share->tgt_table_names[link_idx] =
+      spider_create_string(ptr, share->tgt_table_names_lengths[link_idx]);
+  } else {
+    share->tgt_table_names_lengths[link_idx] = 0;
+    share->tgt_table_names[link_idx] = NULL;
   }
   DBUG_RETURN(error_num);
 }

@@ -21,6 +21,12 @@
 #define SPIDER_LONGLONG_LEN 20
 #define SPIDER_MAX_KEY_LENGTH 16384
 
+#define SPIDER_SET_CONNS_PARAM(param_name, param_val, conns, link_count) \
+  for (roop_count = 0; roop_count < link_count; roop_count++) \
+  { \
+    conns[roop_count]->param_name = param_val; \
+  }
+
 class ha_spider: public handler
 {
 public:
@@ -29,8 +35,9 @@ public:
   SPIDER_TRX         *trx;
   ulonglong          spider_thread_id;
   ulonglong          trx_conn_adjustment;
-  char               *conn_key;
-  SPIDER_CONN        *conn;
+  char               **conn_keys;
+  SPIDER_CONN        **conns;
+  int                search_link_idx;
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;
   String             *blob_buff;

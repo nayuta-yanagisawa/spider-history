@@ -26,25 +26,45 @@ typedef struct st_spider_alter_table
   uint               table_name_length;
   char               *tmp_char;
   longlong           tmp_priority;
+  uint               link_count;
 
-  char               *tmp_server_name;
-  char               *tmp_tgt_table_name;
-  char               *tmp_tgt_db;
-  char               *tmp_tgt_host;
-  char               *tmp_tgt_username;
-  char               *tmp_tgt_password;
-  char               *tmp_tgt_socket;
-  char               *tmp_tgt_wrapper;
-  long               tmp_tgt_port;
+  char               **tmp_server_names;
+  char               **tmp_tgt_table_names;
+  char               **tmp_tgt_dbs;
+  char               **tmp_tgt_hosts;
+  char               **tmp_tgt_usernames;
+  char               **tmp_tgt_passwords;
+  char               **tmp_tgt_sockets;
+  char               **tmp_tgt_wrappers;
+  long               *tmp_tgt_ports;
 
-  uint               tmp_server_name_length;
-  uint               tmp_tgt_table_name_length;
-  uint               tmp_tgt_db_length;
-  uint               tmp_tgt_host_length;
-  uint               tmp_tgt_username_length;
-  uint               tmp_tgt_password_length;
-  uint               tmp_tgt_socket_length;
-  uint               tmp_tgt_wrapper_length;
+  uint               *tmp_server_names_lengths;
+  uint               *tmp_tgt_table_names_lengths;
+  uint               *tmp_tgt_dbs_lengths;
+  uint               *tmp_tgt_hosts_lengths;
+  uint               *tmp_tgt_usernames_lengths;
+  uint               *tmp_tgt_passwords_lengths;
+  uint               *tmp_tgt_sockets_lengths;
+  uint               *tmp_tgt_wrappers_lengths;
+
+  uint               tmp_server_names_charlen;
+  uint               tmp_tgt_table_names_charlen;
+  uint               tmp_tgt_dbs_charlen;
+  uint               tmp_tgt_hosts_charlen;
+  uint               tmp_tgt_usernames_charlen;
+  uint               tmp_tgt_passwords_charlen;
+  uint               tmp_tgt_sockets_charlen;
+  uint               tmp_tgt_wrappers_charlen;
+
+  uint               tmp_server_names_length;
+  uint               tmp_tgt_table_names_length;
+  uint               tmp_tgt_dbs_length;
+  uint               tmp_tgt_hosts_length;
+  uint               tmp_tgt_usernames_length;
+  uint               tmp_tgt_passwords_length;
+  uint               tmp_tgt_sockets_length;
+  uint               tmp_tgt_wrappers_length;
+  uint               tmp_tgt_ports_length;
 } SPIDER_ALTER_TABLE;
 
 /* database connection */
@@ -52,6 +72,7 @@ typedef struct st_spider_conn
 {
   char               *conn_key;
   uint               conn_key_length;
+  int                link_idx;
   SPIDER_DB_CONN     *db_conn;
   pthread_mutex_t    mta_conn_mutex;
   volatile bool      mta_conn_mutex_lock_already;
@@ -109,6 +130,7 @@ typedef struct st_spider_conn
   volatile bool      bg_caller_wait;
   volatile bool      bg_caller_sync_wait;
   volatile bool      bg_search;
+  volatile bool      bg_discard_result;
   volatile bool      bg_direct_sql;
   THD                *bg_thd;
   pthread_t          bg_thread;
@@ -180,6 +202,7 @@ typedef struct st_spider_share
   char               *table_name;
   uint               table_name_length;
   uint               use_count;
+  uint               link_count;
   pthread_mutex_t    mutex;
   pthread_mutex_t    sts_mutex;
   pthread_mutex_t    crd_mutex;
@@ -236,13 +259,18 @@ typedef struct st_spider_share
 
   int                bitmap_size;
   String             *table_select;
+  int                table_select_pos;
   String             *key_select;
+  int                *key_select_pos;
   String             *key_hint;
   String             *show_table_status;
   String             *show_index;
   String             *set_names;
-  String             *table_name_str;
-  String             *db_name_str;
+  String             *table_names_str;
+  String             *db_names_str;
+  int                table_nm_max_length;
+  int                db_nm_max_length;
+  bool               same_db_table_name;
   String             *column_name_str;
   CHARSET_INFO       *access_charset;
   longlong           *cardinality;
@@ -301,26 +329,47 @@ typedef struct st_spider_share
   int                use_pushdown_udf;
   int                direct_dup_insert;
 
-  char               *server_name;
-  char               *tgt_table_name;
-  char               *tgt_db;
-  char               *tgt_host;
-  char               *tgt_username;
-  char               *tgt_password;
-  char               *tgt_socket;
-  char               *tgt_wrapper;
-  char               *conn_key;
-  long               tgt_port;
+  char               **server_names;
+  char               **tgt_table_names;
+  char               **tgt_dbs;
+  char               **tgt_hosts;
+  char               **tgt_usernames;
+  char               **tgt_passwords;
+  char               **tgt_sockets;
+  char               **tgt_wrappers;
+  char               **conn_keys;
+  long               *tgt_ports;
 
-  uint               server_name_length;
-  uint               tgt_table_name_length;
-  uint               tgt_db_length;
-  uint               tgt_host_length;
-  uint               tgt_username_length;
-  uint               tgt_password_length;
-  uint               tgt_socket_length;
-  uint               tgt_wrapper_length;
-  uint               conn_key_length;
+  uint               *server_names_lengths;
+  uint               *tgt_table_names_lengths;
+  uint               *tgt_dbs_lengths;
+  uint               *tgt_hosts_lengths;
+  uint               *tgt_usernames_lengths;
+  uint               *tgt_passwords_lengths;
+  uint               *tgt_sockets_lengths;
+  uint               *tgt_wrappers_lengths;
+  uint               *conn_keys_lengths;
+
+  uint               server_names_charlen;
+  uint               tgt_table_names_charlen;
+  uint               tgt_dbs_charlen;
+  uint               tgt_hosts_charlen;
+  uint               tgt_usernames_charlen;
+  uint               tgt_passwords_charlen;
+  uint               tgt_sockets_charlen;
+  uint               tgt_wrappers_charlen;
+  uint               conn_keys_charlen;
+
+  uint               server_names_length;
+  uint               tgt_table_names_length;
+  uint               tgt_dbs_length;
+  uint               tgt_hosts_length;
+  uint               tgt_usernames_length;
+  uint               tgt_passwords_length;
+  uint               tgt_sockets_length;
+  uint               tgt_wrappers_length;
+  uint               conn_keys_length;
+  uint               tgt_ports_length;
 
   SPIDER_ALTER_TABLE alter_table;
 #ifdef WITH_PARTITION_STORAGE_ENGINE

@@ -117,6 +117,11 @@ void spider_store_tables_name(
   const uint name_length
 );
 
+void spider_store_tables_link_idx(
+  TABLE *table,
+  int link_idx
+);
+
 void spider_store_tables_priority(
   TABLE *table,
   longlong priority
@@ -124,7 +129,8 @@ void spider_store_tables_priority(
 
 void spider_store_tables_connect_info(
   TABLE *table,
-  SPIDER_ALTER_TABLE *alter_table
+  SPIDER_ALTER_TABLE *alter_table,
+  int link_idx
 );
 
 int spider_insert_xa(
@@ -186,6 +192,7 @@ int spider_get_sys_xid(
 int spider_get_sys_server_info(
   TABLE *table,
   SPIDER_SHARE *share,
+  int link_idx,
   MEM_ROOT *mem_root
 );
 
@@ -208,6 +215,7 @@ int spider_get_sys_tables(
 int spider_get_sys_tables_connect_info(
   TABLE *table,
   SPIDER_SHARE *share,
+  int link_idx,
   MEM_ROOT *mem_root
 );
 
