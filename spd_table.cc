@@ -1590,7 +1590,7 @@ SPIDER_SHARE *spider_get_share(
 
     while (!share->init)
     {
-      sleep(100);
+      my_sleep(10);
     }
 
     semi_table_lock_conn = THDVAR(thd, semi_table_lock_connection) == -1 ?

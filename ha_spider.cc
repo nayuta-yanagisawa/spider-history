@@ -647,14 +647,27 @@ int ha_spider::index_read_map(
       DBUG_RETURN(error_num);
   } else {
 #endif
+    pthread_mutex_lock(&conn->mta_conn_mutex);
+    conn->mta_conn_mutex_lock_already = TRUE;
+    conn->mta_conn_mutex_unlock_later = TRUE;
     if ((error_num = spider_db_set_names(share, conn)))
+    {
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
+      pthread_mutex_unlock(&conn->mta_conn_mutex);
       DBUG_RETURN(error_num);
+    }
     if (spider_db_query(
       conn,
       result_list.sql.ptr(),
       result_list.sql.length())
-    )
+    ) {
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
       DBUG_RETURN(spider_db_errorno(conn));
+    }
+    conn->mta_conn_mutex_lock_already = FALSE;
+    conn->mta_conn_mutex_unlock_later = FALSE;
     if ((error_num = spider_db_store_result(this, table)))
       DBUG_RETURN(error_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -723,14 +736,27 @@ int ha_spider::index_read_last_map(
       DBUG_RETURN(error_num);
   } else {
 #endif
+    pthread_mutex_lock(&conn->mta_conn_mutex);
+    conn->mta_conn_mutex_lock_already = TRUE;
+    conn->mta_conn_mutex_unlock_later = TRUE;
     if ((error_num = spider_db_set_names(share, conn)))
+    {
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
+      pthread_mutex_unlock(&conn->mta_conn_mutex);
       DBUG_RETURN(error_num);
+    }
     if (spider_db_query(
       conn,
       result_list.sql.ptr(),
       result_list.sql.length())
-    )
+    ) {
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
       DBUG_RETURN(spider_db_errorno(conn));
+    }
+    conn->mta_conn_mutex_lock_already = FALSE;
+    conn->mta_conn_mutex_unlock_later = FALSE;
     if ((error_num = spider_db_store_result(this, table)))
       DBUG_RETURN(error_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -815,14 +841,27 @@ int ha_spider::index_first(
         DBUG_RETURN(error_num);
     } else {
 #endif
+      pthread_mutex_lock(&conn->mta_conn_mutex);
+      conn->mta_conn_mutex_lock_already = TRUE;
+      conn->mta_conn_mutex_unlock_later = TRUE;
       if ((error_num = spider_db_set_names(share, conn)))
+      {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
+        pthread_mutex_unlock(&conn->mta_conn_mutex);
         DBUG_RETURN(error_num);
+      }
       if (spider_db_query(
         conn,
         result_list.sql.ptr(),
         result_list.sql.length())
-      )
+      ) {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
         DBUG_RETURN(spider_db_errorno(conn));
+      }
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
       if ((error_num = spider_db_store_result(this, table)))
         DBUG_RETURN(error_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -887,14 +926,27 @@ int ha_spider::index_last(
         DBUG_RETURN(error_num);
     } else {
 #endif
+      pthread_mutex_lock(&conn->mta_conn_mutex);
+      conn->mta_conn_mutex_lock_already = TRUE;
+      conn->mta_conn_mutex_unlock_later = TRUE;
       if ((error_num = spider_db_set_names(share, conn)))
+      {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
+        pthread_mutex_unlock(&conn->mta_conn_mutex);
         DBUG_RETURN(error_num);
+      }
       if (spider_db_query(
         conn,
         result_list.sql.ptr(),
         result_list.sql.length())
-      )
+      ) {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
         DBUG_RETURN(spider_db_errorno(conn));
+      }
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
       if ((error_num = spider_db_store_result(this, table)))
         DBUG_RETURN(error_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -981,14 +1033,27 @@ int ha_spider::read_range_first(
       DBUG_RETURN(error_num);
   } else {
 #endif
+    pthread_mutex_lock(&conn->mta_conn_mutex);
+    conn->mta_conn_mutex_lock_already = TRUE;
+    conn->mta_conn_mutex_unlock_later = TRUE;
     if ((error_num = spider_db_set_names(share, conn)))
+    {
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
+      pthread_mutex_unlock(&conn->mta_conn_mutex);
       DBUG_RETURN(error_num);
+    }
     if (spider_db_query(
       conn,
       result_list.sql.ptr(),
       result_list.sql.length())
-    )
+    ) {
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
       DBUG_RETURN(spider_db_errorno(conn));
+    }
+    conn->mta_conn_mutex_lock_already = FALSE;
+    conn->mta_conn_mutex_unlock_later = FALSE;
     if ((error_num = spider_db_store_result(this, table)))
       DBUG_RETURN(error_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -1081,14 +1146,27 @@ int ha_spider::read_multi_range_first(
         error_num = spider_bg_conn_search(this, TRUE);
       } else {
 #endif
+        pthread_mutex_lock(&conn->mta_conn_mutex);
+        conn->mta_conn_mutex_lock_already = TRUE;
+        conn->mta_conn_mutex_unlock_later = TRUE;
         if ((error_num = spider_db_set_names(share, conn)))
+        {
+          conn->mta_conn_mutex_lock_already = FALSE;
+          conn->mta_conn_mutex_unlock_later = FALSE;
+          pthread_mutex_unlock(&conn->mta_conn_mutex);
           DBUG_RETURN(error_num);
+        }
         if (spider_db_query(
           conn,
           result_list.sql.ptr(),
           result_list.sql.length())
-        )
+        ) {
+          conn->mta_conn_mutex_lock_already = FALSE;
+          conn->mta_conn_mutex_unlock_later = FALSE;
           DBUG_RETURN(spider_db_errorno(conn));
+        }
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
         error_num = spider_db_store_result(this, table);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
       }
@@ -1174,14 +1252,27 @@ int ha_spider::read_multi_range_first(
         DBUG_RETURN(error_num);
     } else {
 #endif
+      pthread_mutex_lock(&conn->mta_conn_mutex);
+      conn->mta_conn_mutex_lock_already = TRUE;
+      conn->mta_conn_mutex_unlock_later = TRUE;
       if ((error_num = spider_db_set_names(share, conn)))
+      {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
+        pthread_mutex_unlock(&conn->mta_conn_mutex);
         DBUG_RETURN(error_num);
+      }
       if (spider_db_query(
         conn,
         result_list.sql.ptr(),
         result_list.sql.length())
-      )
+      ) {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
         DBUG_RETURN(spider_db_errorno(conn));
+      }
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
       if ((error_num = spider_db_store_result(this, table)))
         DBUG_RETURN(error_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -1240,14 +1331,27 @@ int ha_spider::read_multi_range_next(
         error_num = spider_bg_conn_search(this, TRUE);
       } else {
 #endif
+        pthread_mutex_lock(&conn->mta_conn_mutex);
+        conn->mta_conn_mutex_lock_already = TRUE;
+        conn->mta_conn_mutex_unlock_later = TRUE;
         if ((error_num = spider_db_set_names(share, conn)))
+        {
+          conn->mta_conn_mutex_lock_already = FALSE;
+          conn->mta_conn_mutex_unlock_later = FALSE;
+          pthread_mutex_unlock(&conn->mta_conn_mutex);
           DBUG_RETURN(error_num);
+        }
         if (spider_db_query(
           conn,
           result_list.sql.ptr(),
           result_list.sql.length())
-        )
+        ) {
+          conn->mta_conn_mutex_lock_already = FALSE;
+          conn->mta_conn_mutex_unlock_later = FALSE;
           DBUG_RETURN(spider_db_errorno(conn));
+        }
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
         error_num = spider_db_store_result(this, table);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
       }
@@ -1382,14 +1486,27 @@ int ha_spider::rnd_next(
         DBUG_RETURN(error_num);
     } else {
 #endif
+      pthread_mutex_lock(&conn->mta_conn_mutex);
+      conn->mta_conn_mutex_lock_already = TRUE;
+      conn->mta_conn_mutex_unlock_later = TRUE;
       if ((error_num = spider_db_set_names(share, conn)))
+      {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
+        pthread_mutex_unlock(&conn->mta_conn_mutex);
         DBUG_RETURN(error_num);
+      }
       if (spider_db_query(
         conn,
         result_list.sql.ptr(),
         result_list.sql.length())
-      )
+      ) {
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
         DBUG_RETURN(spider_db_errorno(conn));
+      }
+      conn->mta_conn_mutex_lock_already = FALSE;
+      conn->mta_conn_mutex_unlock_later = FALSE;
       if ((error_num = spider_db_store_result(this, table)))
         DBUG_RETURN(error_num);
 #ifndef WITHOUT_SPIDER_BG_SEARCH

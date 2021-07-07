@@ -19,6 +19,10 @@ uchar *spider_conn_get_key(
   my_bool not_used __attribute__ ((unused))
 );
 
+int spider_reset_conn_setted_parameter(
+  SPIDER_CONN *conn
+);
+
 int spider_free_conn_alloc(
   SPIDER_CONN *conn
 );

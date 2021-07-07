@@ -32,6 +32,10 @@ my_bool spider_support_xa;
 uint spider_table_init_error_interval;
 int spider_use_table_charset;
 uint spider_udf_table_lock_mutex_count;
+char *spider_remote_access_charset;
+int spider_remote_autocommit;
+int spider_remote_sql_log_off;
+int spider_remote_trx_isolation;
 
 static MYSQL_SYSVAR_BOOL(
   support_xa,
@@ -1081,6 +1085,77 @@ MYSQL_THDVAR_INT(
   0 /* blk */
 );
 
+/*
+ */
+static MYSQL_SYSVAR_STR(
+  remote_access_charset,
+  spider_remote_access_charset,
+#ifdef PLUGIN_VAR_CAN_MEMALLOC
+  PLUGIN_VAR_MEMALLOC |
+#endif
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote access charset at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+
+/*
+ -1 :don't set
+  0 :autocommit = 0
+  1 :autocommit = 1
+ */
+static MYSQL_SYSVAR_INT(
+  remote_autocommit,
+  spider_remote_autocommit,
+  PLUGIN_VAR_RQCMDARG,
+  "Set autocommit mode at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  -1,
+  -1,
+  1,
+  0
+);
+
+/*
+ -1 :don't set
+  0 :sql_log_off = 0
+  1 :sql_log_off = 1
+ */
+static MYSQL_SYSVAR_INT(
+  remote_sql_log_off,
+  spider_remote_sql_log_off,
+  PLUGIN_VAR_RQCMDARG,
+  "Set sql_log_off mode at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  -1,
+  -1,
+  1,
+  0
+);
+
+/*
+ -1 :don't set
+  0 :READ UNCOMMITTED
+  1 :READ COMMITTED
+  2 :REPEATABLE READ
+  3 :SERIALIZABLE
+ */
+static MYSQL_SYSVAR_INT(
+  remote_trx_isolation,
+  spider_remote_trx_isolation,
+  PLUGIN_VAR_RQCMDARG,
+  "Set transaction isolation level at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  -1,
+  -1,
+  3,
+  0
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -1155,6 +1230,10 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(udf_table_lock_mutex_count),
   MYSQL_SYSVAR(udf_ds_bulk_insert_rows),
   MYSQL_SYSVAR(udf_ds_table_loop_mode),
+  MYSQL_SYSVAR(remote_access_charset),
+  MYSQL_SYSVAR(remote_autocommit),
+  MYSQL_SYSVAR(remote_sql_log_off),
+  MYSQL_SYSVAR(remote_trx_isolation),
   NULL
 };
 
@@ -1168,7 +1247,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0205,
+  0x0206,
   NULL,
   spider_system_variables,
   NULL

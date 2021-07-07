@@ -237,15 +237,11 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
   conn->tgt_port = direct_sql->tgt_port;
   conn->db_conn = NULL;
   conn->join_trx = 0;
-  conn->trx_isolation = -1;
   conn->thd = NULL;
   conn->table_lock = 0;
-  conn->autocommit = -1;
-  conn->sql_log_off = -1;
   conn->semi_trx_isolation = -2;
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
-  conn->access_charset = NULL;
 
   if (pthread_mutex_init(&conn->mta_conn_mutex, MY_MUTEX_INIT_FAST))
   {
@@ -926,21 +922,45 @@ long long spider_direct_sql_body(
   }
   direct_sql->trx = trx;
 
-  if (spider_udf_direct_sql_create_table_list(
-    direct_sql,
-    args->args[1],
-    args->lengths[1]
-  )) {
-    my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
-    goto error;
+  if (args->args[1])
+  {
+    if (spider_udf_direct_sql_create_table_list(
+      direct_sql,
+      args->args[1],
+      args->lengths[1]
+    )) {
+      my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+      goto error;
+    }
+  } else {
+    if (spider_udf_direct_sql_create_table_list(
+      direct_sql,
+      "",
+      0
+    )) {
+      my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+      goto error;
+    }
   }
-  if (spider_udf_parse_direct_sql_param(
-    trx,
-    direct_sql,
-    args->args[2],
-    args->lengths[2]
-  )) {
-    goto error;
+  if (args->args[2])
+  {
+    if (spider_udf_parse_direct_sql_param(
+      trx,
+      direct_sql,
+      args->args[2],
+      args->lengths[2]
+    )) {
+      goto error;
+    }
+  } else {
+    if (spider_udf_parse_direct_sql_param(
+      trx,
+      direct_sql,
+      "",
+      0
+    )) {
+      goto error;
+    }
   }
   for (roop_count = 0; roop_count < direct_sql->table_count; roop_count++)
   {
@@ -970,8 +990,12 @@ long long spider_direct_sql_body(
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
   }
-  direct_sql->sql_length = args->lengths[0];
-  memcpy(sql, args->args[0], direct_sql->sql_length);
+  if (args->args[0])
+  {
+    direct_sql->sql_length = args->lengths[0];
+    memcpy(sql, args->args[0], direct_sql->sql_length);
+  } else
+    direct_sql->sql_length = 0;
   direct_sql->sql = sql;
 
 #ifndef WITHOUT_SPIDER_BG_SEARCH

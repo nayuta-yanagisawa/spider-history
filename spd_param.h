@@ -17,6 +17,10 @@ extern my_bool spider_support_xa;
 extern uint spider_table_init_error_interval;
 extern int spider_use_table_charset;
 extern uint spider_udf_table_lock_mutex_count;
+extern char *spider_remote_access_charset;
+extern int spider_remote_autocommit;
+extern int spider_remote_sql_log_off;
+extern int spider_remote_trx_isolation;
 
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_mode, unsigned int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_strict, unsigned int);

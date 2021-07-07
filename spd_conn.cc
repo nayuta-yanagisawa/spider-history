@@ -46,6 +46,24 @@ uchar *spider_conn_get_key(
   DBUG_RETURN((uchar*) conn->conn_key);
 }
 
+int spider_reset_conn_setted_parameter(
+  SPIDER_CONN *conn
+) {
+  DBUG_ENTER("spider_reset_conn_setted_parameter");
+  conn->autocommit = spider_remote_autocommit;
+  conn->sql_log_off = spider_remote_sql_log_off;
+  conn->trx_isolation = spider_remote_trx_isolation;
+  if (spider_remote_access_charset)
+  {
+    if (!(conn->access_charset =
+      get_charset_by_csname(spider_remote_access_charset, MY_CS_PRIMARY,
+        MYF(MY_WME))))
+      DBUG_RETURN(ER_UNKNOWN_CHARACTER_SET);
+  } else
+    conn->access_charset = NULL;
+  DBUG_RETURN(0);
+}
+
 int spider_free_conn_alloc(
   SPIDER_CONN *conn
 ) {
@@ -158,15 +176,11 @@ SPIDER_CONN *spider_create_conn(
   conn->tgt_port = share->tgt_port;
   conn->db_conn = NULL;
   conn->join_trx = 0;
-  conn->trx_isolation = -1;
   conn->thd = NULL;
   conn->table_lock = 0;
-  conn->autocommit = -1;
-  conn->sql_log_off = -1;
   conn->semi_trx_isolation = -2;
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
-  conn->access_charset = NULL;
 
   if (pthread_mutex_init(&conn->mta_conn_mutex, MY_MUTEX_INIT_FAST))
   {
@@ -776,6 +790,9 @@ void *spider_bg_conn_action(
         result_list->bgs_phase == 1 ||
         !result_list->bgs_current->result
       ) {
+        pthread_mutex_lock(&conn->mta_conn_mutex);
+        conn->mta_conn_mutex_lock_already = TRUE;
+        conn->mta_conn_mutex_unlock_later = TRUE;
         if (!(result_list->bgs_error =
           spider_db_set_names(spider->share, conn)))
         {
@@ -790,9 +807,14 @@ void *spider_bg_conn_action(
               spider_db_store_result(spider, result_list->table);
           }
         }
+        conn->mta_conn_mutex_lock_already = FALSE;
+        conn->mta_conn_mutex_unlock_later = FALSE;
+        pthread_mutex_unlock(&conn->mta_conn_mutex);
       } else {
+        conn->mta_conn_mutex_unlock_later = TRUE;
         result_list->bgs_error =
           spider_db_store_result(spider, result_list->table);
+        conn->mta_conn_mutex_unlock_later = FALSE;
       }
       conn->bg_search = FALSE;
       result_list->bgs_working = FALSE;

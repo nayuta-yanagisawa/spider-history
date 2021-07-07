@@ -41,6 +41,10 @@ void spider_db_disconnect(
   SPIDER_CONN *conn
 );
 
+int spider_db_before_query(
+  SPIDER_CONN *conn
+);
+
 int spider_db_query(
   SPIDER_CONN *conn,
   const char *query,
