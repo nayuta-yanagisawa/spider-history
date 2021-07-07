@@ -103,15 +103,31 @@ struct st_mysql_show_var spider_status_variables[] =
   {"Spider_mon_table_cache_version_req",
     (char *) &spider_mon_table_cache_version_req, SHOW_LONGLONG},
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+#ifdef SPIDER_HAS_SHOW_SIMPLE_FUNC
+  {"Spider_direct_update", (char *) &spider_direct_update, SHOW_SIMPLE_FUNC},
+  {"Spider_direct_delete", (char *) &spider_direct_delete, SHOW_SIMPLE_FUNC},
+#else
   {"Spider_direct_update", (char *) &spider_direct_update, SHOW_FUNC},
   {"Spider_direct_delete", (char *) &spider_direct_delete, SHOW_FUNC},
 #endif
+#endif
+#ifdef SPIDER_HAS_SHOW_SIMPLE_FUNC
+  {"Spider_direct_order_limit",
+    (char *) &spider_direct_order_limit, SHOW_SIMPLE_FUNC},
+  {"Spider_direct_aggregate",
+    (char *) &spider_direct_aggregate, SHOW_SIMPLE_FUNC},
+#else
   {"Spider_direct_order_limit",
     (char *) &spider_direct_order_limit, SHOW_FUNC},
   {"Spider_direct_aggregate",
     (char *) &spider_direct_aggregate, SHOW_FUNC},
+#endif
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+#ifdef SPIDER_HAS_SHOW_SIMPLE_FUNC
+  {"Spider_hs_result_free", (char *) &spider_hs_result_free, SHOW_SIMPLE_FUNC},
+#else
   {"Spider_hs_result_free", (char *) &spider_hs_result_free, SHOW_FUNC},
+#endif
 #endif
   {NullS, NullS, SHOW_LONG}
 };
@@ -1781,7 +1797,7 @@ double spider_param_ping_interval_at_trx_start(
   DBUG_RETURN(THDVAR(thd, ping_interval_at_trx_start));
 }
 
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 /*
   0 :always ping
   1-:interval
@@ -2026,6 +2042,18 @@ int spider_param_udf_ds_table_loop_mode(
 static char *spider_remote_access_charset;
 /*
  */
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
+static MYSQL_SYSVAR_STR(
+  remote_access_charset,
+  spider_remote_access_charset,
+  PLUGIN_VAR_MEMALLOC |
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote access charset at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+#else
 #ifdef PLUGIN_VAR_CAN_MEMALLOC
 static MYSQL_SYSVAR_STR(
   remote_access_charset,
@@ -2047,6 +2075,7 @@ static MYSQL_SYSVAR_STR(
   NULL,
   NULL
 );
+#endif
 #endif
 
 char *spider_param_remote_access_charset()
@@ -2083,6 +2112,18 @@ int spider_param_remote_autocommit()
 static char *spider_remote_time_zone;
 /*
  */
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
+static MYSQL_SYSVAR_STR(
+  remote_time_zone,
+  spider_remote_time_zone,
+  PLUGIN_VAR_MEMALLOC |
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote time_zone at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+#else
 #ifdef PLUGIN_VAR_CAN_MEMALLOC
 static MYSQL_SYSVAR_STR(
   remote_time_zone,
@@ -2104,6 +2145,7 @@ static MYSQL_SYSVAR_STR(
   NULL,
   NULL
 );
+#endif
 #endif
 
 char *spider_param_remote_time_zone()
@@ -2167,6 +2209,18 @@ int spider_param_remote_trx_isolation()
 static char *spider_remote_default_database;
 /*
  */
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
+static MYSQL_SYSVAR_STR(
+  remote_default_database,
+  spider_remote_default_database,
+  PLUGIN_VAR_MEMALLOC |
+  PLUGIN_VAR_RQCMDARG,
+  "Set remote database at connecting for improvement performance of connection if you know",
+  NULL,
+  NULL,
+  NULL
+);
+#else
 #ifdef PLUGIN_VAR_CAN_MEMALLOC
 static MYSQL_SYSVAR_STR(
   remote_default_database,
@@ -2188,6 +2242,7 @@ static MYSQL_SYSVAR_STR(
   NULL,
   NULL
 );
+#endif
 #endif
 
 char *spider_param_remote_default_database()
@@ -2246,6 +2301,17 @@ int spider_param_connect_retry_count(
 
 /*
  */
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
+static MYSQL_THDVAR_STR(
+  bka_engine, /* name */
+  PLUGIN_VAR_MEMALLOC |
+  PLUGIN_VAR_RQCMDARG,
+  "Temporary table's engine for BKA", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  NULL /* def */
+);
+#else
 #ifdef PLUGIN_VAR_CAN_MEMALLOC
 static MYSQL_THDVAR_STR(
   bka_engine, /* name */
@@ -2265,6 +2331,7 @@ static MYSQL_THDVAR_STR(
   NULL, /* update */
   NULL /* def */
 );
+#endif
 #endif
 
 char *spider_param_bka_engine(
@@ -2289,7 +2356,7 @@ static MYSQL_THDVAR_INT(
   NULL, /* update */
   -1, /* def */
   -1, /* min */
-  1, /* max */
+  2, /* max */
   0 /* blk */
 );
 
@@ -2687,6 +2754,79 @@ int spider_param_bulk_access_free(
 }
 #endif
 
+#if MYSQL_VERSION_ID < 50500
+#else
+/*
+ -1 :use UDF parameter
+  0 :can not use
+  1 :can use
+ */
+static MYSQL_THDVAR_INT(
+  udf_ds_use_real_table, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Use real table for temporary table list", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
+int spider_param_udf_ds_use_real_table(
+  THD *thd,
+  int udf_ds_use_real_table
+) {
+  DBUG_ENTER("spider_param_udf_ds_use_real_table");
+  DBUG_RETURN(THDVAR(thd, udf_ds_use_real_table) == -1 ?
+    udf_ds_use_real_table : THDVAR(thd, udf_ds_use_real_table));
+}
+#endif
+
+static my_bool spider_general_log;
+static MYSQL_SYSVAR_BOOL(
+  general_log,
+  spider_general_log,
+  PLUGIN_VAR_OPCMDARG,
+  "Log query to remote server in general log",
+  NULL,
+  NULL,
+  FALSE
+);
+
+my_bool spider_param_general_log()
+{
+  DBUG_ENTER("spider_param_general_log");
+  DBUG_RETURN(spider_general_log);
+}
+
+static uint spider_log_result_errors;
+/*
+  0: no log
+  1: log error
+  2: log warning summary
+  3: log warning
+  4: log info
+ */
+static MYSQL_SYSVAR_UINT(
+  log_result_errors,
+  spider_log_result_errors,
+  PLUGIN_VAR_RQCMDARG,
+  "Log error from remote server in error log",
+  NULL,
+  NULL,
+  0,
+  0,
+  4,
+  0
+);
+
+uint spider_param_log_result_errors()
+{
+  DBUG_ENTER("spider_param_log_result_errors");
+  DBUG_RETURN(spider_log_result_errors);
+}
+
 static struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -2766,7 +2906,7 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(sts_bg_mode),
 #endif
   MYSQL_SYSVAR(ping_interval_at_trx_start),
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   MYSQL_SYSVAR(hs_ping_interval),
 #endif
   MYSQL_SYSVAR(auto_increment_mode),
@@ -2808,6 +2948,12 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
 #ifdef HA_CAN_BULK_ACCESS
   MYSQL_SYSVAR(bulk_access_free),
 #endif
+#if MYSQL_VERSION_ID < 50500
+#else
+  MYSQL_SYSVAR(udf_ds_use_real_table),
+#endif
+  MYSQL_SYSVAR(general_log),
+  MYSQL_SYSVAR(log_result_errors),
   NULL
 };
 
@@ -2821,10 +2967,13 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0300,
+  0x0301,
   spider_status_variables,
   spider_system_variables,
-  NULL
+  NULL,
+#if MYSQL_VERSION_ID >= 50600
+  0,
+#endif
 },
 spider_i_s_alloc_mem
 mysql_declare_plugin_end;

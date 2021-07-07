@@ -87,7 +87,7 @@ TABLE *spider_open_sys_table(
     if (!(table = open_performance_schema_table(thd, &tables,
       open_tables_backup)))
 #else
-    if (!(table = open_log_table(thd, &tables, open_tables_backup)))
+    if (!(table = spider_sys_open_table(thd, &tables, open_tables_backup)))
 #endif
     {
       *error_num = my_errno;
@@ -130,7 +130,7 @@ TABLE *spider_open_sys_table(
       table->s->fields != SPIDER_SYS_XA_COL_CNT
     ) {
       spider_close_sys_table(thd, table, open_tables_backup, need_lock);
-      spider_free(spider_current_trx, table, MYF(0));
+      table = NULL;
       my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
         ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
         SPIDER_SYS_XA_TABLE_NAME_STR);
@@ -146,7 +146,7 @@ TABLE *spider_open_sys_table(
       table->s->fields != SPIDER_SYS_XA_MEMBER_COL_CNT
     ) {
       spider_close_sys_table(thd, table, open_tables_backup, need_lock);
-      spider_free(spider_current_trx, table, MYF(0));
+      table = NULL;
       my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
         ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
         SPIDER_SYS_XA_MEMBER_TABLE_NAME_STR);
@@ -162,7 +162,7 @@ TABLE *spider_open_sys_table(
       table->s->fields != SPIDER_SYS_TABLES_COL_CNT
     ) {
       spider_close_sys_table(thd, table, open_tables_backup, need_lock);
-      spider_free(spider_current_trx, table, MYF(0));
+      table = NULL;
       my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
         ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
         SPIDER_SYS_TABLES_TABLE_NAME_STR);
@@ -178,7 +178,7 @@ TABLE *spider_open_sys_table(
       table->s->fields != SPIDER_SYS_LINK_MON_TABLE_COL_CNT
     ) {
       spider_close_sys_table(thd, table, open_tables_backup, need_lock);
-      spider_free(spider_current_trx, table, MYF(0));
+      table = NULL;
       my_printf_error(ER_SPIDER_SYS_TABLE_VERSION_NUM,
         ER_SPIDER_SYS_TABLE_VERSION_STR, MYF(0),
         SPIDER_SYS_LINK_MON_TABLE_NAME_STR);
@@ -226,10 +226,65 @@ void spider_close_sys_table(
     thd->restore_backup_open_tables_state(open_tables_backup);
   }
 #else
-  close_log_table(thd, open_tables_backup);
+  spider_sys_close_table(thd, open_tables_backup);
 #endif
   DBUG_VOID_RETURN;
 }
+
+#if MYSQL_VERSION_ID < 50500
+#else
+bool spider_sys_open_tables(
+  THD *thd,
+  TABLE_LIST **tables,
+  Open_tables_backup *open_tables_backup
+) {
+  uint counter;
+  ulonglong utime_after_lock_backup = thd->utime_after_lock;
+  DBUG_ENTER("spider_sys_open_tables");
+  thd->reset_n_backup_open_tables_state(open_tables_backup);
+  if (open_tables(thd, tables, &counter,
+    MYSQL_OPEN_IGNORE_GLOBAL_READ_LOCK | MYSQL_LOCK_IGNORE_GLOBAL_READ_ONLY |
+    MYSQL_OPEN_IGNORE_FLUSH | MYSQL_LOCK_IGNORE_TIMEOUT | MYSQL_LOCK_LOG_TABLE
+  )) {
+    thd->restore_backup_open_tables_state(open_tables_backup);
+    thd->utime_after_lock = utime_after_lock_backup;
+    DBUG_RETURN(TRUE);
+  }
+  thd->utime_after_lock = utime_after_lock_backup;
+  DBUG_RETURN(FALSE);
+}
+
+TABLE *spider_sys_open_table(
+  THD *thd,
+  TABLE_LIST *tables,
+  Open_tables_backup *open_tables_backup
+) {
+  TABLE *table;
+  ulonglong utime_after_lock_backup = thd->utime_after_lock;
+  DBUG_ENTER("spider_sys_open_table");
+  thd->reset_n_backup_open_tables_state(open_tables_backup);
+  if ((table = open_ltable(thd, tables, tables->lock_type,
+    MYSQL_OPEN_IGNORE_GLOBAL_READ_LOCK | MYSQL_LOCK_IGNORE_GLOBAL_READ_ONLY |
+    MYSQL_OPEN_IGNORE_FLUSH | MYSQL_LOCK_IGNORE_TIMEOUT | MYSQL_LOCK_LOG_TABLE
+  ))) {
+    table->use_all_columns();
+    table->no_replicate = 1;
+  } else
+    thd->restore_backup_open_tables_state(open_tables_backup);
+  thd->utime_after_lock = utime_after_lock_backup;
+  DBUG_RETURN(table);
+}
+
+void spider_sys_close_table(
+  THD *thd,
+  Open_tables_backup *open_tables_backup
+) {
+  DBUG_ENTER("spider_sys_close_table");
+  close_thread_tables(thd);
+  thd->restore_backup_open_tables_state(open_tables_backup);
+  DBUG_VOID_RETURN;
+}
+#endif
 
 int spider_sys_index_init(
   TABLE *table,
@@ -316,17 +371,32 @@ int spider_get_sys_table_by_idx(
   const int col_count
 ) {
   int error_num;
+  uint key_length;
+  KEY *key_info = table->key_info;
   DBUG_ENTER("spider_get_sys_table_by_idx");
   if ((error_num = spider_sys_index_init(table, idx, FALSE)))
     DBUG_RETURN(error_num);
 
+  if ((int) spider_user_defined_key_parts(key_info) == col_count)
+  {
+    key_length = key_info->key_length;
+  } else {
+    int roop_count;
+    key_length = 0;
+    for (roop_count = 0; roop_count < col_count; ++roop_count)
+    {
+      key_length += key_info->key_part[roop_count].store_length;
+    }
+  }
+
   key_copy(
     (uchar *) table_key,
     table->record[0],
-    table->key_info,
-    table->key_info->key_length);
+    key_info,
+    key_length);
 
   if (
+/*
 #if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
     (error_num = table->file->ha_index_read_idx_map(
       table->record[0], idx, (uchar *) table_key,
@@ -334,6 +404,16 @@ int spider_get_sys_table_by_idx(
 #else
     (error_num = table->file->index_read_idx_map(
       table->record[0], idx, (uchar *) table_key,
+      make_prev_keypart_map(col_count), HA_READ_KEY_EXACT))
+#endif
+*/
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 50200
+    (error_num = table->file->ha_index_read_map(
+      table->record[0], (uchar *) table_key,
+      make_prev_keypart_map(col_count), HA_READ_KEY_EXACT))
+#else
+    (error_num = table->file->index_read_map(
+      table->record[0], (uchar *) table_key,
       make_prev_keypart_map(col_count), HA_READ_KEY_EXACT))
 #endif
   ) {
@@ -985,8 +1065,49 @@ int spider_log_tables_link_failed(
   table->use_all_columns();
   spider_store_tables_name(table, name, name_length);
   spider_store_tables_link_idx(table, link_idx);
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
+#else
   if (table->field[3] == table->timestamp_field)
     table->timestamp_field->set_time();
+#endif
+  if ((error_num = table->file->ha_write_row(table->record[0])))
+  {
+    table->file->print_error(error_num, MYF(0));
+    DBUG_RETURN(error_num);
+  }
+  DBUG_RETURN(0);
+}
+
+int spider_log_xa_failed(
+  THD *thd,
+  TABLE *table,
+  XID *xid,
+  SPIDER_CONN *conn,
+  const char *status
+) {
+  int error_num;
+  DBUG_ENTER("spider_log_xa_failed");
+  table->use_all_columns();
+  spider_store_xa_member_pk(table, xid, conn);
+  spider_store_xa_member_info(table, xid, conn);
+  if (thd)
+  {
+    table->field[18]->set_notnull();
+    table->field[18]->store(thd->thread_id, TRUE);
+  } else {
+    table->field[18]->set_null();
+    table->field[18]->reset();
+  }
+  table->field[19]->store(
+    status,
+    (uint) strlen(status),
+    system_charset_info);
+
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
+#else
+  if (table->field[20] == table->timestamp_field)
+    table->timestamp_field->set_time();
+#endif
   if ((error_num = table->file->ha_write_row(table->record[0])))
   {
     table->file->print_error(error_num, MYF(0));
@@ -1847,6 +1968,43 @@ error:
   if (table_tables)
     spider_close_sys_table(thd, table_tables,
       &open_tables_backup, need_lock);
+  DBUG_RETURN(error_num);
+}
+
+int spider_sys_log_xa_failed(
+  THD *thd,
+  XID *xid,
+  SPIDER_CONN *conn,
+  const char *status,
+  bool need_lock
+) {
+  int error_num;
+  TABLE *table_tables = NULL;
+#if MYSQL_VERSION_ID < 50500
+  Open_tables_state open_tables_backup;
+#else
+  Open_tables_backup open_tables_backup;
+#endif
+  DBUG_ENTER("spider_sys_log_xa_failed");
+  if (
+    !(table_tables = spider_open_sys_table(
+      thd, SPIDER_SYS_XA_FAILED_TABLE_NAME_STR,
+      SPIDER_SYS_XA_FAILED_TABLE_NAME_LEN, TRUE, &open_tables_backup,
+      need_lock, &error_num))
+  ) {
+    my_error(error_num, MYF(0));
+    goto error;
+  }
+  empty_record(table_tables);
+  if ((error_num = spider_log_xa_failed(thd, table_tables, xid, conn, status)))
+    goto error;
+  spider_close_sys_table(thd, table_tables, &open_tables_backup, need_lock);
+  table_tables = NULL;
+  DBUG_RETURN(0);
+
+error:
+  if (table_tables)
+    spider_close_sys_table(thd, table_tables, &open_tables_backup, need_lock);
   DBUG_RETURN(error_num);
 }
 

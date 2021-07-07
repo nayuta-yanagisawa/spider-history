@@ -474,7 +474,8 @@ noinst_HEADERS = ha_spider.h spd_conn.h spd_db_conn.h \
                  hs_client/auto_file.hpp hs_client/fatal.hpp \
                  hs_client/string_buffer.hpp hs_client/util.hpp \
                  hs_client/auto_ptrcontainer.hpp \
-                 hs_client/hstcpcli.hpp hs_client/string_ref.hpp
+                 hs_client/hstcpcli.hpp hs_client/string_ref.hpp \
+                 hs_client/hs_compat.h
 
 lib_LTLIBRARIES = $(PLUGIN_SPIDER_LTLIBRARIES_TARGET)
 EXTRA_LTLIBRARIES = ha_spider.la

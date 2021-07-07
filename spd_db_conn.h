@@ -17,6 +17,10 @@
 #define SPIDER_DB_WRAPPER_LEN (sizeof(SPIDER_DB_WRAPPER_STR) - 1)
 #define SPIDER_DB_PK_NAME_STR "PRIMARY"
 #define SPIDER_DB_PK_NAME_LEN (sizeof(SPIDER_DB_PK_NAME_STR) - 1)
+#define SPIDER_DB_UNIQUE_NAME_STR "UNIQUE"
+#define SPIDER_DB_UNIQUE_NAME_LEN (sizeof(SPIDER_DB_UNIQUE_NAME_STR) - 1)
+#define SPIDER_DB_KEY_NAME_STR "KEY"
+#define SPIDER_DB_KEY_NAME_LEN (sizeof(SPIDER_DB_KEY_NAME_STR) - 1)
 #define SPIDER_DB_SEQUENCE_NAME_STR ""
 #define SPIDER_DB_SEQUENCE_NAME_LEN (sizeof(SPIDER_DB_SEQUENCE_NAME_STR) - 1)
 
@@ -164,6 +168,10 @@
 #define SPIDER_SQL_IS_NULL_LEN (sizeof(SPIDER_SQL_IS_NULL_STR) - 1)
 #define SPIDER_SQL_IS_NOT_NULL_STR " is not null"
 #define SPIDER_SQL_IS_NOT_NULL_LEN (sizeof(SPIDER_SQL_IS_NOT_NULL_STR) - 1)
+#define SPIDER_SQL_NOT_NULL_STR " not null"
+#define SPIDER_SQL_NOT_NULL_LEN (sizeof(SPIDER_SQL_NOT_NULL_STR) - 1)
+#define SPIDER_SQL_DEFAULT_STR " default "
+#define SPIDER_SQL_DEFAULT_LEN (sizeof(SPIDER_SQL_DEFAULT_STR) - 1)
 #define SPIDER_SQL_SPACE_STR " "
 #define SPIDER_SQL_SPACE_LEN (sizeof(SPIDER_SQL_SPACE_STR) - 1)
 #define SPIDER_SQL_ONE_STR "1"
@@ -270,6 +278,14 @@ int spider_db_set_trx_isolation(
   int *need_mon
 );
 
+int spider_db_set_names_internal(
+  SPIDER_TRX *trx,
+  SPIDER_SHARE *share,
+  SPIDER_CONN *conn,
+  int all_link_idx,
+  int *need_mon
+);
+
 int spider_db_set_names(
   ha_spider *spider,
   SPIDER_CONN *conn,
@@ -286,7 +302,8 @@ int spider_db_query_with_set_names(
 int spider_db_query_for_bulk_update(
   ha_spider *spider,
   SPIDER_CONN *conn,
-  int link_idx
+  int link_idx,
+  uint *dup_key_found
 );
 
 size_t spider_db_real_escape_string(
@@ -403,6 +420,23 @@ int spider_db_append_key_where(
   const key_range *end_key,
   ha_spider *spider
 );
+
+#ifdef HANDLER_HAS_DIRECT_AGGREGATE
+int spider_db_refetch_for_item_sum_funcs(
+  ha_spider *spider
+);
+
+int spider_db_fetch_for_item_sum_funcs(
+  SPIDER_DB_ROW *row,
+  ha_spider *spider
+);
+
+int spider_db_fetch_for_item_sum_func(
+  SPIDER_DB_ROW *row,
+  Item_sum *item_sum,
+  ha_spider *spider
+);
+#endif
 
 int spider_db_append_match_fetch(
   ha_spider *spider,
@@ -655,7 +689,8 @@ int spider_db_bulk_update_size_limit(
 );
 
 int spider_db_bulk_update_end(
-  ha_spider *spider
+  ha_spider *spider,
+  uint *dup_key_found
 );
 
 int spider_db_bulk_update(
@@ -775,6 +810,17 @@ int spider_db_open_item_func(
   uint dbton_id
 );
 
+#ifdef HANDLER_HAS_DIRECT_AGGREGATE
+int spider_db_open_item_sum_func(
+  Item_sum *item_sum,
+  ha_spider *spider,
+  spider_string *str,
+  const char *alias,
+  uint alias_length,
+  uint dbton_id
+);
+#endif
+
 int spider_db_open_item_ident(
   Item_ident *item_ident,
   ha_spider *spider,
@@ -845,6 +891,7 @@ int spider_db_append_condition(
   bool test_flg
 );
 
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
 int spider_db_append_update_columns(
   ha_spider *spider,
   spider_string *str,
@@ -852,6 +899,7 @@ int spider_db_append_update_columns(
   uint alias_length,
   uint dbton_id
 );
+#endif
 
 uint spider_db_check_ft_idx(
   Item_func *item_func,

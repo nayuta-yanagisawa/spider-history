@@ -23,6 +23,8 @@
 #include "probes_mysql.h"
 #include "sql_analyse.h"
 #endif
+
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 #include "spd_err.h"
 #include "spd_param.h"
 #include "spd_db_include.h"
@@ -37,6 +39,7 @@
 extern handlerton *spider_hton_ptr;
 extern HASH spider_open_connections;
 extern SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
+extern const char spider_dig_upper[];
 
 #define SPIDER_SQL_INTERVAL_STR " + interval "
 #define SPIDER_SQL_INTERVAL_LEN (sizeof(SPIDER_SQL_INTERVAL_STR) - 1)
@@ -196,8 +199,8 @@ int spider_db_hs_string_ref_buffer::init()
   DBUG_PRINT("info",("spider this=%p", this));
   if (!hs_da_init)
   {
-    my_init_dynamic_array2(&hs_conds, sizeof(SPIDER_HS_STRING_REF),
-      NULL, 16, 16);
+    SPD_INIT_DYNAMIC_ARRAY2(&hs_conds, sizeof(SPIDER_HS_STRING_REF),
+      NULL, 16, 16, MYF(MY_WME));
     spider_alloc_calc_mem_init(hs_conds, 159);
     spider_alloc_calc_mem(spider_current_trx,
       hs_conds, hs_conds.max_element * hs_conds.size_of_element);
@@ -272,8 +275,8 @@ int spider_db_hs_str_buffer::init()
   DBUG_PRINT("info",("spider this=%p", this));
   if (!hs_da_init)
   {
-    my_init_dynamic_array2(&hs_conds, sizeof(spider_string *),
-      NULL, 16, 16);
+    SPD_INIT_DYNAMIC_ARRAY2(&hs_conds, sizeof(spider_string *),
+      NULL, 16, 16, MYF(MY_WME));
     spider_alloc_calc_mem_init(hs_conds, 160);
     spider_alloc_calc_mem(spider_current_trx,
       hs_conds, hs_conds.max_element * hs_conds.size_of_element);
@@ -344,7 +347,8 @@ spider_string *spider_db_hs_str_buffer::add(
   DBUG_RETURN(element);
 }
 
-spider_db_handlersocket_row::spider_db_handlersocket_row() : spider_db_row(),
+spider_db_handlersocket_row::spider_db_handlersocket_row() :
+  spider_db_row(spider_dbton_handlersocket.dbton_id),
   hs_row(NULL), field_count(0), cloned(FALSE)
 {
   DBUG_ENTER("spider_db_handlersocket_row::spider_db_handlersocket_row");
@@ -459,6 +463,26 @@ double spider_db_handlersocket_row::val_real()
   DBUG_RETURN(hs_row->begin() ? my_atof(hs_row->begin()) : 0.0);
 }
 
+my_decimal *spider_db_handlersocket_row::val_decimal(
+  my_decimal *decimal_value,
+  CHARSET_INFO *access_charset
+) {
+  DBUG_ENTER("spider_db_handlersocket_row::val_decimal");
+  DBUG_PRINT("info",("spider this=%p", this));
+  if (!hs_row->begin())
+    DBUG_RETURN(NULL);
+
+#ifdef SPIDER_HAS_DECIMAL_OPERATION_RESULTS_VALUE_TYPE
+  decimal_operation_results(str2my_decimal(0, hs_row->begin(), hs_row->size(),
+    access_charset, decimal_value), "", "");
+#else
+  decimal_operation_results(str2my_decimal(0, hs_row->begin(), hs_row->size(),
+    access_charset, decimal_value));
+#endif
+
+  DBUG_RETURN(decimal_value);
+}
+
 SPIDER_DB_ROW *spider_db_handlersocket_row::clone()
 {
   spider_db_handlersocket_row *clone_row;
@@ -565,7 +589,7 @@ bool spider_db_handlersocket_result_buffer::check_size(
 }
 
 spider_db_handlersocket_result::spider_db_handlersocket_result(
-) : spider_db_result()
+) : spider_db_result(spider_dbton_handlersocket.dbton_id)
 {
   DBUG_ENTER("spider_db_handlersocket_result::spider_db_handlersocket_result");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -778,6 +802,26 @@ int spider_db_handlersocket_result::get_errno()
   DBUG_RETURN(store_error_num);
 }
 
+#ifdef SPIDER_HAS_DISCOVER_TABLE_STRUCTURE
+int spider_db_handlersocket_result::fetch_columns_for_discover_table_structure(
+  spider_string *str,
+  CHARSET_INFO *access_charset
+) {
+  DBUG_ENTER("spider_db_handlersocket_result::fetch_columns_for_discover_table_structure");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+}
+
+int spider_db_handlersocket_result::fetch_index_for_discover_table_structure(
+  spider_string *str,
+  CHARSET_INFO *access_charset
+) {
+  DBUG_ENTER("spider_db_handlersocket_result::fetch_index_for_discover_table_structure");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+}
+#endif
+
 spider_db_handlersocket::spider_db_handlersocket(
   SPIDER_CONN *conn
 ) : spider_db_conn(conn),
@@ -838,8 +882,8 @@ int spider_db_handlersocket::init()
   DBUG_ENTER("spider_db_handlersocket::init");
   DBUG_PRINT("info",("spider this=%p", this));
   if (
-    my_init_dynamic_array2(&handler_open_array,
-      sizeof(SPIDER_LINK_FOR_HASH *), NULL, 16, 16)
+    SPD_INIT_DYNAMIC_ARRAY2(&handler_open_array,
+      sizeof(SPIDER_LINK_FOR_HASH *), NULL, 16, 16, MYF(MY_WME))
   ) {
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
   }
@@ -1037,6 +1081,24 @@ int spider_db_handlersocket::exec_query(
     (*hs_conn_p)->get_num_req_rcvd()));
   DBUG_PRINT("info",("spider hs response_end_offset=%zu",
     (*hs_conn_p)->get_response_end_offset()));
+  if (spider_param_general_log())
+  {
+    const char *tgt_str = conn->hs_sock ? conn->hs_sock : conn->tgt_host;
+    uint32 tgt_len = strlen(tgt_str);
+    spider_string tmp_query_str((*hs_conn_p)->get_writebuf_size() +
+      conn->tgt_wrapper_length +
+      tgt_len + (SPIDER_SQL_SPACE_LEN * 2));
+    tmp_query_str.init_calc_mem(231);
+    tmp_query_str.length(0);
+    tmp_query_str.q_append(conn->tgt_wrapper, conn->tgt_wrapper_length);
+    tmp_query_str.q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
+    tmp_query_str.q_append(tgt_str, tgt_len);
+    tmp_query_str.q_append(SPIDER_SQL_SPACE_STR, SPIDER_SQL_SPACE_LEN);
+    tmp_query_str.q_append((*hs_conn_p)->get_writebuf_begin(),
+      (*hs_conn_p)->get_writebuf_size());
+    general_log_write(current_thd, COM_QUERY, tmp_query_str.ptr(),
+      tmp_query_str.length());
+  }
   if ((*hs_conn_p)->request_send() < 0)
   {
     DBUG_PRINT("info",("spider hs num_req_bufd=%zu",
@@ -2512,8 +2574,8 @@ int spider_db_handlersocket_util::append_column_value(
     str_ptr = (char *) str->ptr() + str->length();
     for (end_ptr = hex_ptr + ptr->length(); hex_ptr < end_ptr; hex_ptr++)
     {
-      *str_ptr++ = _dig_vec_upper[(*hex_ptr) >> 4];
-      *str_ptr++ = _dig_vec_upper[(*hex_ptr) & 0x0F];
+      *str_ptr++ = spider_dig_upper[(*hex_ptr) >> 4];
+      *str_ptr++ = spider_dig_upper[(*hex_ptr) & 0x0F];
     }
     str->length(str->length() + ptr->length() * 2);
   } else 
@@ -3333,6 +3395,81 @@ int spider_db_handlersocket_util::open_item_func(
   DBUG_RETURN(0);
 }
 
+#ifdef HANDLER_HAS_DIRECT_AGGREGATE
+int spider_db_handlersocket_util::open_item_sum_func(
+  Item_sum *item_sum,
+  ha_spider *spider,
+  spider_string *str,
+  const char *alias,
+  uint alias_length
+) {
+  uint dbton_id = spider_dbton_handlersocket.dbton_id;
+  uint roop_count, item_count = item_sum->get_arg_count();
+  int error_num;
+  DBUG_ENTER("spider_db_handlersocket_util::open_item_sum_func");
+  DBUG_PRINT("info",("spider Sumfunctype = %d", item_sum->sum_func()));
+  switch (item_sum->sum_func())
+  {
+    case Item_sum::COUNT_FUNC:
+    case Item_sum::SUM_FUNC:
+    case Item_sum::MIN_FUNC:
+    case Item_sum::MAX_FUNC:
+      {
+        const char *func_name = item_sum->func_name();
+        uint func_name_length = strlen(func_name);
+        Item *item, **args = item_sum->get_args();
+        if (str)
+        {
+          if (str->reserve(func_name_length))
+            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+          str->q_append(func_name, func_name_length);
+        }
+        if (item_count)
+        {
+          item_count--;
+          for (roop_count = 0; roop_count < item_count; roop_count++)
+          {
+            item = args[roop_count];
+            if ((error_num = spider_db_print_item_type(item, spider, str,
+              alias, alias_length, dbton_id)))
+              DBUG_RETURN(error_num);
+            if (str)
+            {
+              if (str->reserve(SPIDER_SQL_COMMA_LEN))
+                DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+              str->q_append(SPIDER_SQL_COMMA_STR, SPIDER_SQL_COMMA_LEN);
+            }
+          }
+          item = args[roop_count];
+          if ((error_num = spider_db_print_item_type(item, spider, str,
+            alias, alias_length, dbton_id)))
+            DBUG_RETURN(error_num);
+        }
+        if (str)
+        {
+          if (str->reserve(SPIDER_SQL_CLOSE_PAREN_LEN))
+            DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+          str->q_append(SPIDER_SQL_CLOSE_PAREN_STR,
+            SPIDER_SQL_CLOSE_PAREN_LEN);
+        }
+      }
+      break;
+    case Item_sum::COUNT_DISTINCT_FUNC:
+    case Item_sum::SUM_DISTINCT_FUNC:
+    case Item_sum::AVG_FUNC:
+    case Item_sum::AVG_DISTINCT_FUNC:
+    case Item_sum::STD_FUNC:
+    case Item_sum::VARIANCE_FUNC:
+    case Item_sum::SUM_BIT_FUNC:
+    case Item_sum::UDF_SUM_FUNC:
+    case Item_sum::GROUP_CONCAT_FUNC:
+    default:
+      DBUG_RETURN(ER_SPIDER_COND_SKIP_NUM);
+  }
+  DBUG_RETURN(0);
+}
+#endif
+
 int spider_db_handlersocket_util::append_escaped_util(
   spider_string *to,
   String *from
@@ -3678,6 +3815,18 @@ bool spider_handlersocket_share::need_change_db_table_name()
   DBUG_RETURN(!same_db_table_name);
 }
 
+#ifdef SPIDER_HAS_DISCOVER_TABLE_STRUCTURE
+int spider_handlersocket_share::discover_table_structure(
+  SPIDER_TRX *trx,
+  SPIDER_SHARE *spider_share,
+  spider_string *str
+) {
+  DBUG_ENTER("spider_handlersocket_share::discover_table_structure");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_RETURN(HA_ERR_WRONG_COMMAND);
+}
+#endif
+
 spider_handlersocket_handler::spider_handlersocket_handler(
   ha_spider *spider,
   spider_handlersocket_share *db_share
@@ -3764,6 +3913,23 @@ int spider_handlersocket_handler::append_tmp_table_and_sql_for_bka(
 int spider_handlersocket_handler::reuse_tmp_table_and_sql_for_bka()
 {
   DBUG_ENTER("spider_handlersocket_handler::reuse_tmp_table_and_sql_for_bka");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+
+int spider_handlersocket_handler::append_union_table_and_sql_for_bka(
+  const key_range *start_key
+) {
+  DBUG_ENTER("spider_handlersocket_handler::append_union_table_and_sql_for_bka");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+
+int spider_handlersocket_handler::reuse_union_table_and_sql_for_bka()
+{
+  DBUG_ENTER("spider_handlersocket_handler::reuse_union_table_and_sql_for_bka");
   DBUG_PRINT("info",("spider this=%p", this));
   DBUG_ASSERT(0);
   DBUG_RETURN(0);
@@ -3908,11 +4074,8 @@ int spider_handlersocket_handler::append_minimum_select_without_quote(
   DBUG_ENTER("spider_handlersocket_handler::append_minimum_select_without_quote");
   for (field = table->field; *field; field++)
   {
-    if (
-      spider_bit_is_set(spider->searched_bitmap, (*field)->field_index) |
-      bitmap_is_set(table->read_set, (*field)->field_index) |
-      bitmap_is_set(table->write_set, (*field)->field_index)
-    ) {
+    if (minimum_select_bit_is_set((*field)->field_index))
+    {
       field_length =
         handlersocket_share->column_name_str[(*field)->field_index].length();
       if (str->reserve(field_length + SPIDER_SQL_COMMA_LEN))
@@ -3959,7 +4122,6 @@ int spider_handlersocket_handler::append_minimum_select_by_field_idx_list(
     str->length(str->length() - SPIDER_SQL_COMMA_LEN);
   DBUG_RETURN(0);
 }
-#endif
 
 int spider_handlersocket_handler::append_dup_update_pushdown_part(
   const char *alias,
@@ -3988,6 +4150,7 @@ int spider_handlersocket_handler::check_update_columns_part()
   DBUG_ASSERT(0);
   DBUG_RETURN(0);
 }
+#endif
 
 int spider_handlersocket_handler::append_select_part(
   ulong sql_type
@@ -4080,11 +4243,39 @@ int spider_handlersocket_handler::append_values_terminator_part(
   DBUG_RETURN(0);
 }
 
+int spider_handlersocket_handler::append_union_table_connector_part(
+  ulong sql_type
+) {
+  DBUG_ENTER("spider_handlersocket_handler::append_union_table_connector_part");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+
+int spider_handlersocket_handler::append_union_table_terminator_part(
+  ulong sql_type
+) {
+  DBUG_ENTER("spider_handlersocket_handler::append_union_table_terminator_part");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+
 int spider_handlersocket_handler::append_key_column_values_part(
   const key_range *start_key,
   ulong sql_type
 ) {
   DBUG_ENTER("spider_handlersocket_handler::append_key_column_values_part");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+
+int spider_handlersocket_handler::append_key_column_values_with_name_part(
+  const key_range *start_key,
+  ulong sql_type
+) {
+  DBUG_ENTER("spider_handlersocket_handler::append_key_column_values_with_name_part");
   DBUG_PRINT("info",("spider this=%p", this));
   DBUG_ASSERT(0);
   DBUG_RETURN(0);
@@ -4226,6 +4417,19 @@ int spider_handlersocket_handler::append_match_select_part(
   DBUG_RETURN(0);
 }
 
+#ifdef HANDLER_HAS_DIRECT_AGGREGATE
+int spider_handlersocket_handler::append_sum_select_part(
+  ulong sql_type,
+  const char *alias,
+  uint alias_length
+) {
+  DBUG_ENTER("spider_handlersocket_handler::append_sum_select_part");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+#endif
+
 void spider_handlersocket_handler::set_order_pos(
   ulong sql_type
 ) {
@@ -4344,6 +4548,16 @@ int spider_handlersocket_handler::append_multi_range_cnt_part(
   bool with_comma
 ) {
   DBUG_ENTER("spider_handlersocket_handler::append_multi_range_cnt_part");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+
+int spider_handlersocket_handler::append_multi_range_cnt_with_name_part(
+  ulong sql_type,
+  uint multi_range_cnt
+) {
+  DBUG_ENTER("spider_handlersocket_handler::append_multi_range_cnt_with_name_part");
   DBUG_PRINT("info",("spider this=%p", this));
   DBUG_ASSERT(0);
   DBUG_RETURN(0);
@@ -5270,3 +5484,70 @@ bool spider_handlersocket_handler::support_use_handler(
   DBUG_PRINT("info",("spider this=%p", this));
   DBUG_RETURN(TRUE);
 }
+
+bool spider_handlersocket_handler::minimum_select_bit_is_set(
+  uint field_index
+) {
+  TABLE *table = spider->get_table();
+  DBUG_ENTER("spider_handlersocket_handler::minimum_select_bit_is_set");
+  DBUG_RETURN(
+    spider_bit_is_set(spider->searched_bitmap, field_index) |
+    bitmap_is_set(table->read_set, field_index) |
+    bitmap_is_set(table->write_set, field_index)
+  );
+}
+
+void spider_handlersocket_handler::copy_minimum_select_bitmap(
+  uchar *bitmap
+) {
+  int roop_count;
+  TABLE *table = spider->get_table();
+  DBUG_ENTER("spider_handlersocket_handler::copy_minimum_select_bitmap");
+  for (roop_count = 0;
+    roop_count < (int) ((table->s->fields + 7) / 8);
+    roop_count++)
+  {
+    bitmap[roop_count] =
+      spider->searched_bitmap[roop_count] |
+      ((uchar *) table->read_set->bitmap)[roop_count] |
+      ((uchar *) table->write_set->bitmap)[roop_count];
+    DBUG_PRINT("info",("spider roop_count=%d", roop_count));
+    DBUG_PRINT("info",("spider bitmap=%d",
+      bitmap[roop_count]));
+    DBUG_PRINT("info",("spider searched_bitmap=%d",
+      spider->searched_bitmap[roop_count]));
+    DBUG_PRINT("info",("spider read_set=%d",
+      ((uchar *) table->read_set->bitmap)[roop_count]));
+    DBUG_PRINT("info",("spider write_set=%d",
+      ((uchar *) table->write_set->bitmap)[roop_count]));
+  }
+  DBUG_VOID_RETURN;
+}
+
+int spider_handlersocket_handler::init_union_table_name_pos()
+{
+  DBUG_ENTER("spider_handlersocket_handler::init_union_table_name_pos");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+
+int spider_handlersocket_handler::set_union_table_name_pos()
+{
+  DBUG_ENTER("spider_handlersocket_handler::set_union_table_name_pos");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+
+int spider_handlersocket_handler::reset_union_table_name(
+  spider_string *str,
+  int link_idx,
+  ulong sql_type
+) {
+  DBUG_ENTER("spider_handlersocket_handler::reset_union_table_name");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(0);
+  DBUG_RETURN(0);
+}
+#endif

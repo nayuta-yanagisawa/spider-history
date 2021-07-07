@@ -59,8 +59,8 @@ operator !=(const string_ref& x, const string_ref& y) {
 
 struct string_ref_list_wrap {
   string_ref_list_wrap() {
-    if (my_init_dynamic_array2(&string_ref_list, sizeof(string_ref),
-      NULL, 16, 16))
+    if (SPD_INIT_DYNAMIC_ARRAY2(&string_ref_list, sizeof(string_ref),
+      NULL, 16, 16, MYF(MY_WME)))
       string_ref_list_init = FALSE;
     else
       string_ref_list_init = TRUE;

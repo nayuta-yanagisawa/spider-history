@@ -6,6 +6,8 @@
  * See COPYRIGHT.txt for details.
  */
 
+#include "mysql_version.h"
+#include "hs_compat.h"
 #include "escape.hpp"
 #include "string_buffer.hpp"
 #include "fatal.hpp"

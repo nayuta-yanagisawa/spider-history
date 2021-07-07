@@ -23,6 +23,8 @@
 #define SPIDER_SYS_LINK_MON_TABLE_NAME_LEN (sizeof(SPIDER_SYS_LINK_MON_TABLE_NAME_STR) - 1)
 #define SPIDER_SYS_LINK_FAILED_TABLE_NAME_STR "spider_link_failed_log"
 #define SPIDER_SYS_LINK_FAILED_TABLE_NAME_LEN (sizeof(SPIDER_SYS_LINK_FAILED_TABLE_NAME_STR) - 1)
+#define SPIDER_SYS_XA_FAILED_TABLE_NAME_STR "spider_xa_failed_log"
+#define SPIDER_SYS_XA_FAILED_TABLE_NAME_LEN (sizeof(SPIDER_SYS_XA_FAILED_TABLE_NAME_STR) - 1)
 
 #define SPIDER_SYS_XA_PREPARED_STR "PREPARED"
 #define SPIDER_SYS_XA_NOT_YET_STR "NOT YET"
@@ -87,6 +89,23 @@ void spider_close_sys_table(
   TABLE *table,
   Open_tables_backup *open_tables_backup,
   bool need_lock
+);
+
+bool spider_sys_open_tables(
+  THD *thd,
+  TABLE_LIST **tables,
+  Open_tables_backup *open_tables_backup
+);
+
+TABLE *spider_sys_open_table(
+  THD *thd,
+  TABLE_LIST *tables,
+  Open_tables_backup *open_tables_backup
+);
+
+void spider_sys_close_table(
+  THD *thd,
+  Open_tables_backup *open_tables_backup
 );
 #endif
 
@@ -238,6 +257,14 @@ int spider_log_tables_link_failed(
   int link_idx
 );
 
+int spider_log_xa_failed(
+  THD *thd,
+  TABLE *table,
+  XID *xid,
+  SPIDER_CONN *conn,
+  const char *status
+);
+
 int spider_update_xa(
   TABLE *table,
   XID *xid,
@@ -345,6 +372,14 @@ int spider_sys_log_tables_link_failed(
   char *name,
   uint name_length,
   int link_idx,
+  bool need_lock
+);
+
+int spider_sys_log_xa_failed(
+  THD *thd,
+  XID *xid,
+  SPIDER_CONN *conn,
+  const char *status,
   bool need_lock
 );
 

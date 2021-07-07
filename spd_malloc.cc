@@ -1221,6 +1221,22 @@ bool spider_string::append(
   DBUG_RETURN(res);
 }
 
+#ifdef SPIDER_HAS_APPEND_FOR_SINGLE_QUOTE
+bool spider_string::append_for_single_quote(
+  const char *st,
+  uint len
+) {
+  DBUG_ENTER("spider_string::append_for_single_quote");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(mem_calc_inited);
+  DBUG_ASSERT((!current_alloc_mem && !str.is_alloced()) ||
+    current_alloc_mem == str.alloced_length());
+  bool res = str.append_for_single_quote(st, len);
+  SPIDER_STRING_CALC_MEM;
+  DBUG_RETURN(res);
+}
+#endif
+
 void spider_string::swap(
   spider_string &s
 ) {

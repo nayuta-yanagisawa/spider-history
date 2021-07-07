@@ -848,24 +848,67 @@ long long spider_copy_tables_body(
   spider_db_copy_table *select_ct, *insert_ct;
   MEM_ROOT mem_root;
   longlong bulk_insert_rows;
+  Reprepare_observer *reprepare_observer_backup;
   DBUG_ENTER("spider_copy_tables_body");
   if (
     thd->open_tables != 0 ||
-    thd->temporary_tables != 0 ||
     thd->handler_tables_hash.records != 0 ||
     thd->derived_tables != 0 ||
     thd->lock != 0 ||
 #if MYSQL_VERSION_ID < 50500
     thd->locked_tables != 0 ||
-    thd->prelocked_mode != NON_PRELOCKED ||
+    thd->prelocked_mode != NON_PRELOCKED
 #else
     thd->locked_tables_list.locked_tables() ||
-    thd->locked_tables_mode != LTM_NONE ||
+    thd->locked_tables_mode != LTM_NONE
 #endif
-    thd->m_reprepare_observer != NULL
   ) {
-    my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
-      ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR, MYF(0));
+    if (thd->open_tables != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->open_tables", thd->open_tables);
+    } else if (thd->handler_tables_hash.records != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_NUM, MYF(0),
+        "thd->handler_tables_hash.records",
+        (longlong) thd->handler_tables_hash.records);
+    } else if (thd->derived_tables != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->derived_tables", thd->derived_tables);
+    } else if (thd->lock != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->lock", thd->lock);
+#if MYSQL_VERSION_ID < 50500
+    } else if (thd->locked_tables != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->locked_tables", thd->locked_tables);
+    } else if (thd->prelocked_mode != NON_PRELOCKED)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_NUM, MYF(0),
+        "thd->prelocked_mode", (longlong) thd->prelocked_mode);
+#else
+    } else if (thd->locked_tables_list.locked_tables())
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->locked_tables_list.locked_tables()",
+        thd->locked_tables_list.locked_tables());
+    } else if (thd->locked_tables_mode != LTM_NONE)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_NUM, MYF(0),
+        "thd->locked_tables_mode", (longlong) thd->locked_tables_mode);
+#endif
+    }
     goto error;
   }
 
@@ -912,7 +955,7 @@ long long spider_copy_tables_body(
   )
     goto error;
 
-  init_alloc_root(&mem_root, 4096, 0);
+  SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
   if (
     spider_udf_get_copy_tgt_tables(
       thd,
@@ -944,6 +987,8 @@ long long spider_copy_tables_body(
   DBUG_PRINT("info",("spider table_name=%s", table_list->table_name));
   DBUG_PRINT("info",("spider table_name_length=%zd",
     table_list->table_name_length));
+  reprepare_observer_backup = thd->m_reprepare_observer;
+  thd->m_reprepare_observer = NULL;
 #if MYSQL_VERSION_ID < 50500
   if (open_and_lock_tables(thd, table_list))
 #else
@@ -957,11 +1002,13 @@ long long spider_copy_tables_body(
   if (open_and_lock_tables(thd, table_list, FALSE, 0))
 #endif
   {
+    thd->m_reprepare_observer = reprepare_observer_backup;
     my_printf_error(ER_SPIDER_UDF_CANT_OPEN_TABLE_NUM,
       ER_SPIDER_UDF_CANT_OPEN_TABLE_STR, MYF(0), table_list->db,
       table_list->table_name);
     goto error;
   }
+  thd->m_reprepare_observer = reprepare_observer_backup;
 
   table = table_list->table;
   table_share = table->s;
@@ -1042,6 +1089,10 @@ long long spider_copy_tables_body(
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
+  }
+  for (roop_count = 0; roop_count < all_link_cnt; roop_count++)
+  {
+    spider[roop_count].conns = NULL;
   }
   for (roop_count = 0, table_conn = copy_tables->table_conn[0];
     table_conn; roop_count++, table_conn = table_conn->next)
@@ -1195,6 +1246,23 @@ error_append_set_names:
     spider_db_free_set_names(table_conn->share);
 */
 error:
+  if (spider)
+  {
+    for (roop_count = 0; roop_count < all_link_cnt; roop_count++)
+    {
+      tmp_spider = &spider[roop_count];
+      if (tmp_spider->conns)
+      {
+        tmp_conn = tmp_spider->conns[0];
+        if (tmp_conn && tmp_conn->db_conn &&
+          tmp_conn->db_conn->get_lock_table_hash_count()
+        ) {
+          tmp_conn->db_conn->reset_lock_table_hash();
+          tmp_conn->table_lock = 0;
+        }
+      }
+    }
+  }
   if (table_list && table_list->table)
   {
 #if MYSQL_VERSION_ID < 50500
@@ -1209,13 +1277,6 @@ error:
     for (roop_count = 0; roop_count < all_link_cnt; roop_count++)
     {
       tmp_spider = &spider[roop_count];
-      tmp_conn = tmp_spider->conns[0];
-      if (tmp_conn && tmp_conn->db_conn &&
-        tmp_conn->db_conn->get_lock_table_hash_count()
-      ) {
-        tmp_conn->db_conn->reset_lock_table_hash();
-        tmp_conn->table_lock = 0;
-      }
       if (tmp_spider->share && spider[roop_count].dbton_handler)
       {
         uint dbton_id = tmp_spider->share->use_dbton_ids[0];

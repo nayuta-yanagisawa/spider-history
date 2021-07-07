@@ -111,7 +111,10 @@ int spider_increase_longlong_list(
 
 int spider_parse_connect_info(
   SPIDER_SHARE *share,
-  TABLE *table,
+  TABLE_SHARE *table_share,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  partition_info *part_info,
+#endif
   uint create_table
 );
 
@@ -121,7 +124,7 @@ int spider_set_connect_info_default(
   partition_element *part_elem,
   partition_element *sub_elem,
 #endif
-  TABLE *table
+  TABLE_SHARE *table_share
 );
 
 int spider_set_connect_info_default_db_table(
@@ -149,6 +152,18 @@ int spider_create_conn_keys(
   SPIDER_SHARE *share
 );
 
+SPIDER_SHARE *spider_create_share(
+  const char *table_name,
+  TABLE_SHARE *table_share,
+#ifdef WITH_PARTITION_STORAGE_ENGINE
+  partition_info *part_info,
+#endif
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+  my_hash_value_type hash_value,
+#endif
+  int *error_num
+);
+
 SPIDER_SHARE *spider_get_share(
   const char *table_name,
   TABLE *table,
@@ -157,14 +172,18 @@ SPIDER_SHARE *spider_get_share(
   int *error_num
 );
 
+void spider_free_share_resource_only(
+  SPIDER_SHARE *share
+);
+
 int spider_free_share(
   SPIDER_SHARE *share
 );
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 SPIDER_PARTITION_SHARE *spider_get_pt_share(
-  TABLE *table,
   SPIDER_SHARE *share,
+  TABLE_SHARE *table_share,
   int *error_num
 );
 
@@ -250,7 +269,8 @@ char *spider_create_table_name_string(
 void spider_get_partition_info(
   const char *table_name,
   uint table_name_length,
-  const TABLE *table,
+  const TABLE_SHARE *table_share,
+  partition_info *part_info,
   partition_element **part_elem,
   partition_element **sub_elem
 );
@@ -335,6 +355,14 @@ void spider_free_tmp_dbton_handler(
   ha_spider *tmp_spider
 );
 
+TABLE_LIST *spider_get_parent_table_list(
+  ha_spider *spider
+);
+
+st_select_lex *spider_get_select_lex(
+  ha_spider *spider
+);
+
 void spider_get_select_limit(
   ha_spider *spider,
   st_select_lex **select_lex,
@@ -375,3 +403,18 @@ ulong spider_calc_for_sort(
 double spider_rand(
   uint32 rand_source
 );
+
+#ifdef SPIDER_HAS_DISCOVER_TABLE_STRUCTURE
+int spider_discover_table_structure_internal(
+  SPIDER_TRX *trx,
+  SPIDER_SHARE *spider_share,
+  spider_string *str
+);
+
+int spider_discover_table_structure(
+  handlerton *hton,
+  THD* thd,
+  TABLE_SHARE *share,
+  HA_CREATE_INFO *info
+);
+#endif

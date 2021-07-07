@@ -8,6 +8,7 @@
  */
 
 #include "mysql_version.h"
+#include "hs_compat.h"
 #if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
@@ -35,7 +36,8 @@ namespace dena {
 
 hstresult::hstresult()
 {
-  my_init_dynamic_array2(&flds, sizeof(string_ref), NULL, 16, 16);
+  SPD_INIT_DYNAMIC_ARRAY2(&flds, sizeof(string_ref), NULL, 16, 16,
+    MYF(MY_WME));
 }
 
 hstresult::~hstresult()
@@ -75,6 +77,8 @@ struct hstcpcli : public hstcpcli_i, private noncopyable {
   virtual size_t get_response_end_offset() { return response_end_offset; }
   virtual const char *get_readbuf_begin() { return readbuf.begin(); }
   virtual const char *get_readbuf_end() { return readbuf.end(); }
+  virtual const char *get_writebuf_begin() { return writebuf.begin(); }
+  virtual size_t get_writebuf_size() { return writebuf.size(); }
   virtual void write_error_to_log(const char *func_name, const char *file_name,
     ulong line_no);
  private:
@@ -103,7 +107,7 @@ hstcpcli::hstcpcli(const socket_args& args)
     num_req_bufd(0), num_req_sent(0), num_req_rcvd(0), error_code(0), errno_buf(0)
 {
   String err;
-  my_init_dynamic_array2(&flds, sizeof(string_ref), NULL, 16, 16);
+  SPD_INIT_DYNAMIC_ARRAY2(&flds, sizeof(string_ref), NULL, 16, 16, MYF(MY_WME));
   if (socket_connect(fd, sargs, err) != 0) {
     set_error(-1, err);
   }

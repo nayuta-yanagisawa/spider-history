@@ -92,7 +92,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_mon_list(
   DBUG_ENTER("spider_get_ping_table_mon_list");
   if (spider_mon_table_cache_version != spider_mon_table_cache_version_req)
   {
-    init_alloc_root(&mem_root, 4096, 0);
+    SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
     if ((*error_num = spider_init_ping_table_mon_cache(thd, &mem_root,
       need_lock)))
     {
@@ -461,7 +461,7 @@ SPIDER_TABLE_MON_LIST *spider_get_ping_table_tgt(
   MEM_ROOT mem_root;
   DBUG_ENTER("spider_get_ping_table_tgt");
 
-  init_alloc_root(&mem_root, 4096, 0);
+  SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
   if (!(table_mon_list = (SPIDER_TABLE_MON_LIST *)
     spider_bulk_malloc(spider_current_trx, 36, MYF(MY_WME | MY_ZEROFILL),
       &table_mon_list, sizeof(SPIDER_TABLE_MON_LIST),
@@ -827,21 +827,63 @@ long long spider_ping_table_body(
   conv_name.length(0);
   if (
     thd->open_tables != 0 ||
-    thd->temporary_tables != 0 ||
     thd->handler_tables_hash.records != 0 ||
     thd->derived_tables != 0 ||
     thd->lock != 0 ||
 #if MYSQL_VERSION_ID < 50500
     thd->locked_tables != 0 ||
-    thd->prelocked_mode != NON_PRELOCKED ||
+    thd->prelocked_mode != NON_PRELOCKED
 #else
     thd->locked_tables_list.locked_tables() ||
-    thd->locked_tables_mode != LTM_NONE ||
+    thd->locked_tables_mode != LTM_NONE
 #endif
-    thd->m_reprepare_observer != NULL
   ) {
-    my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
-      ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR, MYF(0));
+    if (thd->open_tables != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->open_tables", thd->open_tables);
+    } else if (thd->handler_tables_hash.records != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_NUM, MYF(0),
+        "thd->handler_tables_hash.records",
+        (longlong) thd->handler_tables_hash.records);
+    } else if (thd->derived_tables != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->derived_tables", thd->derived_tables);
+    } else if (thd->lock != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->lock", thd->lock);
+#if MYSQL_VERSION_ID < 50500
+    } else if (thd->locked_tables != 0)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->locked_tables", thd->locked_tables);
+    } else if (thd->prelocked_mode != NON_PRELOCKED)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_NUM, MYF(0),
+        "thd->prelocked_mode", (longlong) thd->prelocked_mode);
+#else
+    } else if (thd->locked_tables_list.locked_tables())
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_PTR, MYF(0),
+        "thd->locked_tables_list.locked_tables()",
+        thd->locked_tables_list.locked_tables());
+    } else if (thd->locked_tables_mode != LTM_NONE)
+    {
+      my_printf_error(ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_NUM,
+        ER_SPIDER_UDF_CANT_USE_IF_OPEN_TABLE_STR_WITH_NUM, MYF(0),
+        "thd->locked_tables_mode", (longlong) thd->locked_tables_mode);
+#endif
+    }
     goto error;
   }
 
@@ -883,8 +925,14 @@ long long spider_ping_table_body(
   conv_name.q_append(link_idx_str, link_idx_str_length + 1);
   conv_name.length(conv_name.length() - 1);
 
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100002
+  if (!(table_mon_list = spider_get_ping_table_mon_list(trx, trx->thd,
+    &conv_name, conv_name_length, link_idx, global_system_variables.server_id,
+    TRUE, &error_num)))
+#else
   if (!(table_mon_list = spider_get_ping_table_mon_list(trx, trx->thd,
     &conv_name, conv_name_length, link_idx, thd->server_id, TRUE, &error_num)))
+#endif
     goto error;
 
   if (table_mon_list->mon_status == SPIDER_LINK_MON_NG)
@@ -911,7 +959,11 @@ long long spider_ping_table_body(
       goto error_with_free_table_mon_list;
     }
   } else {
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100002
+    first_sid = global_system_variables.server_id;
+#else
     first_sid = thd->server_id;
+#endif
     full_mon_count = table_mon_list->list_size;
     current_mon_count = 1;
   }
@@ -1104,11 +1156,7 @@ my_bool spider_ping_table_init_body(
   if (!(trx = spider_get_trx(thd, TRUE, &error_num)))
   {
     my_error(error_num, MYF(0));
-#if MYSQL_VERSION_ID < 50500
-    strcpy(message, thd->main_da.message());
-#else
-    strcpy(message, thd->stmt_da->message());
-#endif
+    strcpy(message, spider_stmt_da_message(thd));
     goto error;
   }
 

@@ -125,6 +125,10 @@ void spider_conn_clear_queue(
   SPIDER_CONN *conn
 );
 
+void spider_conn_clear_queue_at_commit(
+  SPIDER_CONN *conn
+);
+
 void spider_conn_set_timeout(
   SPIDER_CONN *conn,
   uint net_read_timeout,

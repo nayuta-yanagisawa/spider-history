@@ -38,6 +38,10 @@
 #include "spd_ping_table.h"
 #include "spd_malloc.h"
 
+extern pthread_mutex_t *spd_db_att_LOCK_xid_cache;
+extern HASH *spd_db_att_xid_cache;
+extern struct charset_info_st *spd_charset_utf8_bin;
+
 extern handlerton *spider_hton_ptr;
 pthread_mutex_t spider_thread_id_mutex;
 ulonglong spider_thread_id = 1;
@@ -94,6 +98,7 @@ int spider_free_trx_conn(
     while ((conn = (SPIDER_CONN*) my_hash_element(&trx->trx_conn_hash,
       roop_count)))
     {
+      spider_conn_clear_queue_at_commit(conn);
       if (conn->table_lock)
       {
         DBUG_ASSERT(!trx_free);
@@ -106,6 +111,7 @@ int spider_free_trx_conn(
     while ((conn = (SPIDER_CONN*) my_hash_element(&trx->trx_conn_hash,
       roop_count)))
     {
+      spider_conn_clear_queue_at_commit(conn);
       if (conn->table_lock)
       {
         DBUG_ASSERT(!trx_free);
@@ -172,7 +178,7 @@ int spider_free_trx_conn(
     }
   }
 #endif
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   if (trx_free)
   {
     while ((conn = (SPIDER_CONN*) my_hash_element(
@@ -1060,7 +1066,7 @@ int spider_free_trx_alloc(
     trx->trx_another_conn_hash.array.max_element *
     trx->trx_another_conn_hash.array.size_of_element);
   my_hash_free(&trx->trx_another_conn_hash);
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   spider_free_mem_calc(spider_current_trx,
     trx->trx_direct_hs_r_conn_hash_id,
     trx->trx_direct_hs_r_conn_hash.array.max_element *
@@ -1138,7 +1144,7 @@ SPIDER_TRX *spider_get_trx(
     }
 
     if (
-      my_hash_init(&trx->trx_conn_hash, &my_charset_utf8_bin, 32, 0, 0,
+      my_hash_init(&trx->trx_conn_hash, spd_charset_utf8_bin, 32, 0, 0,
                    (my_hash_get_key) spider_conn_get_key, 0, 0)
     )
       goto error_init_hash;
@@ -1150,7 +1156,7 @@ SPIDER_TRX *spider_get_trx(
       trx->trx_conn_hash.array.size_of_element);
 
     if (
-      my_hash_init(&trx->trx_another_conn_hash, &my_charset_utf8_bin, 32, 0, 0,
+      my_hash_init(&trx->trx_another_conn_hash, spd_charset_utf8_bin, 32, 0, 0,
                    (my_hash_get_key) spider_conn_get_key, 0, 0)
     )
       goto error_init_another_hash;
@@ -1163,7 +1169,7 @@ SPIDER_TRX *spider_get_trx(
 
 #if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (
-      my_hash_init(&trx->trx_hs_r_conn_hash, &my_charset_utf8_bin, 32, 0, 0,
+      my_hash_init(&trx->trx_hs_r_conn_hash, spd_charset_utf8_bin, 32, 0, 0,
                    (my_hash_get_key) spider_conn_get_key, 0, 0)
     )
       goto error_hs_r_init_hash;
@@ -1175,7 +1181,7 @@ SPIDER_TRX *spider_get_trx(
       trx->trx_hs_r_conn_hash.array.size_of_element);
 
     if (
-      my_hash_init(&trx->trx_hs_w_conn_hash, &my_charset_utf8_bin, 32, 0, 0,
+      my_hash_init(&trx->trx_hs_w_conn_hash, spd_charset_utf8_bin, 32, 0, 0,
                    (my_hash_get_key) spider_conn_get_key, 0, 0)
     )
       goto error_hs_w_init_hash;
@@ -1187,9 +1193,9 @@ SPIDER_TRX *spider_get_trx(
       trx->trx_hs_w_conn_hash.array.size_of_element);
 #endif
 
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
     if (
-      my_hash_init(&trx->trx_direct_hs_r_conn_hash, &my_charset_utf8_bin, 32,
+      my_hash_init(&trx->trx_direct_hs_r_conn_hash, spd_charset_utf8_bin, 32,
         0, 0, (my_hash_get_key) spider_conn_get_key, 0, 0)
     )
       goto error_direct_hs_r_init_hash;
@@ -1201,7 +1207,7 @@ SPIDER_TRX *spider_get_trx(
       trx->trx_direct_hs_r_conn_hash.array.size_of_element);
 
     if (
-      my_hash_init(&trx->trx_direct_hs_w_conn_hash, &my_charset_utf8_bin, 32,
+      my_hash_init(&trx->trx_direct_hs_w_conn_hash, spd_charset_utf8_bin, 32,
         0, 0, (my_hash_get_key) spider_conn_get_key, 0, 0)
     )
       goto error_direct_hs_w_init_hash;
@@ -1214,7 +1220,7 @@ SPIDER_TRX *spider_get_trx(
 #endif
 
     if (
-      my_hash_init(&trx->trx_alter_table_hash, &my_charset_utf8_bin, 32, 0, 0,
+      my_hash_init(&trx->trx_alter_table_hash, spd_charset_utf8_bin, 32, 0, 0,
                    (my_hash_get_key) spider_alter_tbl_get_key, 0, 0)
     )
       goto error_init_alter_hash;
@@ -1226,7 +1232,7 @@ SPIDER_TRX *spider_get_trx(
       trx->trx_alter_table_hash.array.size_of_element);
 
     if (
-      my_hash_init(&trx->trx_ha_hash, &my_charset_utf8_bin, 32, 0, 0,
+      my_hash_init(&trx->trx_ha_hash, spd_charset_utf8_bin, 32, 0, 0,
                    (my_hash_get_key) spider_trx_ha_get_key, 0, 0)
     )
       goto error_init_trx_ha_hash;
@@ -1302,7 +1308,7 @@ error_init_trx_ha_hash:
     trx->trx_alter_table_hash.array.size_of_element);
   my_hash_free(&trx->trx_alter_table_hash);
 error_init_alter_hash:
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   spider_free_mem_calc(
     thd ? ((SPIDER_TRX *) *thd_ha_data(thd, spider_hton_ptr)) : NULL,
     trx->trx_direct_hs_w_conn_hash_id,
@@ -1497,15 +1503,15 @@ int spider_xa_lock(
   int error_num;
   DBUG_ENTER("spider_xa_lock");
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
-  my_hash_value_type hash_value = my_calc_hash(&xid_cache,
+  my_hash_value_type hash_value = my_calc_hash(spd_db_att_xid_cache,
     (uchar*) xid_state->xid.key(), xid_state->xid.key_length());
 #endif
-  pthread_mutex_lock(&LOCK_xid_cache);
+  pthread_mutex_lock(spd_db_att_LOCK_xid_cache);
 #ifdef SPIDER_HAS_HASH_VALUE_TYPE
-  if (my_hash_search_using_hash_value(&xid_cache, hash_value,
+  if (my_hash_search_using_hash_value(spd_db_att_xid_cache, hash_value,
     xid_state->xid.key(), xid_state->xid.key_length()))
 #else
-  if (my_hash_search(&xid_cache,
+  if (my_hash_search(spd_db_att_xid_cache,
     xid_state->xid.key(), xid_state->xid.key_length()))
 #endif
   {
@@ -1513,20 +1519,20 @@ int spider_xa_lock(
     goto error;
   }
 #ifdef HASH_UPDATE_WITH_HASH_VALUE
-  if (my_hash_insert_with_hash_value(&xid_cache, hash_value,
+  if (my_hash_insert_with_hash_value(spd_db_att_xid_cache, hash_value,
     (uchar*)xid_state))
 #else
-  if (my_hash_insert(&xid_cache, (uchar*)xid_state))
+  if (my_hash_insert(spd_db_att_xid_cache, (uchar*)xid_state))
 #endif
   {
     error_num = HA_ERR_OUT_OF_MEM;
     goto error;
   }
-  pthread_mutex_unlock(&LOCK_xid_cache);
+  pthread_mutex_unlock(spd_db_att_LOCK_xid_cache);
   DBUG_RETURN(0);
 
 error:
-  pthread_mutex_unlock(&LOCK_xid_cache);
+  pthread_mutex_unlock(spd_db_att_LOCK_xid_cache);
   DBUG_RETURN(error_num);
 }
 
@@ -1534,17 +1540,17 @@ int spider_xa_unlock(
   XID_STATE *xid_state
 ) {
   DBUG_ENTER("spider_xa_unlock");
-#ifdef SPIDER_HAS_HASH_VALUE_TYPE
-  my_hash_value_type hash_value = my_calc_hash(&xid_cache,
+#if defined(SPIDER_HAS_HASH_VALUE_TYPE) && defined(HASH_UPDATE_WITH_HASH_VALUE)
+  my_hash_value_type hash_value = my_calc_hash(spd_db_att_xid_cache,
     (uchar*) xid_state->xid.key(), xid_state->xid.key_length());
 #endif
-  pthread_mutex_lock(&LOCK_xid_cache);
-#ifdef HASH_UPDATE_WITH_HASH_VALUE
-  my_hash_delete_with_hash_value(&xid_cache, hash_value, (uchar *)xid_state);
+  pthread_mutex_lock(spd_db_att_LOCK_xid_cache);
+#if defined(SPIDER_HAS_HASH_VALUE_TYPE) && defined(HASH_UPDATE_WITH_HASH_VALUE)
+  my_hash_delete_with_hash_value(spd_db_att_xid_cache, hash_value, (uchar *)xid_state);
 #else
-  my_hash_delete(&xid_cache, (uchar *)xid_state);
+  my_hash_delete(spd_db_att_xid_cache, (uchar *)xid_state);
 #endif
-  pthread_mutex_unlock(&LOCK_xid_cache);
+  pthread_mutex_unlock(spd_db_att_LOCK_xid_cache);
   DBUG_RETURN(0);
 }
 
@@ -1617,6 +1623,8 @@ int spider_internal_start_trx(
         goto error;
     }
   }
+  DBUG_PRINT("info",("spider trx->trx_start= %s",
+    trx->trx_start ? "TRUE" : "FALSE"));
   if (!trx->trx_start)
   {
     if (
@@ -1636,10 +1644,17 @@ int spider_internal_start_trx(
         trx->xid.gtrid_length
           = my_sprintf(trx->xid.data,
           (trx->xid.data, "%lx", thd_get_thread_id(trx->thd)));
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100002
+        trx->xid.bqual_length
+          = my_sprintf(trx->xid.data + trx->xid.gtrid_length,
+          (trx->xid.data + trx->xid.gtrid_length, "%lx",
+          trx->thd->variables.server_id));
+#else
         trx->xid.bqual_length
           = my_sprintf(trx->xid.data + trx->xid.gtrid_length,
           (trx->xid.data + trx->xid.gtrid_length, "%x",
           trx->thd->server_id));
+#endif
 
         trx->internal_xid_state.xa_state = XA_ACTIVE;
         trx->internal_xid_state.xid.set(&trx->xid);
@@ -1661,6 +1676,8 @@ int spider_internal_start_trx(
       }
     }
 
+    DBUG_PRINT("info",("spider trx->trx_consistent_snapshot= %s",
+      trx->trx_consistent_snapshot ? "TRUE" : "FALSE"));
     if (!trx->trx_consistent_snapshot)
     {
       trans_register_ha(trx->thd, FALSE, spider_hton_ptr);
@@ -1791,7 +1808,7 @@ int spider_internal_xa_commit(
     error_num = ER_SPIDER_XA_NOT_EXISTS_NUM;
     goto error;
   }
-  init_alloc_root(&mem_root, 4096, 0);
+  SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
   if (
     force_commit != 2 &&
     (error_num = spider_check_sys_xa_status(
@@ -1831,6 +1848,8 @@ int spider_internal_xa_commit(
   if ((conn = spider_tree_first(trx->join_trx_top)))
   {
     do {
+      DBUG_PRINT("info",("spider conn=%p", conn));
+      DBUG_PRINT("info",("spider conn->join_trx=%u", conn->join_trx));
       if (conn->join_trx)
       {
         if ((tmp_error_num = spider_db_xa_commit(conn, &trx->xid)))
@@ -1842,6 +1861,8 @@ int spider_internal_xa_commit(
             if (!error_num && tmp_error_num)
               error_num = tmp_error_num;
           }
+          spider_sys_log_xa_failed(thd, &trx->xid, conn,
+            SPIDER_SYS_XA_COMMIT_STR, TRUE);
         }
         if ((tmp_error_num = spider_end_trx(trx, conn)))
         {
@@ -1967,7 +1988,7 @@ int spider_internal_xa_rollback(
       error_num = ER_SPIDER_XA_NOT_EXISTS_NUM;
       goto error;
     }
-    init_alloc_root(&mem_root, 4096, 0);
+    SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
     if (
       force_commit != 2 &&
       (error_num = spider_check_sys_xa_status(
@@ -2354,7 +2375,7 @@ int spider_internal_xa_recover(
     goto error;
   }
 
-  init_alloc_root(&mem_root, 4096, 0);
+  SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
   do {
     spider_get_sys_xid(table_xa, &xid_list[cnt], &mem_root);
     cnt++;
@@ -2408,14 +2429,18 @@ int spider_initinal_xa_recover(
     }
   }
 
+/*
   if (!thd)
   {
+*/
     if (!(thd = spider_create_tmp_thd()))
     {
       error_num = HA_ERR_OUT_OF_MEM;
       goto error_create_thd;
     }
+/*
   }
+*/
 
   /*
     select
@@ -2436,7 +2461,7 @@ int spider_initinal_xa_recover(
       goto error_open_table;
     init_read_record(read_record, thd, table_xa, NULL, TRUE, FALSE, FALSE);
   }
-  init_alloc_root(&mem_root, 4096, 0);
+  SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
   while ((!(read_record->read_record(read_record))) && cnt < (int) len)
   {
     spider_get_sys_xid(table_xa, &xid_list[cnt], &mem_root);
@@ -2444,8 +2469,10 @@ int spider_initinal_xa_recover(
   }
   free_root(&mem_root, MYF(0));
 
+/*
   if (cnt < (int) len)
   {
+*/
     end_read_record(read_record);
     spider_close_sys_table(thd, table_xa, open_tables_backup, TRUE);
     table_xa = NULL;
@@ -2455,7 +2482,9 @@ int spider_initinal_xa_recover(
     read_record = NULL;
     delete open_tables_backup;
     open_tables_backup = NULL;
+/*
   }
+*/
   DBUG_RETURN(cnt);
 
 /*
@@ -2487,9 +2516,10 @@ int spider_internal_xa_commit_by_xid(
   char xa_key[MAX_KEY_LENGTH];
   char xa_member_key[MAX_KEY_LENGTH];
   SPIDER_SHARE tmp_share;
-  char *tmp_connect_info[8];
-  uint tmp_connect_info_length[8];
-  long tmp_tgt_port, tmp_link_statuses;
+  char *tmp_connect_info[SPIDER_TMP_SHARE_CHAR_PTR_COUNT];
+  uint tmp_connect_info_length[SPIDER_TMP_SHARE_UINT_COUNT];
+  long tmp_long[SPIDER_TMP_SHARE_LONG_COUNT];
+  longlong tmp_longlong[SPIDER_TMP_SHARE_LONGLONG_COUNT];
   SPIDER_CONN *conn;
   uint force_commit = spider_param_force_commit(thd);
   MEM_ROOT mem_root;
@@ -2532,7 +2562,7 @@ int spider_internal_xa_commit_by_xid(
     error_num = ER_SPIDER_XA_NOT_EXISTS_NUM;
     goto error;
   }
-  init_alloc_root(&mem_root, 4096, 0);
+  SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
   if (
     force_commit != 2 &&
     (error_num = spider_check_sys_xa_status(
@@ -2613,36 +2643,10 @@ int spider_internal_xa_commit_by_xid(
   }
 
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
-  tmp_share.link_count = 1;
-  tmp_share.all_link_count = 1;
-  tmp_share.server_names = &tmp_connect_info[0];
-  tmp_share.tgt_table_names = &tmp_connect_info[1];
-  tmp_share.tgt_dbs = &tmp_connect_info[2];
-  tmp_share.tgt_hosts = &tmp_connect_info[3];
-  tmp_share.tgt_usernames = &tmp_connect_info[4];
-  tmp_share.tgt_passwords = &tmp_connect_info[5];
-  tmp_share.tgt_sockets = &tmp_connect_info[6];
-  tmp_share.tgt_wrappers = &tmp_connect_info[7];
-  tmp_share.tgt_ports = &tmp_tgt_port;
-  tmp_share.link_statuses = &tmp_link_statuses;
-  tmp_share.server_names_lengths = &tmp_connect_info_length[0];
-  tmp_share.tgt_table_names_lengths = &tmp_connect_info_length[1];
-  tmp_share.tgt_dbs_lengths = &tmp_connect_info_length[2];
-  tmp_share.tgt_hosts_lengths = &tmp_connect_info_length[3];
-  tmp_share.tgt_usernames_lengths = &tmp_connect_info_length[4];
-  tmp_share.tgt_passwords_lengths = &tmp_connect_info_length[5];
-  tmp_share.tgt_sockets_lengths = &tmp_connect_info_length[6];
-  tmp_share.tgt_wrappers_lengths = &tmp_connect_info_length[7];
-  tmp_share.server_names_length = 1;
-  tmp_share.tgt_table_names_length = 1;
-  tmp_share.tgt_dbs_length = 1;
-  tmp_share.tgt_hosts_length = 1;
-  tmp_share.tgt_usernames_length = 1;
-  tmp_share.tgt_passwords_length = 1;
-  tmp_share.tgt_sockets_length = 1;
-  tmp_share.tgt_wrappers_length = 1;
-  tmp_share.tgt_ports_length = 1;
-  tmp_share.link_statuses_length = 1;
+  memset(&tmp_connect_info, 0,
+    sizeof(char *) * SPIDER_TMP_SHARE_CHAR_PTR_COUNT);
+  spider_set_tmp_share_pointer(&tmp_share, tmp_connect_info,
+    tmp_connect_info_length, tmp_long, tmp_longlong);
   do {
     SPIDER_BACKUP_DASTATUS;
     spider_get_sys_server_info(table_xa_member, &tmp_share, 0, &mem_root);
@@ -2747,9 +2751,10 @@ int spider_internal_xa_rollback_by_xid(
   char xa_key[MAX_KEY_LENGTH];
   char xa_member_key[MAX_KEY_LENGTH];
   SPIDER_SHARE tmp_share;
-  char *tmp_connect_info[8];
-  uint tmp_connect_info_length[8];
-  long tmp_tgt_port, tmp_link_statuses;
+  char *tmp_connect_info[SPIDER_TMP_SHARE_CHAR_PTR_COUNT];
+  uint tmp_connect_info_length[SPIDER_TMP_SHARE_UINT_COUNT];
+  long tmp_long[SPIDER_TMP_SHARE_LONG_COUNT];
+  longlong tmp_longlong[SPIDER_TMP_SHARE_LONGLONG_COUNT];
   SPIDER_CONN *conn;
   uint force_commit = spider_param_force_commit(thd);
   MEM_ROOT mem_root;
@@ -2790,7 +2795,7 @@ int spider_internal_xa_rollback_by_xid(
     error_num = ER_SPIDER_XA_NOT_EXISTS_NUM;
     goto error;
   }
-  init_alloc_root(&mem_root, 4096, 0);
+  SPD_INIT_ALLOC_ROOT(&mem_root, 4096, 0, MYF(MY_WME));
   if (
     force_commit != 2 &&
     (error_num = spider_check_sys_xa_status(
@@ -2871,36 +2876,10 @@ int spider_internal_xa_rollback_by_xid(
   }
 
   memset(&tmp_share, 0, sizeof(SPIDER_SHARE));
-  tmp_share.link_count = 1;
-  tmp_share.all_link_count = 1;
-  tmp_share.server_names = &tmp_connect_info[0];
-  tmp_share.tgt_table_names = &tmp_connect_info[1];
-  tmp_share.tgt_dbs = &tmp_connect_info[2];
-  tmp_share.tgt_hosts = &tmp_connect_info[3];
-  tmp_share.tgt_usernames = &tmp_connect_info[4];
-  tmp_share.tgt_passwords = &tmp_connect_info[5];
-  tmp_share.tgt_sockets = &tmp_connect_info[6];
-  tmp_share.tgt_wrappers = &tmp_connect_info[7];
-  tmp_share.tgt_ports = &tmp_tgt_port;
-  tmp_share.link_statuses = &tmp_link_statuses;
-  tmp_share.server_names_lengths = &tmp_connect_info_length[0];
-  tmp_share.tgt_table_names_lengths = &tmp_connect_info_length[1];
-  tmp_share.tgt_dbs_lengths = &tmp_connect_info_length[2];
-  tmp_share.tgt_hosts_lengths = &tmp_connect_info_length[3];
-  tmp_share.tgt_usernames_lengths = &tmp_connect_info_length[4];
-  tmp_share.tgt_passwords_lengths = &tmp_connect_info_length[5];
-  tmp_share.tgt_sockets_lengths = &tmp_connect_info_length[6];
-  tmp_share.tgt_wrappers_lengths = &tmp_connect_info_length[7];
-  tmp_share.server_names_length = 1;
-  tmp_share.tgt_table_names_length = 1;
-  tmp_share.tgt_dbs_length = 1;
-  tmp_share.tgt_hosts_length = 1;
-  tmp_share.tgt_usernames_length = 1;
-  tmp_share.tgt_passwords_length = 1;
-  tmp_share.tgt_sockets_length = 1;
-  tmp_share.tgt_wrappers_length = 1;
-  tmp_share.tgt_ports_length = 1;
-  tmp_share.link_statuses_length = 1;
+  memset(&tmp_connect_info, 0,
+    sizeof(char *) * SPIDER_TMP_SHARE_CHAR_PTR_COUNT);
+  spider_set_tmp_share_pointer(&tmp_share, tmp_connect_info,
+    tmp_connect_info_length, tmp_long, tmp_longlong);
   do {
     SPIDER_BACKUP_DASTATUS;
     spider_get_sys_server_info(table_xa_member, &tmp_share, 0, &mem_root);
@@ -3126,11 +3105,13 @@ int spider_commit(
 */
           DBUG_RETURN(error_num);
         }
+        int tmp_error_num;
         if (
-          (error_num = spider_internal_xa_commit(
+          (tmp_error_num = spider_internal_xa_commit(
             thd, trx, &trx->xid, table_xa, table_xa_member))
         ) {
-          DBUG_RETURN(error_num);
+          if (tmp_error_num)
+            error_num = tmp_error_num;
         }
         trx->trx_xa = FALSE;
       } else {
@@ -3159,6 +3140,7 @@ int spider_commit(
         }
       }
       trx->trx_start = FALSE;
+      DBUG_PRINT("info",("spider trx->trx_start=FALSE"));
     }
     spider_reuse_trx_ha(trx);
     spider_free_trx_conn(trx, FALSE);
@@ -3193,10 +3175,13 @@ int spider_rollback(
     {
       if (trx->trx_xa)
       {
+        int tmp_error_num;
         if (
-          (error_num = spider_internal_xa_rollback(thd, trx))
-        )
-          DBUG_RETURN(error_num);
+          (tmp_error_num = spider_internal_xa_rollback(thd, trx))
+        ) {
+          if (tmp_error_num)
+            error_num = tmp_error_num;
+        }
         trx->trx_xa = FALSE;
       } else {
         if ((conn = spider_tree_first(trx->join_trx_top)))
@@ -3225,6 +3210,7 @@ int spider_rollback(
         }
       }
       trx->trx_start = FALSE;
+      DBUG_PRINT("info",("spider trx->trx_start=FALSE"));
     }
     spider_reuse_trx_ha(trx);
     spider_free_trx_conn(trx, FALSE);
@@ -3750,7 +3736,11 @@ THD *spider_create_tmp_thd()
   DBUG_ENTER("spider_create_tmp_thd");
   if (!(thd = new THD))
     DBUG_RETURN(NULL);
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
+  thd->killed = NOT_KILLED;
+#else
   thd->killed = THD::NOT_KILLED;
+#endif
 #if MYSQL_VERSION_ID < 50500
   thd->locked_tables = FALSE;
 #endif
@@ -3767,6 +3757,11 @@ void spider_free_tmp_thd(
   THD *thd
 ) {
   DBUG_ENTER("spider_free_tmp_thd");
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100000
+  thd->reset_globals();
+#else
+  thd->restore_globals();
+#endif
   thd->cleanup();
   delete thd;
   DBUG_VOID_RETURN;
@@ -3984,7 +3979,7 @@ int spider_trx_check_link_idx_failed(
   uint *conn_link_idx = spider->conn_link_idx;
   int link_count = share->link_count;
   uchar *conn_can_fo = spider->conn_can_fo;
-  DBUG_ENTER("spider_trx_set_link_idx_for_all");
+  DBUG_ENTER("spider_trx_check_link_idx_failed");
   for (roop_count = 0; roop_count < link_count; roop_count++)
   {
     if (

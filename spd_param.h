@@ -251,7 +251,7 @@ int spider_param_sts_bg_mode(
 double spider_param_ping_interval_at_trx_start(
   THD *thd
 );
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
 double spider_param_hs_ping_interval(
   THD *thd
 );
@@ -361,3 +361,12 @@ int spider_param_bulk_access_free(
   int bulk_access_free
 );
 #endif
+#if MYSQL_VERSION_ID < 50500
+#else
+int spider_param_udf_ds_use_real_table(
+  THD *thd,
+  int udf_ds_use_real_table
+);
+#endif
+my_bool spider_param_general_log();
+uint spider_param_log_result_errors();

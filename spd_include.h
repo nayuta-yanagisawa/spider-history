@@ -59,6 +59,38 @@
 #define my_sprintf(A,B) sprintf B
 #endif
 
+#if defined(MARIADB_BASE_VERSION) && MYSQL_VERSION_ID >= 100004
+#define spider_stmt_da_message(A) (A)->get_stmt_da()->message()
+#define spider_stmt_da_sql_errno(A) (A)->get_stmt_da()->sql_errno()
+#define spider_user_defined_key_parts(A) (A)->user_defined_key_parts
+#define SPIDER_CAN_BG_UPDATE (1LL << 39)
+#define SPIDER_ALTER_ADD_PARTITION        Alter_info::ALTER_ADD_PARTITION
+#define SPIDER_ALTER_DROP_PARTITION       Alter_info::ALTER_DROP_PARTITION
+#define SPIDER_ALTER_COALESCE_PARTITION   Alter_info::ALTER_COALESCE_PARTITION
+#define SPIDER_ALTER_REORGANIZE_PARTITION Alter_info::ALTER_REORGANIZE_PARTITION
+#define SPIDER_ALTER_TABLE_REORG          Alter_info::ALTER_TABLE_REORG
+#define SPIDER_ALTER_REBUILD_PARTITION    Alter_info::ALTER_REBUILD_PARTITION
+#define SPIDER_WARN_LEVEL_WARN            Sql_condition::WARN_LEVEL_WARN
+#define SPIDER_WARN_LEVEL_NOTE            Sql_condition::WARN_LEVEL_NOTE
+#else
+#if MYSQL_VERSION_ID < 50500
+#define spider_stmt_da_message(A) (A)->main_da.message()
+#define spider_stmt_da_sql_errno(A) (A)->main_da.sql_errno()
+#else
+#define spider_stmt_da_message(A) (A)->stmt_da->message()
+#define spider_stmt_da_sql_errno(A) (A)->stmt_da->sql_errno()
+#endif
+#define spider_user_defined_key_parts(A) (A)->key_parts
+#define SPIDER_ALTER_ADD_PARTITION        ALTER_ADD_PARTITION
+#define SPIDER_ALTER_DROP_PARTITION       ALTER_DROP_PARTITION
+#define SPIDER_ALTER_COALESCE_PARTITION   ALTER_COALESCE_PARTITION
+#define SPIDER_ALTER_REORGANIZE_PARTITION ALTER_REORGANIZE_PARTITION
+#define SPIDER_ALTER_TABLE_REORG          ALTER_TABLE_REORG
+#define SPIDER_ALTER_REBUILD_PARTITION    ALTER_REBUILD_PARTITION
+#define SPIDER_WARN_LEVEL_WARN            MYSQL_ERROR::WARN_LEVEL_WARN
+#define SPIDER_WARN_LEVEL_NOTE            MYSQL_ERROR::WARN_LEVEL_NOTE
+#endif
+
 #if MYSQL_VERSION_ID >= 50500
 #define SPIDER_HAS_HASH_VALUE_TYPE
 #endif
@@ -86,7 +118,7 @@
 #define SPIDER_TMP_SHARE_LONG_COUNT         15
 #define SPIDER_TMP_SHARE_LONGLONG_COUNT      3
 
-#define SPIDER_MEM_CALC_LIST_NUM           228
+#define SPIDER_MEM_CALC_LIST_NUM           243
 
 #define SPIDER_BACKUP_DASTATUS \
   bool da_status; if (thd) da_status = thd->is_error(); else da_status = FALSE;
@@ -388,6 +420,7 @@ typedef struct st_spider_patition_handler_share
   void               *creator;
   void               **handlers;
   uchar              *searched_bitmap;
+  uchar              *ft_discard_bitmap;
   uchar              *idx_read_bitmap;
   uchar              *idx_write_bitmap;
   uchar              *rnd_read_bitmap;
@@ -476,7 +509,7 @@ typedef struct st_spider_transaction
   const char         *trx_hs_w_conn_hash_file_name;
   ulong              trx_hs_w_conn_hash_line_no;
 #endif
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   HASH               trx_direct_hs_r_conn_hash;
   uint               trx_direct_hs_r_conn_hash_id;
   const char         *trx_direct_hs_r_conn_hash_func_name;
@@ -564,6 +597,7 @@ typedef struct st_spider_share
   volatile bool      init;
   volatile bool      init_error;
   volatile time_t    init_error_time;
+  volatile bool      link_status_init;
   volatile bool      sts_init;
   volatile time_t    sts_get_time;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
@@ -693,6 +727,12 @@ typedef struct st_spider_share
 #endif
 #ifdef HA_CAN_BULK_ACCESS
   int                bulk_access_free;
+#endif
+#ifdef HA_CAN_FORCE_BULK_UPDATE
+  int                force_bulk_update;
+#endif
+#ifdef HA_CAN_FORCE_BULK_DELETE
+  int                force_bulk_delete;
 #endif
 
   int                bka_mode;
@@ -906,6 +946,17 @@ typedef struct st_spider_direct_sql
   TABLE                **tables;
   int                  *iop;
 
+#if MYSQL_VERSION_ID < 50500
+#else
+  /* for using real table */
+  bool                 real_table_used;
+  TABLE_LIST           *table_list_first;
+  TABLE_LIST           *table_list;
+  uchar                *real_table_bitmap;
+  Open_tables_backup   open_tables_backup;
+  THD                  *open_tables_thd;
+#endif
+
   char                 *sql;
   ulong                sql_length;
 
@@ -921,8 +972,12 @@ typedef struct st_spider_direct_sql
   int                  net_write_timeout;
   longlong             bulk_insert_rows;
   int                  connection_channel;
-#ifdef HAVE_HANDLERSOCKET
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
   int                  access_mode;
+#endif
+#if MYSQL_VERSION_ID < 50500
+#else
+  int                  use_real_table;
 #endif
 
   char                 *server_name;
@@ -1100,6 +1155,21 @@ typedef struct st_spider_bulk_access_link
   st_spider_bulk_access_link *next;
 } SPIDER_BULK_ACCESS_LINK;
 #endif
+
+#define SPIDER_INT_HLD_TGT_SIZE 100
+typedef struct st_spider_int_hld
+{
+  uint tgt_num;
+  int tgt[SPIDER_INT_HLD_TGT_SIZE];
+  st_spider_int_hld *next;
+} SPIDER_INT_HLD;
+
+typedef struct st_spider_item_hld
+{
+  uint tgt_num;
+  Item *item;
+  st_spider_item_hld *next;
+} SPIDER_ITEM_HLD;
 
 char *spider_create_string(
   const char *str,
