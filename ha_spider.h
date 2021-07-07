@@ -51,6 +51,7 @@ public:
   int                selupd_lock_mode;
   bool               bulk_insert;
   int                bulk_size;
+  int                direct_dup_insert;
   int                store_error_num;
   uint               dup_key_idx;
   int                select_column_mode;

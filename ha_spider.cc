@@ -785,7 +785,7 @@ int ha_spider::index_first(
         &result_list.sql, &share->key_hint[active_index]))
     )
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    result_list.where_pos = result_list.order_pos = result_list.sql.length();
+    result_list.where_pos = result_list.sql.length();
     result_list.desc_flg = FALSE;
     result_list.sorted = TRUE;
     result_list.key_info = &table->key_info[active_index];
@@ -794,6 +794,8 @@ int ha_spider::index_first(
       result_list.internal_limit >= result_list.split_read ?
       result_list.split_read : result_list.internal_limit;
     if (
+      (error_num = spider_db_append_key_where(
+        NULL, NULL, this)) ||
       (error_num = spider_db_append_key_order(this)) ||
       (error_num = spider_db_append_limit(
         &result_list.sql, result_list.internal_offset,
@@ -855,7 +857,7 @@ int ha_spider::index_last(
         &result_list.sql, &share->key_hint[active_index]))
     )
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-    result_list.where_pos = result_list.order_pos = result_list.sql.length();
+    result_list.where_pos = result_list.sql.length();
     result_list.desc_flg = TRUE;
     result_list.sorted = TRUE;
     result_list.key_info = &table->key_info[active_index];
@@ -864,6 +866,8 @@ int ha_spider::index_last(
       result_list.internal_limit >= result_list.split_read ?
       result_list.split_read : result_list.internal_limit;
     if (
+      (error_num = spider_db_append_key_where(
+        NULL, NULL, this)) ||
       (error_num = spider_db_append_key_order(this)) ||
       (error_num = spider_db_append_limit(
         &result_list.sql, result_list.internal_offset,
@@ -1565,7 +1569,7 @@ int ha_spider::info(
       stats.auto_increment_value = share->auto_increment_value;
   }
   if (flag & HA_STATUS_ERRKEY)
-    table->file->errkey = dup_key_idx;
+    errkey = dup_key_idx;
   DBUG_RETURN(0);
 }
 
@@ -2016,11 +2020,16 @@ int ha_spider::write_row(
   }
   if (!bulk_insert || bulk_size < 0)
   {
+    direct_dup_insert =
+      THDVAR(trx->thd, direct_dup_insert) < 0 ?
+      share->direct_dup_insert :
+      THDVAR(trx->thd, direct_dup_insert);
+    DBUG_PRINT("info",("spider direct_dup_insert=%d", direct_dup_insert));
     if ((error_num = spider_db_bulk_insert_init(this, table)))
       DBUG_RETURN(error_num);
     if (bulk_insert)
       bulk_size =
-        insert_with_update ?
+        insert_with_update || (!direct_dup_insert && ignore_dup_key) ?
         0 :
         THDVAR(trx->thd, bulk_size) < 0 ?
         share->bulk_size :

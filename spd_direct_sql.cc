@@ -156,7 +156,10 @@ int spider_udf_direct_sql_create_conn_key(
         my_malloc(direct_sql->conn_key_length + 1, MYF(MY_WME | MY_ZEROFILL)))
   )
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-  *direct_sql->conn_key = '0';
+  if (direct_sql->connection_channel > 48)
+    *direct_sql->conn_key = '0' + 48 - direct_sql->connection_channel;
+  else
+    *direct_sql->conn_key = '0' + direct_sql->connection_channel;
   DBUG_PRINT("info",("spider tgt_wrapper=%s", direct_sql->tgt_wrapper));
   tmp_name = strmov(direct_sql->conn_key + 1, direct_sql->tgt_wrapper);
   DBUG_PRINT("info",("spider tgt_host=%s", direct_sql->tgt_host));
@@ -592,6 +595,7 @@ int spider_udf_parse_direct_sql_param(
   direct_sql->priority = -1;
   direct_sql->net_timeout = -1;
   direct_sql->bulk_insert_rows = -1;
+  direct_sql->connection_channel = -1;
   for (roop_count = 0; roop_count < direct_sql->table_count; roop_count++)
     direct_sql->iop[roop_count] = -1;
 
@@ -643,6 +647,7 @@ int spider_udf_parse_direct_sql_param(
         continue;
       case 3:
         SPIDER_PARAM_LONGLONG("bir", bulk_insert_rows, 0);
+        SPIDER_PARAM_INT_WITH_MAX("cch", connection_channel, 0, 63);
         SPIDER_PARAM_INT("nto", net_timeout, 0);
         SPIDER_PARAM_STR("srv", server_name);
         SPIDER_PARAM_INT_WITH_MAX("trm", table_loop_mode, 0, 2);
@@ -695,6 +700,13 @@ int spider_udf_parse_direct_sql_param(
         goto error;
       case 16:
         SPIDER_PARAM_LONGLONG("bulk_insert_rows", bulk_insert_rows, 1);
+        error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
+        my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,
+          MYF(0), tmp_ptr);
+        goto error;
+      case 18:
+        SPIDER_PARAM_INT_WITH_MAX(
+          "connection_channel", connection_channel, 0, 63);
         error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
         my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,
           MYF(0), tmp_ptr);
@@ -810,6 +822,8 @@ int spider_udf_set_direct_sql_param_default(
     direct_sql->net_timeout = 600;
   if (direct_sql->bulk_insert_rows == -1)
     direct_sql->bulk_insert_rows = 3000;
+  if (direct_sql->connection_channel == -1)
+    direct_sql->connection_channel = 0;
   for (roop_count = 0; roop_count < direct_sql->table_count; roop_count++)
   {
     if (direct_sql->iop[roop_count] == -1)

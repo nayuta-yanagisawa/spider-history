@@ -1016,6 +1016,23 @@ MYSQL_THDVAR_INT(
 );
 
 /*
+ -1 :use table parameter
+  0 :duplicate check on local server
+  1 :avoid duplicate check on local server
+ */
+MYSQL_THDVAR_INT(
+  direct_dup_insert, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Execute \"REPLACE\" and \"INSERT IGNORE\" on remote server and avoid duplicate check on local server", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  1, /* max */
+  0 /* blk */
+);
+
+/*
   1-: mutex count
  */
 static MYSQL_SYSVAR_UINT(
@@ -1134,6 +1151,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(same_server_link),
   MYSQL_SYSVAR(local_lock_table),
   MYSQL_SYSVAR(use_pushdown_udf),
+  MYSQL_SYSVAR(direct_dup_insert),
   MYSQL_SYSVAR(udf_table_lock_mutex_count),
   MYSQL_SYSVAR(udf_ds_bulk_insert_rows),
   MYSQL_SYSVAR(udf_ds_table_loop_mode),
@@ -1150,7 +1168,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0202,
+  0x0203,
   NULL,
   spider_system_variables,
   NULL

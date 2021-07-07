@@ -610,6 +610,7 @@ int spider_parse_connect_info(
   share->auto_increment_mode = -1;
   share->use_table_charset = -1;
   share->use_pushdown_udf = -1;
+  share->direct_dup_insert = -1;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   for (roop_count = 4; roop_count > 0; roop_count--)
@@ -734,6 +735,7 @@ int spider_parse_connect_info(
 #endif
           SPIDER_PARAM_INT_WITH_MAX("ctp", crd_type, 0, 2);
           SPIDER_PARAM_DOUBLE("cwg", crd_weight, 1);
+          SPIDER_PARAM_INT_WITH_MAX("ddi", direct_dup_insert, 0, 1);
           SPIDER_PARAM_INT("isa", init_sql_alloc_size, 0);
           SPIDER_PARAM_INT_WITH_MAX("idl", internal_delayed, 0, 1);
           SPIDER_PARAM_LONGLONG("ilm", internal_limit, 0);
@@ -898,6 +900,8 @@ int spider_parse_connect_info(
             "internal_optimize", internal_optimize, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX(
             "use_table_charset", use_table_charset, 0, 1);
+          SPIDER_PARAM_INT_WITH_MAX(
+            "direct_dup_insert", direct_dup_insert, 0, 1);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -1265,6 +1269,8 @@ int spider_set_connect_info_default(
     share->use_table_charset = 1;
   if (share->use_pushdown_udf == -1)
     share->use_pushdown_udf = 1;
+  if (share->direct_dup_insert == -1)
+    share->direct_dup_insert = 0;
   DBUG_RETURN(0);
 }
 

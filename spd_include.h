@@ -297,6 +297,7 @@ typedef struct st_spider_share
   int                auto_increment_mode;
   int                use_table_charset;
   int                use_pushdown_udf;
+  int                direct_dup_insert;
 
   char               *server_name;
   char               *tgt_table_name;
@@ -355,6 +356,7 @@ typedef struct st_spider_direct_sql
   longlong             priority;
   int                  net_timeout;
   longlong             bulk_insert_rows;
+  int                  connection_channel;
 
   char                 *server_name;
   char                 *tgt_default_db_name;

@@ -1195,7 +1195,7 @@ int spider_db_append_insert(
   String *str = &result_list->insert_sql;
   DBUG_ENTER("spider_db_append_insert");
 
-  if (spider->write_can_replace)
+  if (spider->write_can_replace && spider->direct_dup_insert)
   {
     if (str->reserve(SPIDER_SQL_REPLACE_LEN))
       DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -1228,6 +1228,7 @@ int spider_db_append_insert(
   }
   if (
     spider->ignore_dup_key &&
+    spider->direct_dup_insert &&
     !spider->write_can_replace &&
     !spider->insert_with_update
   ) {
