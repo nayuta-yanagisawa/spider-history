@@ -408,7 +408,7 @@ int spider_db_fetch_key(
 );
 
 int spider_db_fetch_minimum_columns(
-  SPIDER_SHARE *share,
+  ha_spider *spider,
   uchar *buf,
   TABLE *table,
   SPIDER_RESULT_LIST *result_list

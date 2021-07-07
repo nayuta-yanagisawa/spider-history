@@ -37,6 +37,7 @@ char *spider_remote_access_charset;
 int spider_remote_autocommit;
 int spider_remote_sql_log_off;
 int spider_remote_trx_isolation;
+my_bool spider_connect_mutex;
 
 static MYSQL_SYSVAR_BOOL(
   support_xa,
@@ -46,6 +47,16 @@ static MYSQL_SYSVAR_BOOL(
   NULL,
   NULL,
   TRUE
+);
+
+static MYSQL_SYSVAR_BOOL(
+  connect_mutex,
+  spider_connect_mutex,
+  PLUGIN_VAR_OPCMDARG,
+  "Use mutex at connecting",
+  NULL,
+  NULL,
+  FALSE
 );
 
 /*
@@ -1173,6 +1184,36 @@ static MYSQL_SYSVAR_INT(
   0
 );
 
+/*
+  0-:connect retry interval (micro second)
+ */
+MYSQL_THDVAR_LONGLONG(
+  connect_retry_interval, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Connect retry interval", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  1000, /* def */
+  0, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
+
+/*
+  0-:connect retry count
+ */
+MYSQL_THDVAR_INT(
+  connect_retry_count, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Connect retry count", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  1000, /* def */
+  0, /* min */
+  2147483647, /* max */
+  0 /* blk */
+);
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -1252,6 +1293,9 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(remote_autocommit),
   MYSQL_SYSVAR(remote_sql_log_off),
   MYSQL_SYSVAR(remote_trx_isolation),
+  MYSQL_SYSVAR(connect_retry_interval),
+  MYSQL_SYSVAR(connect_retry_count),
+  MYSQL_SYSVAR(connect_mutex),
   NULL
 };
 
@@ -1265,7 +1309,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x020b,
+  0x020c,
   NULL,
   spider_system_variables,
   NULL

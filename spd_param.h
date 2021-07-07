@@ -22,6 +22,7 @@ extern char *spider_remote_access_charset;
 extern int spider_remote_autocommit;
 extern int spider_remote_sql_log_off;
 extern int spider_remote_trx_isolation;
+extern my_bool spider_connect_mutex;
 
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_mode, unsigned int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(conn_recycle_strict, unsigned int);
@@ -89,3 +90,5 @@ extern DECLARE_MYSQL_THDVAR_SIMPLE(use_pushdown_udf, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(direct_dup_insert, int);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(udf_ds_bulk_insert_rows, long long);
 extern DECLARE_MYSQL_THDVAR_SIMPLE(udf_ds_table_loop_mode, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(connect_retry_interval, long long);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(connect_retry_count, int);

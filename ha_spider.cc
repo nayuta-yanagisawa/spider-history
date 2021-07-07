@@ -50,8 +50,11 @@ ha_spider::ha_spider(
   condition = NULL;
   blob_buff = NULL;
   conn_keys = NULL;
+  spider_thread_id = 0;
+  searched_bitmap = NULL;
   result_list.sqls = NULL;
   result_list.insert_sqls = NULL;
+  result_list.bgs_working = FALSE;
   DBUG_VOID_RETURN;
 }
 
@@ -69,8 +72,11 @@ ha_spider::ha_spider(
   condition = NULL;
   blob_buff = NULL;
   conn_keys = NULL;
+  spider_thread_id = 0;
+  searched_bitmap = NULL;
   result_list.sqls = NULL;
   result_list.insert_sqls = NULL;
+  result_list.bgs_working = FALSE;
   ref_length = sizeof(my_off_t);
   DBUG_VOID_RETURN;
 }
@@ -94,6 +100,15 @@ int ha_spider::open(
   int init_sql_alloc_size;
   DBUG_ENTER("ha_spider::open");
   DBUG_PRINT("info",("spider this=%x", this));
+
+  if (!(searched_bitmap = (uchar *)
+    my_multi_malloc(MYF(MY_WME),
+      &searched_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+      NullS))
+  ) {
+    error_num = HA_ERR_OUT_OF_MEM;
+    goto error_searched_bitmap_alloc;
+  }
 
   dup_key_idx = (uint) -1;
   if (!spider_get_share(name, table, thd, this, &error_num))
@@ -165,6 +180,9 @@ error_init_result_list:
 error_get_share:
   if (conn_keys)
     my_free(conn_keys, MYF(0));
+  if (searched_bitmap)
+    my_free(searched_bitmap, MYF(0));
+error_searched_bitmap_alloc:
   DBUG_RETURN(error_num);
 }
 
@@ -184,6 +202,8 @@ int ha_spider::close()
   spider_db_free_result(this, TRUE);
   if (conn_keys)
     my_free(conn_keys, MYF(0));
+  if (searched_bitmap)
+    my_free(searched_bitmap, MYF(0));
   if (blob_buff)
     delete [] blob_buff;
   if (result_list.sqls)
@@ -1735,12 +1755,6 @@ int ha_spider::read_range_first(
   String *sql;
   DBUG_ENTER("ha_spider::read_range_first");
   DBUG_PRINT("info",("spider this=%x", this));
-  if (
-    result_list.current &&
-    (error_num = spider_db_free_result(this, FALSE))
-  )
-    DBUG_RETURN(error_num);
-
   result_list.sql.length(0);
   if (keyread)
     result_list.keyread = TRUE;
@@ -3532,9 +3546,16 @@ void ha_spider::start_bulk_insert(
 int ha_spider::end_bulk_insert()
 {
   DBUG_ENTER("ha_spider::end_bulk_insert");
+  DBUG_RETURN(end_bulk_insert(FALSE));
+}
+
+int ha_spider::end_bulk_insert(
+  bool abort
+) {
+  DBUG_ENTER("ha_spider::end_bulk_insert");
   DBUG_PRINT("info",("spider this=%x", this));
   bulk_insert = FALSE;
-  if (bulk_size == -1)
+  if (bulk_size == -1 || abort)
     DBUG_RETURN(0);
   DBUG_RETURN(spider_db_bulk_insert(this, table, TRUE));
 }
@@ -4259,29 +4280,47 @@ void ha_spider::set_select_column_mode()
 #endif
   select_column_mode = THDVAR(thd, select_column_mode) == -1 ?
     share->select_column_mode : THDVAR(thd, select_column_mode);
-  if (select_column_mode && lock_type == F_WRLCK)
+  if (select_column_mode)
   {
-    if (table_share->primary_key == MAX_KEY)
+    if (lock_type == F_WRLCK)
     {
-      /* need all columns */
-      for (roop_count = 0; roop_count < table_share->fields; roop_count++)
-        bitmap_set_bit(table->read_set, roop_count);
-    } else {
-      /* need primary key columns */
-      key_info = &table_share->key_info[table_share->primary_key];
-      key_part = key_info->key_part;
-      for (roop_count = 0; roop_count < key_info->key_parts; roop_count++)
+      if (table_share->primary_key == MAX_KEY)
       {
-        field = key_part[roop_count].field;
-        bitmap_set_bit(table->read_set, field->field_index);
+        /* need all columns */
+        for (roop_count = 0; roop_count < table_share->fields; roop_count++)
+          bitmap_set_bit(table->read_set, roop_count);
+      } else {
+        /* need primary key columns */
+        key_info = &table_share->key_info[table_share->primary_key];
+        key_part = key_info->key_part;
+        for (roop_count = 0; roop_count < key_info->key_parts; roop_count++)
+        {
+          field = key_part[roop_count].field;
+          bitmap_set_bit(table->read_set, field->field_index);
+        }
       }
-    }
 #ifndef DBUG_OFF
+      for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
+        roop_count++)
+        DBUG_PRINT("info", ("spider change bitmap is %x",
+          ((uchar *) table->read_set->bitmap)[roop_count]));
+#endif
+    }
+
     for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
       roop_count++)
-      DBUG_PRINT("info", ("spider change bitmap is %x",
+    {
+      searched_bitmap[roop_count] =
+        ((uchar *) table->read_set->bitmap)[roop_count] |
+        ((uchar *) table->write_set->bitmap)[roop_count];
+      DBUG_PRINT("info",("spider roop_count=%d", roop_count));
+      DBUG_PRINT("info",("spider searched_bitmap=%d",
+        searched_bitmap[roop_count]));
+      DBUG_PRINT("info",("spider read_set=%d",
         ((uchar *) table->read_set->bitmap)[roop_count]));
-#endif
+      DBUG_PRINT("info",("spider write_set=%d",
+        ((uchar *) table->write_set->bitmap)[roop_count]));
+    }
   }
   DBUG_VOID_RETURN;
 }

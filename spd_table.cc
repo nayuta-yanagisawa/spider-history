@@ -37,6 +37,7 @@ extern pthread_mutex_t spider_conn_mutex;
 extern HASH *spider_udf_table_mon_list_hash;
 extern pthread_mutex_t *spider_udf_table_mon_mutexes;
 extern pthread_cond_t *spider_udf_table_mon_conds;
+extern pthread_mutex_t spider_open_conn_mutex;
 
 HASH spider_open_tables;
 pthread_mutex_t spider_tbl_mutex;
@@ -108,7 +109,7 @@ int spider_get_server(
   int error_num;
   FOREIGN_SERVER *server, server_buf;
   DBUG_ENTER("spider_get_server");
-  init_alloc_root(&mem_root, 65, 0);
+  init_alloc_root(&mem_root, 128, 0);
 
   if (!(server
        = get_server_by_name(&mem_root, share->server_names[link_idx],
@@ -3768,16 +3769,18 @@ int spider_close_connection(
   handlerton* hton,
   THD* thd
 ) {
-  int roop_count = 0;
+  int roop_count = 0, need_mon = 0;
   SPIDER_CONN *conn;
   SPIDER_TRX *trx;
   ha_spider tmp_spider;
   DBUG_ENTER("spider_close_connection");
-  tmp_spider.conns = &conn;
   if (!(trx = (SPIDER_TRX*) thd_get_ha_data(thd, spider_hton_ptr)))
     DBUG_RETURN(0); /* transaction is not started */
 
   memset(&tmp_spider, 0, sizeof(ha_spider));
+  tmp_spider.conns = &conn;
+  tmp_spider.need_mons = &need_mon;
+  tmp_spider.trx = trx;
   while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash,
     roop_count)))
   {
@@ -3877,6 +3880,7 @@ int spider_db_done(
   pthread_mutex_unlock(&spider_init_error_tbl_mutex);
   hash_free(&spider_init_error_tables);
   hash_free(&spider_open_tables);
+  VOID(pthread_mutex_destroy(&spider_open_conn_mutex));
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   VOID(pthread_mutex_destroy(&spider_global_trx_mutex));
 #endif
@@ -3980,6 +3984,11 @@ int spider_db_init(
     goto error_global_trx_mutex_init;
   }
 #endif
+  if (pthread_mutex_init(&spider_open_conn_mutex, MY_MUTEX_INIT_FAST))
+  {
+    error_num = HA_ERR_OUT_OF_MEM;
+    goto error_open_conn_mutex_init;
+  }
 
   if(
     hash_init(&spider_open_tables, system_charset_info, 32, 0, 0,
@@ -4089,6 +4098,8 @@ error_open_pt_share_hash_init:
 error_init_error_tables_hash_init:
   hash_free(&spider_open_tables);
 error_open_tables_hash_init:
+  VOID(pthread_mutex_destroy(&spider_open_conn_mutex));
+error_open_conn_mutex_init:
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   VOID(pthread_mutex_destroy(&spider_global_trx_mutex));
 error_global_trx_mutex_init:

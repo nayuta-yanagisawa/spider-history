@@ -48,6 +48,7 @@ public:
   SPIDER_RESULT_LIST result_list;
   SPIDER_CONDITION   *condition;
   String             *blob_buff;
+  uchar              *searched_bitmap;
   ha_spider          *next;
 
   bool               rnd_scan_and_first;
@@ -201,7 +202,12 @@ public:
   void start_bulk_insert(
     ha_rows rows
   );
+  /* call from MySQL */
   int end_bulk_insert();
+  /* call from MariaDB */
+  int end_bulk_insert(
+    bool abort
+  );
   int write_row(
     uchar *buf
   );

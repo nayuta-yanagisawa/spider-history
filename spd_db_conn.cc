@@ -238,6 +238,8 @@ const char *name_quote_str = SPIDER_SQL_NAME_QUOTE_STR;
 #define SPIDER_SQL_PING_TABLE_STR "spider_ping_table("
 #define SPIDER_SQL_PING_TABLE_LEN (sizeof(SPIDER_SQL_PING_TABLE_STR) - 1)
 
+pthread_mutex_t spider_open_conn_mutex;
+
 const char *spider_db_table_lock_str[] =
 {
   " read local,",
@@ -258,75 +260,105 @@ int spider_db_connect(
   SPIDER_CONN *conn,
   int link_idx
 ) {
-  int error_num;
+  int error_num, connect_retry_count;
   uint net_timeout;
   THD* thd = current_thd;
+  longlong connect_retry_interval;
+  my_bool connect_mutex = spider_connect_mutex;
   DBUG_ENTER("spider_db_connect");
   DBUG_ASSERT(conn->need_mon);
 
   if (thd)
+  {
     net_timeout = THDVAR(thd, net_timeout) == -1 ?
       share->net_timeout : THDVAR(thd, net_timeout);
-  else
+    connect_retry_interval = THDVAR(thd, connect_retry_interval);
+    connect_retry_count = THDVAR(thd, connect_retry_count);
+  } else {
     net_timeout = share->net_timeout;
+    connect_retry_interval = 0;
+    connect_retry_count = 0;
+  }
   DBUG_PRINT("info",("spider net_timeout=%u", net_timeout));
 
   if ((error_num = spider_reset_conn_setted_parameter(conn)))
     DBUG_RETURN(error_num);
 
-  if (!(conn->db_conn = mysql_init(NULL)))
-    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  while (TRUE)
+  {
+    if (!(conn->db_conn = mysql_init(NULL)))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
-  mysql_options(conn->db_conn, MYSQL_OPT_READ_TIMEOUT,
-    &net_timeout);
-  mysql_options(conn->db_conn, MYSQL_OPT_CONNECT_TIMEOUT,
-    &net_timeout);
+    mysql_options(conn->db_conn, MYSQL_OPT_READ_TIMEOUT,
+      &net_timeout);
+    mysql_options(conn->db_conn, MYSQL_OPT_CONNECT_TIMEOUT,
+      &net_timeout);
 
-  if (
-    conn->tgt_ssl_ca_length |
-    conn->tgt_ssl_capath_length |
-    conn->tgt_ssl_cert_length |
-    conn->tgt_ssl_key_length
-  ) {
-    mysql_ssl_set(conn->db_conn, conn->tgt_ssl_key, conn->tgt_ssl_cert,
-      conn->tgt_ssl_ca, conn->tgt_ssl_capath, conn->tgt_ssl_cipher);
-    if (conn->tgt_ssl_vsc)
-    {
-      my_bool verify_flg = TRUE;
-      mysql_options(conn->db_conn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
-        &verify_flg);
+    if (
+      conn->tgt_ssl_ca_length |
+      conn->tgt_ssl_capath_length |
+      conn->tgt_ssl_cert_length |
+      conn->tgt_ssl_key_length
+    ) {
+      mysql_ssl_set(conn->db_conn, conn->tgt_ssl_key, conn->tgt_ssl_cert,
+        conn->tgt_ssl_ca, conn->tgt_ssl_capath, conn->tgt_ssl_cipher);
+      if (conn->tgt_ssl_vsc)
+      {
+        my_bool verify_flg = TRUE;
+        mysql_options(conn->db_conn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
+          &verify_flg);
+      }
     }
-  }
 
-  if (conn->tgt_default_file)
-  {
-    DBUG_PRINT("info",("spider tgt_default_file=%s", conn->tgt_default_file));
-    mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_FILE,
-      conn->tgt_default_file);
-  }
-  if (conn->tgt_default_group)
-  {
-    DBUG_PRINT("info",("spider tgt_default_group=%s",
-      conn->tgt_default_group));
-    mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_GROUP,
-      conn->tgt_default_group);
-  }
+    if (conn->tgt_default_file)
+    {
+      DBUG_PRINT("info",("spider tgt_default_file=%s", conn->tgt_default_file));
+      mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_FILE,
+        conn->tgt_default_file);
+    }
+    if (conn->tgt_default_group)
+    {
+      DBUG_PRINT("info",("spider tgt_default_group=%s",
+        conn->tgt_default_group));
+      mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_GROUP,
+        conn->tgt_default_group);
+    }
 
-  /* tgt_db not use */
-  if (!mysql_real_connect(conn->db_conn,
-                          share->tgt_hosts[link_idx],
-                          share->tgt_usernames[link_idx],
-                          share->tgt_passwords[link_idx],
-                          NULL,
-                          share->tgt_ports[link_idx],
-                          share->tgt_sockets[link_idx],
-                          CLIENT_MULTI_STATEMENTS)
-  ) {
-    spider_db_disconnect(conn);
-    *conn->need_mon = ER_CONNECT_TO_FOREIGN_DATA_SOURCE;
-    my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0),
-      share->server_names[link_idx]);
-    DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
+    if (connect_mutex)
+      pthread_mutex_lock(&spider_open_conn_mutex);
+    /* tgt_db not use */
+    if (!mysql_real_connect(conn->db_conn,
+                            share->tgt_hosts[link_idx],
+                            share->tgt_usernames[link_idx],
+                            share->tgt_passwords[link_idx],
+                            NULL,
+                            share->tgt_ports[link_idx],
+                            share->tgt_sockets[link_idx],
+                            CLIENT_MULTI_STATEMENTS)
+    ) {
+      if (connect_mutex)
+        pthread_mutex_unlock(&spider_open_conn_mutex);
+      error_num = mysql_errno(conn->db_conn);
+      spider_db_disconnect(conn);
+      if (
+        (
+          error_num != CR_CONN_HOST_ERROR &&
+          error_num != CR_CONNECTION_ERROR
+        ) ||
+        !connect_retry_count
+      ) {
+        *conn->need_mon = ER_CONNECT_TO_FOREIGN_DATA_SOURCE;
+        my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0),
+          share->server_names[link_idx]);
+        DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
+      }
+      connect_retry_count--;
+      my_sleep(connect_retry_interval);
+    } else {
+      if (connect_mutex)
+        pthread_mutex_unlock(&spider_open_conn_mutex);
+      break;
+    }
   }
   DBUG_RETURN(0);
 }
@@ -477,7 +509,7 @@ int spider_db_errorno(
       pthread_mutex_unlock(&conn->mta_conn_mutex);
     DBUG_RETURN(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM);
   }
-  if (error_num = mysql_errno(conn->db_conn))
+  if ((error_num = mysql_errno(conn->db_conn)))
   {
     DBUG_PRINT("info",("spider error_num = %d", error_num));
     if (
@@ -1918,10 +1950,8 @@ int spider_db_append_minimum_select(
   DBUG_ENTER("spider_db_append_minimum_select");
   for (field = table->field; *field; field++)
   {
-    if ((
-      bitmap_is_set(table->read_set, (*field)->field_index) |
-      bitmap_is_set(table->write_set, (*field)->field_index)
-    )) {
+    if (spider_bit_is_set(spider->searched_bitmap, (*field)->field_index))
+    {
       field_length = share->column_name_str[(*field)->field_index].length();
       if (str->reserve(field_length +
         (SPIDER_SQL_NAME_QUOTE_LEN) * 2 + SPIDER_SQL_COMMA_LEN))
@@ -2994,13 +3024,14 @@ int spider_db_fetch_key(
 }
 
 int spider_db_fetch_minimum_columns(
-  SPIDER_SHARE *share,
+  ha_spider *spider,
   uchar *buf,
   TABLE *table,
   SPIDER_RESULT_LIST *result_list
 ) {
   int error_num;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
+  SPIDER_SHARE *share = spider->share;
   SPIDER_RESULT *current = (SPIDER_RESULT*) result_list->current;
   SPIDER_DB_ROW row;
   ulong *lengths;
@@ -3024,23 +3055,33 @@ int spider_db_fetch_minimum_columns(
     *field;
     field++
   ) {
-    if ((
-      bitmap_is_set(table->read_set, (*field)->field_index) |
-      bitmap_is_set(table->write_set, (*field)->field_index)
-    )) {
+    DBUG_PRINT("info", ("spider field_index %u", (*field)->field_index));
+    if (spider_bit_is_set(spider->searched_bitmap, (*field)->field_index))
+    {
+      DBUG_PRINT("info", ("spider searched_bitmap %u",
+        spider_bit_is_set(spider->searched_bitmap, (*field)->field_index)));
+      if ((
+        bitmap_is_set(table->read_set, (*field)->field_index) |
+        bitmap_is_set(table->write_set, (*field)->field_index)
+      )) {
+        DBUG_PRINT("info", ("spider read_set %u",
+          bitmap_is_set(table->read_set, (*field)->field_index)));
+        DBUG_PRINT("info", ("spider write_set %u",
+          bitmap_is_set(table->write_set, (*field)->field_index)));
 #ifndef DBUG_OFF
-      my_bitmap_map *tmp_map =
-        dbug_tmp_use_all_columns(table, table->write_set);
+        my_bitmap_map *tmp_map =
+          dbug_tmp_use_all_columns(table, table->write_set);
 #endif
-      DBUG_PRINT("info", ("spider bitmap is set %s", (*field)->field_name));
-      if ((error_num =
-        spider_db_fetch_row(share, *field, row, lengths, ptr_diff)))
-        DBUG_RETURN(error_num);
+        DBUG_PRINT("info", ("spider bitmap is set %s", (*field)->field_name));
+        if ((error_num =
+          spider_db_fetch_row(share, *field, row, lengths, ptr_diff)))
+          DBUG_RETURN(error_num);
+#ifndef DBUG_OFF
+        dbug_tmp_restore_column_map(table->write_set, tmp_map);
+#endif
+      }
       row++;
       lengths++;
-#ifndef DBUG_OFF
-      dbug_tmp_restore_column_map(table->write_set, tmp_map);
-#endif
     }
   }
   table->status = 0;
@@ -3540,7 +3581,7 @@ int spider_db_fetch(
       error_num = spider_db_fetch_table(spider->share, buf, table,
         result_list);
   } else
-    error_num = spider_db_fetch_minimum_columns(spider->share, buf, table,
+    error_num = spider_db_fetch_minimum_columns(spider, buf, table,
       result_list);
   result_list->current_row_num++;
   DBUG_PRINT("info",("spider error_num=%d", error_num));
@@ -4288,10 +4329,19 @@ int spider_db_seek_tmp_minimum_columns(
     *field;
     field++
   ) {
+    DBUG_PRINT("info", ("spider field_index %u", (*field)->field_index));
+    if (spider_bit_is_set(spider->searched_bitmap, (*field)->field_index))
+    {
+/*
     if ((
       bitmap_is_set(table->read_set, (*field)->field_index) |
       bitmap_is_set(table->write_set, (*field)->field_index)
     )) {
+      DBUG_PRINT("info", ("spider read_set %u",
+        bitmap_is_set(table->read_set, (*field)->field_index)));
+      DBUG_PRINT("info", ("spider write_set %u",
+        bitmap_is_set(table->write_set, (*field)->field_index)));
+*/
 #ifndef DBUG_OFF
       my_bitmap_map *tmp_map =
         dbug_tmp_use_all_columns(table, table->write_set);
@@ -6974,72 +7024,102 @@ int spider_db_udf_direct_sql_connect(
   const SPIDER_DIRECT_SQL *direct_sql,
   SPIDER_CONN *conn
 ) {
-  int error_num;
+  int error_num, connect_retry_count;
   uint net_timeout;
   THD* thd = current_thd;
+  longlong connect_retry_interval;
+  my_bool connect_mutex = spider_connect_mutex;
   DBUG_ENTER("spider_db_udf_direct_sql_connect");
 
   if (thd)
+  {
     net_timeout = THDVAR(thd, net_timeout) == -1 ?
       direct_sql->net_timeout : THDVAR(thd, net_timeout);
-  else
+    connect_retry_interval = THDVAR(thd, connect_retry_interval);
+    connect_retry_count = THDVAR(thd, connect_retry_count);
+  } else {
     net_timeout = direct_sql->net_timeout;
+    connect_retry_interval = 0;
+    connect_retry_count = 0;
+  }
   DBUG_PRINT("info",("spider net_timeout=%u", net_timeout));
 
   if ((error_num = spider_reset_conn_setted_parameter(conn)))
     DBUG_RETURN(error_num);
 
-  if (!(conn->db_conn = mysql_init(NULL)))
-    DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+  while (TRUE)
+  {
+    if (!(conn->db_conn = mysql_init(NULL)))
+      DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
-  mysql_options(conn->db_conn, MYSQL_OPT_READ_TIMEOUT,
-    &net_timeout);
-  mysql_options(conn->db_conn, MYSQL_OPT_CONNECT_TIMEOUT,
-    &net_timeout);
+    mysql_options(conn->db_conn, MYSQL_OPT_READ_TIMEOUT,
+      &net_timeout);
+    mysql_options(conn->db_conn, MYSQL_OPT_CONNECT_TIMEOUT,
+      &net_timeout);
 
-  if (
-    conn->tgt_ssl_ca_length |
-    conn->tgt_ssl_capath_length |
-    conn->tgt_ssl_cert_length |
-    conn->tgt_ssl_key_length
-  ) {
-    mysql_ssl_set(conn->db_conn, conn->tgt_ssl_key, conn->tgt_ssl_cert,
-      conn->tgt_ssl_ca, conn->tgt_ssl_capath, conn->tgt_ssl_cipher);
-    if (conn->tgt_ssl_vsc)
-    {
-      my_bool verify_flg = TRUE;
-      mysql_options(conn->db_conn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
-        &verify_flg);
+    if (
+      conn->tgt_ssl_ca_length |
+      conn->tgt_ssl_capath_length |
+      conn->tgt_ssl_cert_length |
+      conn->tgt_ssl_key_length
+    ) {
+      mysql_ssl_set(conn->db_conn, conn->tgt_ssl_key, conn->tgt_ssl_cert,
+        conn->tgt_ssl_ca, conn->tgt_ssl_capath, conn->tgt_ssl_cipher);
+      if (conn->tgt_ssl_vsc)
+      {
+        my_bool verify_flg = TRUE;
+        mysql_options(conn->db_conn, MYSQL_OPT_SSL_VERIFY_SERVER_CERT,
+          &verify_flg);
+      }
     }
-  }
 
-  if (conn->tgt_default_file)
-  {
-    DBUG_PRINT("info",("spider tgt_default_file=%s", conn->tgt_default_file));
-    mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_FILE,
-      conn->tgt_default_file);
-  }
-  if (conn->tgt_default_group)
-  {
-    DBUG_PRINT("info",("spider tgt_default_group=%s",
-      conn->tgt_default_group));
-    mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_GROUP,
-      conn->tgt_default_group);
-  }
+    if (conn->tgt_default_file)
+    {
+      DBUG_PRINT("info",("spider tgt_default_file=%s", conn->tgt_default_file));
+      mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_FILE,
+        conn->tgt_default_file);
+    }
+    if (conn->tgt_default_group)
+    {
+      DBUG_PRINT("info",("spider tgt_default_group=%s",
+        conn->tgt_default_group));
+      mysql_options(conn->db_conn, MYSQL_READ_DEFAULT_GROUP,
+        conn->tgt_default_group);
+    }
 
-  if (!mysql_real_connect(conn->db_conn,
-                          direct_sql->tgt_host,
-                          direct_sql->tgt_username,
-                          direct_sql->tgt_password,
-                          NULL,
-                          direct_sql->tgt_port,
-                          direct_sql->tgt_socket,
-                          CLIENT_MULTI_STATEMENTS)
-  ) {
-    spider_db_disconnect(conn);
-    my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0),
-      direct_sql->server_name);
-    DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
+    if (connect_mutex)
+      pthread_mutex_lock(&spider_open_conn_mutex);
+    if (!mysql_real_connect(conn->db_conn,
+                            direct_sql->tgt_host,
+                            direct_sql->tgt_username,
+                            direct_sql->tgt_password,
+                            NULL,
+                            direct_sql->tgt_port,
+                            direct_sql->tgt_socket,
+                            CLIENT_MULTI_STATEMENTS)
+    ) {
+      if (connect_mutex)
+        pthread_mutex_unlock(&spider_open_conn_mutex);
+      error_num = mysql_errno(conn->db_conn);
+      spider_db_disconnect(conn);
+      if (
+        (
+          error_num != CR_CONN_HOST_ERROR &&
+          error_num != CR_CONNECTION_ERROR
+        ) ||
+        !connect_retry_count
+      ) {
+        my_error(ER_CONNECT_TO_FOREIGN_DATA_SOURCE, MYF(0),
+          direct_sql->server_name);
+        DBUG_RETURN(ER_CONNECT_TO_FOREIGN_DATA_SOURCE);
+      }
+      connect_retry_count--;
+      my_sleep(connect_retry_interval);
+    } else {
+      if (connect_mutex)
+        pthread_mutex_unlock(&spider_open_conn_mutex);
+      break;
+    }
   }
   DBUG_RETURN(0);
 }

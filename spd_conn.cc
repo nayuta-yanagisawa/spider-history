@@ -869,10 +869,10 @@ void *spider_bg_conn_action(
     if (conn->bg_kill)
     {
       DBUG_PRINT("info",("spider bg kill start"));
-      pthread_cond_signal(&conn->bg_conn_cond);
-      pthread_mutex_unlock(&conn->bg_conn_mutex);
       /* lex_end(thd->lex); */
       delete thd;
+      pthread_cond_signal(&conn->bg_conn_cond);
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
       my_pthread_setspecific_ptr(THR_THD, NULL);
       my_thread_end();
       DBUG_RETURN(NULL);
@@ -1078,9 +1078,9 @@ void *spider_bg_sts_action(
     if (share->bg_sts_kill)
     {
       DBUG_PRINT("info",("spider bg sts kill start"));
+      delete thd;
       pthread_cond_signal(&share->bg_sts_cond);
       pthread_mutex_unlock(&share->sts_mutex);
-      delete thd;
       my_pthread_setspecific_ptr(THR_THD, NULL);
       my_thread_end();
       DBUG_RETURN(NULL);
@@ -1264,9 +1264,9 @@ void *spider_bg_crd_action(
     if (share->bg_crd_kill)
     {
       DBUG_PRINT("info",("spider bg crd kill start"));
+      delete thd;
       pthread_cond_signal(&share->bg_crd_cond);
       pthread_mutex_unlock(&share->crd_mutex);
-      delete thd;
       my_pthread_setspecific_ptr(THR_THD, NULL);
       my_thread_end();
       DBUG_RETURN(NULL);
