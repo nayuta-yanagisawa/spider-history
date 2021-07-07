@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2012 Kentoku Shiba
+/* Copyright (C) 2008-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -15,9 +15,6 @@
 
 #define MYSQL_SERVER 1
 #include "mysql_version.h"
-#ifdef HAVE_HANDLERSOCKET
-#include "hstcpcli.hpp"
-#endif
 #if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
@@ -355,7 +352,7 @@ static MYSQL_THDVAR_UINT(
   "Force prepare, commit, rollback mode", /* comment */
   NULL, /* check */
   NULL, /* update */
-  0, /* def */
+  1, /* def */
   0, /* min */
   2, /* max */
   0 /* blk */
@@ -2661,6 +2658,35 @@ int spider_param_read_only_mode(
     read_only_mode : THDVAR(thd, read_only_mode));
 }
 
+#ifdef HA_CAN_BULK_ACCESS
+static int spider_bulk_access_free;
+/*
+ -1 :use table parameter
+  0 :in reset
+  1 :in close
+ */
+static MYSQL_SYSVAR_INT(
+  bulk_access_free,
+  spider_bulk_access_free,
+  PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+  "Free mode of bulk access resources",
+  NULL,
+  NULL,
+  -1,
+  -1,
+  1,
+  0
+);
+
+int spider_param_bulk_access_free(
+  int bulk_access_free
+) {
+  DBUG_ENTER("spider_param_bulk_access_free");
+  DBUG_RETURN(spider_bulk_access_free == -1 ?
+    bulk_access_free : spider_bulk_access_free);
+}
+#endif
+
 static struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -2779,6 +2805,9 @@ static struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(skip_default_condition),
   MYSQL_SYSVAR(direct_order_limit),
   MYSQL_SYSVAR(read_only_mode),
+#ifdef HA_CAN_BULK_ACCESS
+  MYSQL_SYSVAR(bulk_access_free),
+#endif
   NULL
 };
 
@@ -2792,7 +2821,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x021c,
+  0x0300,
   spider_status_variables,
   spider_system_variables,
   NULL

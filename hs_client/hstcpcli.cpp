@@ -57,7 +57,8 @@ struct hstcpcli : public hstcpcli_i, private noncopyable {
     const string_ref& mod_op, const string_ref *mvs, size_t mvslen,
     const hstcpcli_filter *fils, size_t filslen, int invalues_keypart,
     const string_ref *invalues, size_t invalueslen);
-  virtual void request_buf_append(const char *start, const char *finish);
+  virtual size_t request_buf_append(const char *start, const char *finish);
+  virtual void request_reset();
   virtual int request_send();
   virtual int response_recv(size_t& num_flds_r);
   virtual int get_result(hstresult& result);
@@ -65,14 +66,19 @@ struct hstcpcli : public hstcpcli_i, private noncopyable {
   virtual const string_ref *get_next_row_from_result(hstresult& result);
   virtual void response_buf_remove();
   virtual int get_error_code();
-  virtual String get_error();
+  virtual String& get_error();
+  virtual void clear_error();
   virtual int set_timeout(int send_timeout, int recv_timeout);
+  virtual size_t get_num_req_bufd() { return num_req_bufd; }
+  virtual size_t get_num_req_sent() { return num_req_sent; }
+  virtual size_t get_num_req_rcvd() { return num_req_rcvd; }
   virtual size_t get_response_end_offset() { return response_end_offset; }
   virtual const char *get_readbuf_begin() { return readbuf.begin(); }
   virtual const char *get_readbuf_end() { return readbuf.end(); }
+  virtual void write_error_to_log(const char *func_name, const char *file_name,
+    ulong line_no);
  private:
   int read_more();
-  void clear_error();
   int set_error(int code, const String& str);
   int set_error(int code, const char *str);
  private:
@@ -89,11 +95,12 @@ struct hstcpcli : public hstcpcli_i, private noncopyable {
   int error_code;
   String error_str;
   DYNAMIC_ARRAY flds;
+  int errno_buf;
 };
 
 hstcpcli::hstcpcli(const socket_args& args)
   : sargs(args), response_end_offset(0), cur_row_offset(0), num_flds(0),
-    num_req_bufd(0), num_req_sent(0), num_req_rcvd(0), error_code(0)
+    num_req_bufd(0), num_req_sent(0), num_req_rcvd(0), error_code(0), errno_buf(0)
 {
   String err;
   my_init_dynamic_array2(&flds, sizeof(string_ref), NULL, 16, 16);
@@ -159,7 +166,7 @@ hstcpcli::get_error_code()
   return error_code;
 }
 
-String
+String&
 hstcpcli::get_error()
 {
   return error_str;
@@ -171,10 +178,15 @@ hstcpcli::read_more()
   const size_t block_size = 4096; // FIXME
   char *const wp = readbuf.make_space(block_size);
   int rlen;
+  errno = 0;
   while ((rlen = read(fd.get(), wp, block_size)) <= 0) {
+    errno_buf = errno;
     if (rlen < 0) {
-      if (errno == EINTR)
+      if (errno == EINTR || errno == EAGAIN)
+      {
+        errno = 0;
         continue;
+      }
       error_str = String("read: failed", &my_charset_bin);
     } else {
       error_str = String("read: eof", &my_charset_bin);
@@ -220,7 +232,10 @@ void
 hstcpcli::request_buf_open_index(size_t pst_id, const char *dbn,
   const char *tbl, const char *idx, const char *retflds, const char *filflds)
 {
+/*
   if (num_req_sent > 0 || num_req_rcvd > 0) {
+*/
+  if (num_req_rcvd > 0) {
     close();
     set_error(-1, "request_buf_open_index: protocol out of sync");
     return;
@@ -251,7 +266,10 @@ hstcpcli::request_buf_open_index(size_t pst_id, const char *dbn,
 void
 hstcpcli::request_buf_auth(const char *secret, const char *typ)
 {
+/*
   if (num_req_sent > 0 || num_req_rcvd > 0) {
+*/
+  if (num_req_rcvd > 0) {
     close();
     set_error(-1, "request_buf_auth: protocol out of sync");
     return;
@@ -294,7 +312,10 @@ hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
   const hstcpcli_filter *fils, size_t filslen, int invalues_keypart,
   const string_ref *invalues, size_t invalueslen)
 {
+/*
   if (num_req_sent > 0 || num_req_rcvd > 0) {
+*/
+  if (num_req_rcvd > 0) {
     close();
     set_error(-1, "request_buf_exec_generic: protocol out of sync");
     return;
@@ -351,13 +372,16 @@ hstcpcli::request_buf_exec_generic(size_t pst_id, const string_ref& op,
   ++num_req_bufd;
 }
 
-void
+size_t
 hstcpcli::request_buf_append(const char *start, const char *finish)
 {
+/*
   if (num_req_sent > 0 || num_req_rcvd > 0) {
+*/
+  if (num_req_rcvd > 0) {
     close();
     set_error(-1, "request_buf_append: protocol out of sync");
-    return;
+    return 0;
   }
   const char *nl = start;
   size_t num_req = 0;
@@ -372,6 +396,16 @@ hstcpcli::request_buf_append(const char *start, const char *finish)
   if (*(finish - 1) != '\n')
     writebuf.append_literal("\n");
   num_req_bufd += num_req;
+  return num_req;
+}
+
+void
+hstcpcli::request_reset()
+{
+  if (num_req_bufd) {
+    writebuf.erase_front(writebuf.size());
+    num_req_bufd = 0;
+  }
 }
 
 int
@@ -385,7 +419,10 @@ hstcpcli::request_send()
     close();
     return set_error(-1, "write: closed");
   }
+/*
   if (num_req_bufd == 0 || num_req_sent > 0 || num_req_rcvd > 0) {
+*/
+  if (num_req_bufd == 0 || num_req_rcvd > 0) {
     close();
     return set_error(-1, "request_send: protocol out of sync");
   }
@@ -400,7 +437,7 @@ hstcpcli::request_send()
     close();
     return set_error(-1, "write: incomplete");
   }
-  num_req_sent = num_req_bufd;
+  num_req_sent += num_req_bufd;
   num_req_bufd = 0;
   DBG(fprintf(stderr, "REQSEND 0\n"));
   return 0;
@@ -438,7 +475,8 @@ hstcpcli::response_recv(size_t& num_flds_r)
     }
     if (read_more() <= 0) {
       close();
-      return set_error(-1, "read: eof");
+      error_code = -1;
+      return error_code;
     }
   }
   response_end_offset = offset;
@@ -571,6 +609,26 @@ hstcpcli::response_buf_remove()
   --num_req_rcvd;
   cur_row_offset = 0;
   num_flds = 0;
+}
+
+void
+hstcpcli::write_error_to_log(
+  const char *func_name,
+  const char *file_name,
+  ulong line_no
+) {
+  if (errno_buf) {
+    time_t cur_time = (time_t) time((time_t*) 0);
+    struct tm lt;
+    struct tm *l_time = localtime_r(&cur_time, &lt);
+    fprintf(stderr,
+      "%04d%02d%02d %02d:%02d:%02d [ERROR] hstcpcli: [%d][%s]"
+      " [%s][%s][%lu] errno=%d\n",
+      l_time->tm_year + 1900, l_time->tm_mon + 1, l_time->tm_mday,
+      l_time->tm_hour, l_time->tm_min, l_time->tm_sec,
+      error_code, error_str.c_ptr_safe(),
+      func_name, file_name, line_no, errno_buf);
+  }
 }
 
 hstcpcli_ptr

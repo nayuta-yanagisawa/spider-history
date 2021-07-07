@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2012 Kentoku Shiba
+/* Copyright (C) 2008-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -65,6 +65,7 @@ public:
   ulong              mem_calc_line_no;
   uint               sql_kinds;
   uint               *sql_kind;
+  ulonglong          *connection_ids;
   uint               conn_kinds;
   uint               *conn_kind;
   char               *conn_keys_first_ptr;
@@ -81,9 +82,9 @@ public:
   /* for active-standby mode */
   uint               *conn_link_idx;
   uchar              *conn_can_fo;
-  SPIDER_LINK_FOR_HASH *link_for_hash;
   void               **quick_targets;
   int                *need_mons;
+  query_id_t         search_link_query_id;
   int                search_link_idx;
   int                result_link_idx;
   SPIDER_RESULT_LIST result_list;
@@ -97,6 +98,22 @@ public:
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
   ha_spider          *pt_handler_share_creator;
+#endif
+#ifdef HA_CAN_BULK_ACCESS
+  int                pre_direct_init_result;
+  bool               is_bulk_access_clone;
+  bool               synced_from_clone_source;
+  bool               bulk_access_started;
+  bool               bulk_access_executing;
+  bool               bulk_access_pre_called;
+  SPIDER_BULK_ACCESS_LINK *bulk_access_link_first;
+  SPIDER_BULK_ACCESS_LINK *bulk_access_link_current;
+  SPIDER_BULK_ACCESS_LINK *bulk_access_link_exec_tgt;
+/*
+  bool               init_ha_mem_root;
+  MEM_ROOT           ha_mem_root;
+*/
+  ulonglong          external_lock_cnt;
 #endif
   bool               is_clone;
   bool               clone_bitmap_init;
@@ -152,7 +169,10 @@ public:
   bool               cond_check;
   int                cond_check_error;
   int                error_mode;
+  ulonglong          store_last_insert_id;
 
+  ulonglong          *db_request_id;
+  uchar              *db_request_phase;
   uchar              *m_handler_opened;
   uint               *m_handler_id;
   char               **m_handler_cid;
@@ -171,6 +191,8 @@ public:
   size_t             *hs_w_ret_fields_num;
   uint32             *hs_pushed_ret_fields;
   size_t             hs_pushed_ret_fields_num;
+  size_t             hs_pushed_ret_fields_size;
+  size_t             hs_pushed_lcl_fields_num;
   uchar              *tmp_column_bitmap;
   bool               hs_increment;
   bool               hs_decrement;
@@ -179,6 +201,9 @@ public:
 #endif
 #ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
   bool               do_direct_update;
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+  bool               maybe_do_hs_direct_update;
+#endif
   uint               direct_update_kinds;
   List<Item>         *direct_update_fields;
   List<Item>         *direct_update_values;
@@ -194,6 +219,9 @@ public:
   bool               ft_init_without_index_init;
   st_spider_ft_info  *ft_first;
   st_spider_ft_info  *ft_current;
+
+  /* for dbton */
+  spider_db_handler  **dbton_handler;
 
   ha_spider();
   ha_spider(
@@ -212,6 +240,16 @@ public:
     uint test_if_locked
   );
   int close();
+  int check_access_kind(
+    THD *thd,
+    bool write_request
+  );
+#ifdef HA_CAN_BULK_ACCESS
+  int additional_lock(
+    THD *thd,
+    enum thr_lock_type lock_type
+  );
+#endif
   THR_LOCK_DATA **store_lock(
     THD *thd,
     THR_LOCK_DATA **to,
@@ -229,7 +267,16 @@ public:
     uint idx,
     bool sorted
   );
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_index_init(
+    uint idx,
+    bool sorted
+  );
+#endif
   int index_end();
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_index_end();
+#endif
   int index_read_map(
     uchar *buf,
     const uchar *key,
@@ -315,7 +362,15 @@ public:
   int rnd_init(
     bool scan
   );
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_rnd_init(
+    bool scan
+  );
+#endif
   int rnd_end();
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_rnd_end();
+#endif
   int rnd_next(
     uchar *buf
   );
@@ -325,6 +380,10 @@ public:
   int rnd_pos(
     uchar *buf,
     uchar *pos
+  );
+  int cmp_ref(
+    const uchar *ref1,
+    const uchar *ref2
   );
   int ft_init();
   void ft_end();
@@ -374,6 +433,7 @@ public:
     key_range *start_key,
     key_range *end_key
   );
+  int check_crd();
   ha_rows records();
   const char *table_type() const;
   ulonglong table_flags() const;
@@ -410,6 +470,11 @@ public:
   int write_row(
     uchar *buf
   );
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_write_row(
+    uchar *buf
+  );
+#endif
   bool start_bulk_update();
   int exec_bulk_update(
     uint *dup_key_found
@@ -432,6 +497,15 @@ public:
     bool sorted,
     uchar *new_data
   );
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_direct_update_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data
+  );
+#endif
   int direct_update_rows(
     KEY_MULTI_RANGE *ranges,
     uint range_count,
@@ -439,6 +513,15 @@ public:
     uchar *new_data,
     uint *update_rows
   );
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_direct_update_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uchar *new_data,
+    uint *update_rows
+  );
+#endif
 #endif
   bool start_bulk_delete();
   int end_bulk_delete();
@@ -452,12 +535,28 @@ public:
     uint range_count,
     bool sorted
   );
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_direct_delete_rows_init(
+    uint mode,
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted
+  );
+#endif
   int direct_delete_rows(
     KEY_MULTI_RANGE *ranges,
     uint range_count,
     bool sorted,
     uint *delete_rows
   );
+#ifdef HA_CAN_BULK_ACCESS
+  int pre_direct_delete_rows(
+    KEY_MULTI_RANGE *ranges,
+    uint range_count,
+    bool sorted,
+    uint *delete_rows
+  );
+#endif
 #endif
   int delete_all_rows();
   int truncate();
@@ -467,6 +566,9 @@ public:
     uint ranges,
     ha_rows rows
   );
+#ifdef HA_CAN_BULK_ACCESS
+  void bulk_req_exec();
+#endif
   const key_map *keys_to_use_for_scanning();
   ha_rows estimate_rows_upper_bound();
   bool get_error_message(
@@ -607,4 +709,236 @@ public:
   void check_pre_call(
     bool use_parallel
   );
+  void check_insert_dup_update_pushdown();
+#ifdef HA_CAN_BULK_ACCESS
+  SPIDER_BULK_ACCESS_LINK *create_bulk_access_link();
+  void delete_bulk_access_link(
+    SPIDER_BULK_ACCESS_LINK *bulk_access_link
+  );
+  int sync_from_clone_source(
+    ha_spider *spider
+  );
+#endif
+  void sync_from_clone_source_base(
+    ha_spider *spider
+  );
+  void set_first_link_idx();
+  void reset_first_link_idx();
+  int reset_sql_sql(
+    ulong sql_type
+  );
+  int reset_hs_sql(
+    ulong sql_type
+  );
+  int reset_hs_keys(
+    ulong sql_type
+  );
+  int reset_hs_upds(
+    ulong sql_type
+  );
+  int reset_hs_strs(
+    ulong sql_type
+  );
+  int reset_hs_strs_pos(
+    ulong sql_type
+  );
+  int push_back_hs_upds(
+    SPIDER_HS_STRING_REF &info
+  );
+  int append_tmp_table_and_sql_for_bka(
+    const key_range *start_key
+  );
+  int reuse_tmp_table_and_sql_for_bka();
+  int append_insert_sql_part();
+  int append_update_sql_part();
+#if defined(HS_HAS_SQLCOM) && defined(HAVE_HANDLERSOCKET)
+#ifdef HANDLER_HAS_DIRECT_UPDATE_ROWS
+  int append_increment_update_set_sql_part();
+#endif
+#endif
+  int append_update_set_sql_part();
+  int append_direct_update_set_sql_part();
+  int append_direct_update_set_hs_part();
+  int append_dup_update_pushdown_sql_part(
+    const char *alias,
+    uint alias_length
+  );
+  int append_update_columns_sql_part(
+    const char *alias,
+    uint alias_length
+  );
+  int check_update_columns_sql_part();
+  int append_delete_sql_part();
+  int append_select_sql_part(
+    ulong sql_type
+  );
+  int append_table_select_sql_part(
+    ulong sql_type
+  );
+  int append_key_select_sql_part(
+    ulong sql_type,
+    uint idx
+  );
+  int append_minimum_select_sql_part(
+    ulong sql_type
+  );
+  int append_from_sql_part(
+    ulong sql_type
+  );
+  int append_hint_after_table_sql_part(
+    ulong sql_type
+  );
+  void set_where_pos_sql(
+    ulong sql_type
+  );
+  void set_where_to_pos_sql(
+    ulong sql_type
+  );
+  int check_item_type_sql(
+    Item *item
+  );
+  int append_values_connector_sql_part(
+    ulong sql_type
+  );
+  int append_values_terminator_sql_part(
+    ulong sql_type
+  );
+  int append_key_column_values_sql_part(
+    const key_range *start_key,
+    ulong sql_type
+  );
+  int append_key_where_sql_part(
+    const key_range *start_key,
+    const key_range *end_key,
+    ulong sql_type
+  );
+  int append_key_where_hs_part(
+    const key_range *start_key,
+    const key_range *end_key,
+    ulong sql_type
+  );
+  int append_match_where_sql_part(
+    ulong sql_type
+  );
+  int append_condition_sql_part(
+    const char *alias,
+    uint alias_length,
+    ulong sql_type,
+    bool test_flg
+  );
+  int append_match_select_sql_part(
+    ulong sql_type,
+    const char *alias,
+    uint alias_length
+  );
+  void set_order_pos_sql(
+    ulong sql_type
+  );
+  void set_order_to_pos_sql(
+    ulong sql_type
+  );
+  int append_key_order_for_merge_with_alias_sql_part(
+    const char *alias,
+    uint alias_length,
+    ulong sql_type
+  );
+  int append_key_order_for_direct_order_limit_with_alias_sql_part(
+    const char *alias,
+    uint alias_length,
+    ulong sql_type
+  );
+  int append_key_order_with_alias_sql_part(
+    const char *alias,
+    uint alias_length,
+    ulong sql_type
+  );
+  int append_limit_sql_part(
+    longlong offset,
+    longlong limit,
+    ulong sql_type
+  );
+  int append_limit_hs_part(
+    longlong offset,
+    longlong limit,
+    ulong sql_type
+  );
+  int reappend_limit_sql_part(
+    longlong offset,
+    longlong limit,
+    ulong sql_type
+  );
+  int append_insert_terminator_sql_part(
+    ulong sql_type
+  );
+  int append_insert_values_sql_part(
+    ulong sql_type
+  );
+  int append_insert_values_hs_part(
+    ulong sql_type
+  );
+  int append_into_sql_part(
+    ulong sql_type
+  );
+  void set_insert_to_pos_sql(
+    ulong sql_type
+  );
+  bool is_bulk_insert_exec_period(
+    bool bulk_end
+  );
+  int append_select_lock_sql_part(
+    ulong sql_type
+  );
+  int append_union_all_start_sql_part(
+    ulong sql_type
+  );
+  int append_union_all_sql_part(
+    ulong sql_type
+  );
+  int append_union_all_end_sql_part(
+    ulong sql_type
+  );
+  int append_multi_range_cnt_sql_part(
+    ulong sql_type,
+    uint multi_range_cnt,
+    bool with_comma
+  );
+  int append_delete_all_rows_sql_part(
+    ulong sql_type
+  );
+  int append_update_sql(
+    const TABLE *table,
+    my_ptrdiff_t ptr_diff,
+    bool bulk
+  );
+  int append_delete_sql(
+    const TABLE *table,
+    my_ptrdiff_t ptr_diff,
+    bool bulk
+  );
+  bool sql_is_filled_up(
+    ulong sql_type
+  );
+  bool sql_is_empty(
+    ulong sql_type
+  );
+  bool support_multi_split_read_sql();
+  bool support_bulk_update_sql();
+  int bulk_tmp_table_insert();
+  int bulk_tmp_table_end_bulk_insert();
+  int bulk_tmp_table_rnd_init();
+  int bulk_tmp_table_rnd_next();
+  int bulk_tmp_table_rnd_end();
+  int mk_bulk_tmp_table_and_bulk_start();
+  void rm_bulk_tmp_table();
+  bool bulk_tmp_table_created();
+  int print_item_type(
+    Item *item,
+    spider_string *str,
+    const char *alias,
+    uint alias_length
+  );
+  bool support_use_handler_sql(
+    int use_handler
+  );
+  bool support_bulk_access_hs() const;
 };

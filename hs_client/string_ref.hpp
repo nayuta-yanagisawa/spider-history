@@ -29,6 +29,8 @@ struct string_ref {
   const char *begin() const { return start; }
   const char *end() const { return start + length; }
   size_t size() const { return length; }
+  void set(const char *s, size_t len) { start = s; length = len; }
+  void set(const char *s, const char *f) { start = s; length = f - s; }
  private:
   const char *start;
   size_t length;

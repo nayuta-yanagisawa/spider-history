@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -240,6 +240,10 @@ void spider_free_trx_ha(
   SPIDER_TRX *trx
 );
 
+void spider_reuse_trx_ha(
+  SPIDER_TRX *trx
+);
+
 void spider_trx_set_link_idx_for_all(
   ha_spider *spider
 );
@@ -247,3 +251,10 @@ void spider_trx_set_link_idx_for_all(
 int spider_trx_check_link_idx_failed(
   ha_spider *spider
 );
+
+#ifdef HA_CAN_BULK_ACCESS
+void spider_trx_add_bulk_access_conn(
+  SPIDER_TRX *trx,
+  SPIDER_CONN *conn
+);
+#endif

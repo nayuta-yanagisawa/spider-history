@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2012 Kentoku Shiba
+/* Copyright (C) 2008-2013 Kentoku Shiba
 
   This program is free software); you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -356,3 +356,8 @@ int spider_param_read_only_mode(
   THD *thd,
   int read_only_mode
 );
+#ifdef HA_CAN_BULK_ACCESS
+int spider_param_bulk_access_free(
+  int bulk_access_free
+);
+#endif

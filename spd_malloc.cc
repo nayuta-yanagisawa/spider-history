@@ -1,4 +1,4 @@
-/* Copyright (C) 2012 Kentoku Shiba
+/* Copyright (C) 2012-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -15,9 +15,6 @@
 
 #define MYSQL_SERVER 1
 #include "mysql_version.h"
-#ifdef HAVE_HANDLERSOCKET
-#include "hstcpcli.hpp"
-#endif
 #if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
@@ -47,11 +44,18 @@ void spider_merge_mem_calc(
   bool force
 ) {
   uint roop_count;
+  time_t tmp_time;
   DBUG_ENTER("spider_merge_mem_calc");
   if (force)
+  {
     pthread_mutex_lock(&spider_mem_calc_mutex);
-  else {
-    if (pthread_mutex_trylock(&spider_mem_calc_mutex))
+    tmp_time = (time_t) time((time_t*) 0);
+  } else {
+    tmp_time = (time_t) time((time_t*) 0);
+    if (
+      difftime(tmp_time, trx->mem_calc_merge_time) < 2 ||
+      pthread_mutex_trylock(&spider_mem_calc_mutex)
+    )
       DBUG_VOID_RETURN;
   }
   for (roop_count = 0; roop_count < SPIDER_MEM_CALC_LIST_NUM; roop_count++)
@@ -85,6 +89,7 @@ void spider_merge_mem_calc(
     trx->free_mem_count_buffer[roop_count] = 0;
   }
   pthread_mutex_unlock(&spider_mem_calc_mutex);
+  trx->mem_calc_merge_time = tmp_time;
   DBUG_VOID_RETURN;
 }
 
@@ -262,7 +267,7 @@ void *spider_bulk_alloc_mem(
   }
 
 spider_string::spider_string(
-) : str()
+) : str(), next(NULL)
 {
   DBUG_ENTER("spider_string::spider_string");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -272,7 +277,7 @@ spider_string::spider_string(
 
 spider_string::spider_string(
   uint32 length_arg
-) : str(length_arg)
+) : str(length_arg), next(NULL)
 {
   DBUG_ENTER("spider_string::spider_string");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -283,7 +288,7 @@ spider_string::spider_string(
 spider_string::spider_string(
   const char *str,
   CHARSET_INFO *cs
-) : str(str, cs)
+) : str(str, cs), next(NULL)
 {
   DBUG_ENTER("spider_string::spider_string");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -295,7 +300,7 @@ spider_string::spider_string(
   const char *str,
   uint32 len,
   CHARSET_INFO *cs
-) : str(str, len, cs)
+) : str(str, len, cs), next(NULL)
 {
   DBUG_ENTER("spider_string::spider_string");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -307,7 +312,7 @@ spider_string::spider_string(
   char *str,
   uint32 len,
   CHARSET_INFO *cs
-) : str(str, len, cs)
+) : str(str, len, cs), next(NULL)
 {
   DBUG_ENTER("spider_string::spider_string");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -317,7 +322,7 @@ spider_string::spider_string(
 
 spider_string::spider_string(
   const String &str
-) : str(str)
+) : str(str), next(NULL)
 {
   DBUG_ENTER("spider_string::spider_string");
   DBUG_PRINT("info",("spider this=%p", this));
@@ -628,7 +633,18 @@ void spider_string::free()
   DBUG_VOID_RETURN;
 }
 
-  bool alloc(uint32 arg_length);
+bool spider_string::alloc(uint32 arg_length)
+{
+  bool res;
+  DBUG_ENTER("spider_string::alloc");
+  DBUG_PRINT("info",("spider this=%p", this));
+  DBUG_ASSERT(mem_calc_inited);
+  DBUG_ASSERT((!current_alloc_mem && !str.is_alloced()) ||
+    current_alloc_mem == str.alloced_length());
+  res = str.alloc(arg_length);
+  SPIDER_STRING_CALC_MEM;
+  DBUG_RETURN(res);
+}
 
 bool spider_string::real_alloc(uint32 arg_length)
 {
@@ -637,7 +653,10 @@ bool spider_string::real_alloc(uint32 arg_length)
   DBUG_PRINT("info",("spider this=%p", this));
   DBUG_ASSERT(mem_calc_inited);
   res = str.real_alloc(arg_length);
+/*
   if (mem_calc_inited && !res && arg_length)
+*/
+  if (mem_calc_inited && !res)
   {
     DBUG_ASSERT(!current_alloc_mem);
     spider_alloc_mem_calc(spider_current_trx, id, func_name, file_name,

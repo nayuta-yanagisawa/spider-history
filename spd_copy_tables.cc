@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2012 Kentoku Shiba
+/* Copyright (C) 2009-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -15,9 +15,6 @@
 
 #define MYSQL_SERVER 1
 #include "mysql_version.h"
-#ifdef HAVE_HANDLERSOCKET
-#include "hstcpcli.hpp"
-#endif
 #if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
@@ -44,6 +41,7 @@
 #include "spd_malloc.h"
 
 extern handlerton *spider_hton_ptr;
+extern SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
 
 int spider_udf_set_copy_tables_param_default(
   SPIDER_COPY_TABLES *copy_tables
@@ -414,8 +412,6 @@ int spider_udf_get_copy_tgt_tables(
       my_error(HA_ERR_OUT_OF_MEM, MYF(0));
       goto error;
     }
-    table_conn->select_sql.init_calc_mem(78);
-    table_conn->insert_sql.init_calc_mem(79);
     spider_set_tmp_share_pointer(tmp_share, tmp_connect_info,
       tmp_connect_info_length, tmp_long, tmp_longlong);
     tmp_share->link_statuses[0] = -1;
@@ -447,12 +443,14 @@ int spider_udf_get_copy_tgt_tables(
         copy_tables->spider_db_name, copy_tables->spider_db_name_length,
         copy_tables->spider_table_name, copy_tables->spider_table_name_length
       )) ||
-      (error_num = spider_create_conn_keys(tmp_share))
+      (error_num = spider_create_conn_keys(tmp_share)) ||
+      (error_num = spider_create_tmp_dbton_share(tmp_share))
     ) {
       spider_sys_index_end(table_tables);
       goto error;
     }
 
+/*
     if (spider_db_create_table_names_str(tmp_share))
     {
       spider_sys_index_end(table_tables);
@@ -460,11 +458,35 @@ int spider_udf_get_copy_tgt_tables(
       my_error(HA_ERR_OUT_OF_MEM, MYF(0));
       goto error;
     }
+*/
+
+    for (roop_count = 0; roop_count < (int) tmp_share->use_dbton_count;
+      roop_count++)
+    {
+      uint dbton_id = tmp_share->use_dbton_ids[roop_count];
+
+      if (!spider_dbton[dbton_id].create_db_copy_table)
+        continue;
+
+      if (!(table_conn->copy_table =
+        spider_dbton[dbton_id].create_db_copy_table(
+        tmp_share->dbton_share[dbton_id])))
+      {
+        spider_sys_index_end(table_tables);
+        error_num = HA_ERR_OUT_OF_MEM;
+        my_error(HA_ERR_OUT_OF_MEM, MYF(0));
+        goto error;
+      }
+      if ((error_num = table_conn->copy_table->init()))
+        goto error;
+      break;
+    }
 
     if (
       !copy_tables->use_auto_mode[0]
     ) {
-      for (roop_count = 0; roop_count < copy_tables->link_idx_count[0]; roop_count++)
+      for (roop_count = 0; roop_count < copy_tables->link_idx_count[0];
+        roop_count++)
       {
         if (table_conn->link_idx == copy_tables->link_idxs[0][roop_count])
         {
@@ -535,9 +557,10 @@ int spider_udf_get_copy_tgt_tables(
     }
     if (table_conn)
     {
+      spider_free_tmp_dbton_share(tmp_share);
       spider_free_tmp_share_alloc(tmp_share);
-      table_conn->select_sql.free();
-      table_conn->insert_sql.free();
+      if (table_conn->copy_table)
+        delete table_conn->copy_table;
       spider_free(spider_current_trx, table_conn, MYF(0));
       table_conn = NULL;
     }
@@ -572,9 +595,10 @@ error:
       &open_tables_backup, need_lock);
   if (table_conn)
   {
+    spider_free_tmp_dbton_share(tmp_share);
     spider_free_tmp_share_alloc(tmp_share);
-    table_conn->select_sql.free();
-    table_conn->insert_sql.free();
+    if (table_conn->copy_table)
+      delete table_conn->copy_table;
     spider_free(spider_current_trx, table_conn, MYF(0));
   }
   DBUG_RETURN(error_num);
@@ -621,9 +645,10 @@ void spider_udf_free_copy_tables_alloc(
     while (table_conn)
     {
       table_conn_next = table_conn->next;
+      spider_free_tmp_dbton_share(table_conn->share);
       spider_free_tmp_share_alloc(table_conn->share);
-      table_conn->select_sql.free();
-      table_conn->insert_sql.free();
+      if (table_conn->copy_table)
+        delete table_conn->copy_table;
       spider_free(spider_current_trx, table_conn, MYF(0));
       table_conn = table_conn_next;
     }
@@ -778,13 +803,18 @@ int spider_udf_bg_copy_exec_sql(
 ) {
   int error_num;
   SPIDER_CONN *conn = table_conn->conn;
+  ha_spider *spider = table_conn->spider;
+  spider_db_handler *dbton_hdl = spider->dbton_handler[conn->dbton_id];
   DBUG_ENTER("spider_udf_bg_copy_exec_sql");
   if ((error_num = spider_create_conn_thread(conn)))
     DBUG_RETURN(error_num);
+  if ((error_num = dbton_hdl->set_sql_for_exec(table_conn->copy_table,
+    SPIDER_SQL_TYPE_INSERT_SQL)))
+    DBUG_RETURN(error_num);
   pthread_mutex_lock(&conn->bg_conn_mutex);
-  conn->bg_target = table_conn->spider;
+  conn->bg_target = spider;
   conn->bg_error_num = &table_conn->bg_error_num;
-  conn->bg_sql = &table_conn->insert_sql;
+  conn->bg_sql_type = SPIDER_SQL_TYPE_INSERT_SQL;
   conn->link_idx = 0;
   conn->bg_exec_sql = TRUE;
   conn->bg_caller_sync_wait = TRUE;
@@ -812,12 +842,12 @@ long long spider_copy_tables_body(
   TABLE_SHARE *table_share;
   KEY *key_info;
   ha_spider *spider = NULL, *tmp_spider;
+  spider_string *tmp_sql = NULL;
   SPIDER_COPY_TABLE_CONN *table_conn, *src_tbl_conn, *dst_tbl_conn;
   SPIDER_CONN *tmp_conn;
-  spider_string *select_sql, *insert_sql;
+  spider_db_copy_table *select_ct, *insert_ct;
   MEM_ROOT mem_root;
   longlong bulk_insert_rows;
-  SPIDER_LINK_FOR_HASH *tmp_link_for_hash;
   DBUG_ENTER("spider_copy_tables_body");
   if (
     thd->open_tables != 0 ||
@@ -952,33 +982,32 @@ long long spider_copy_tables_body(
     copy_tables->access_charset = system_charset_info;
 
   src_tbl_conn = copy_tables->table_conn[0];
-  select_sql = &src_tbl_conn->select_sql;
+  select_ct = src_tbl_conn->copy_table;
   src_tbl_conn->share->access_charset = copy_tables->access_charset;
-  select_sql->set_charset(copy_tables->access_charset);
+  select_ct->set_sql_charset(copy_tables->access_charset);
   if (
-    spider_db_append_select_str(select_sql) ||
-    spider_db_append_table_columns(select_sql, table_share)
+    select_ct->append_select_str() ||
+    select_ct->append_table_columns(table_share)
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
   }
 
   if (
-    spider_db_append_from_str(select_sql) ||
-    spider_db_append_table_name_with_reserve(select_sql,
-      src_tbl_conn->share, 0)
+    select_ct->append_from_str() ||
+    select_ct->append_table_name(0)
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
   }
 
-  src_tbl_conn->where_pos = select_sql->length();
+  select_ct->set_sql_pos();
 
   bulk_insert_rows = spider_param_udf_ct_bulk_insert_rows(
     copy_tables->bulk_insert_rows);
   if (
-    spider_db_append_key_order_str(select_sql, key_info, 0, FALSE) ||
-    spider_db_append_limit(NULL, select_sql, 0, bulk_insert_rows)
+    select_ct->append_key_order_str(key_info, 0, FALSE) ||
+    select_ct->append_limit(0, bulk_insert_rows)
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
@@ -987,32 +1016,29 @@ long long spider_copy_tables_body(
   for (dst_tbl_conn = copy_tables->table_conn[1]; dst_tbl_conn;
     dst_tbl_conn = dst_tbl_conn->next)
   {
-    insert_sql = &dst_tbl_conn->insert_sql;
+    insert_ct = dst_tbl_conn->copy_table;
     dst_tbl_conn->share->access_charset = copy_tables->access_charset;
-    insert_sql->set_charset(copy_tables->access_charset);
+    insert_ct->set_sql_charset(copy_tables->access_charset);
     if (
-      spider_db_append_insert_str(insert_sql, SPIDER_DB_INSERT_IGNORE) ||
-      spider_db_append_into_str(insert_sql) ||
-      spider_db_append_table_name_with_reserve(insert_sql,
-        dst_tbl_conn->share, 0) ||
-      spider_db_append_open_paren_str(insert_sql) ||
-      spider_db_append_table_columns(insert_sql, table_share) ||
-      spider_db_append_values_str(insert_sql)
+      insert_ct->append_insert_str(SPIDER_DB_INSERT_IGNORE) ||
+      insert_ct->append_into_str() ||
+      insert_ct->append_table_name(0) ||
+      insert_ct->append_open_paren_str() ||
+      insert_ct->append_table_columns(table_share) ||
+      insert_ct->append_values_str()
     ) {
       my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
       goto error;
     }
 
-    dst_tbl_conn->values_pos = insert_sql->length();
+    insert_ct->set_sql_pos();
   }
 
   all_link_cnt =
     copy_tables->link_idx_count[0] + copy_tables->link_idx_count[1];
-  if (!(spider = (ha_spider *)
-    spider_bulk_malloc(spider_current_trx, 28, MYF(MY_WME | MY_ZEROFILL),
-      &spider, sizeof(ha_spider) * all_link_cnt,
-      &tmp_link_for_hash, sizeof(SPIDER_LINK_FOR_HASH) * all_link_cnt,
-      NullS))
+  if (
+    !(tmp_sql = new spider_string[all_link_cnt]) ||
+    !(spider = new ha_spider[all_link_cnt])
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
@@ -1021,47 +1047,92 @@ long long spider_copy_tables_body(
     table_conn; roop_count++, table_conn = table_conn->next)
   {
     tmp_spider = &spider[roop_count];
+    if (!(tmp_spider->dbton_handler = (spider_db_handler **)
+      spider_bulk_alloc_mem(spider_current_trx, 205,
+        __func__, __FILE__, __LINE__, MYF(MY_WME | MY_ZEROFILL),
+        &tmp_spider->dbton_handler,
+          sizeof(spider_db_handler *) * SPIDER_DBTON_SIZE,
+        NullS))
+    ) {
+      my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+      goto error;
+    }
     tmp_spider->share = table_conn->share;
     tmp_spider->trx = copy_tables->trx;
-    tmp_spider->link_for_hash = &tmp_link_for_hash[roop_count];
-    tmp_link_for_hash[roop_count].spider = tmp_spider;
-    tmp_link_for_hash[roop_count].link_idx = 0;
-    tmp_link_for_hash[roop_count].db_table_str =
-      &tmp_spider->share->db_table_str[0];
+/*
     if (spider_db_append_set_names(table_conn->share))
     {
       my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
       goto error_append_set_names;
     }
+*/
     tmp_spider->conns = &table_conn->conn;
-    tmp_spider->result_list.sql.set_charset(copy_tables->access_charset);
-    tmp_spider->result_list.sqls = &tmp_spider->result_list.sql;
+    tmp_sql[roop_count].init_calc_mem(122);
+    tmp_sql[roop_count].set_charset(copy_tables->access_charset);
+    tmp_spider->result_list.sqls = &tmp_sql[roop_count];
     tmp_spider->need_mons = &table_conn->need_mon;
     tmp_spider->lock_type = TL_READ;
+    uint dbton_id = tmp_spider->share->use_dbton_ids[0];
+    if (!(tmp_spider->dbton_handler[dbton_id] =
+      spider_dbton[dbton_id].create_db_handler(tmp_spider,
+      tmp_spider->share->dbton_share[dbton_id])))
+    {
+      my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+      goto error_create_dbton_handler;
+    }
+    if ((error_num = tmp_spider->dbton_handler[dbton_id]->init()))
+    {
+      goto error_init_dbton_handler;
+    }
     table_conn->spider = tmp_spider;
   }
   for (table_conn = copy_tables->table_conn[1];
     table_conn; roop_count++, table_conn = table_conn->next)
   {
     tmp_spider = &spider[roop_count];
+    if (!(tmp_spider->dbton_handler = (spider_db_handler **)
+      spider_bulk_alloc_mem(spider_current_trx, 206,
+        __func__, __FILE__, __LINE__, MYF(MY_WME | MY_ZEROFILL),
+        &tmp_spider->dbton_handler,
+          sizeof(spider_db_handler *) * SPIDER_DBTON_SIZE,
+        NullS))
+    ) {
+      my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+      goto error;
+    }
     tmp_spider->share = table_conn->share;
     tmp_spider->trx = copy_tables->trx;
+/*
     if (spider_db_append_set_names(table_conn->share))
     {
       my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
       goto error_append_set_names;
     }
+*/
     tmp_spider->conns = &table_conn->conn;
-    tmp_spider->result_list.sql.set_charset(copy_tables->access_charset);
-    tmp_spider->result_list.sqls = &tmp_spider->result_list.sql;
+    tmp_sql[roop_count].init_calc_mem(201);
+    tmp_sql[roop_count].set_charset(copy_tables->access_charset);
+    tmp_spider->result_list.sqls = &tmp_sql[roop_count];
     tmp_spider->need_mons = &table_conn->need_mon;
     tmp_spider->lock_type = TL_WRITE;
+    uint dbton_id = tmp_spider->share->use_dbton_ids[0];
+    if (!(tmp_spider->dbton_handler[dbton_id] =
+      spider_dbton[dbton_id].create_db_handler(tmp_spider,
+      tmp_spider->share->dbton_share[dbton_id])))
+    {
+      my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+      goto error_create_dbton_handler;
+    }
+    if ((error_num = tmp_spider->dbton_handler[dbton_id]->init()))
+    {
+      goto error_init_dbton_handler;
+    }
     table_conn->spider = tmp_spider;
   }
 
   if (
     copy_tables->use_transaction &&
-    spider_db_append_select_lock_str(select_sql, SPIDER_LOCK_MODE_SHARED)
+    select_ct->append_select_lock_str(SPIDER_LOCK_MODE_SHARED)
   ) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
     goto error;
@@ -1071,12 +1142,14 @@ long long spider_copy_tables_body(
     bulk_insert_rows)))
     goto error_db_udf_copy_tables;
 
+/*
   for (table_conn = copy_tables->table_conn[0];
     table_conn; table_conn = table_conn->next)
     spider_db_free_set_names(table_conn->share);
   for (table_conn = copy_tables->table_conn[1];
     table_conn; table_conn = table_conn->next)
     spider_db_free_set_names(table_conn->share);
+*/
   if (table_list->table)
   {
 #if MYSQL_VERSION_ID < 50500
@@ -1087,19 +1160,40 @@ long long spider_copy_tables_body(
     close_thread_tables(thd);
   }
   if (spider)
-    spider_free(spider_current_trx, spider, MYF(0));
+  {
+    for (roop_count = 0; roop_count < all_link_cnt; roop_count++)
+    {
+      if (spider[roop_count].share && spider[roop_count].dbton_handler)
+      {
+        uint dbton_id = spider[roop_count].share->use_dbton_ids[0];
+        if (spider[roop_count].dbton_handler[dbton_id])
+          delete spider[roop_count].dbton_handler[dbton_id];
+        spider_free(spider_current_trx, spider[roop_count].dbton_handler,
+          MYF(0));
+      }
+    }
+    delete [] spider;
+  }
+  if (tmp_sql)
+    delete [] tmp_sql;
   spider_udf_free_copy_tables_alloc(copy_tables);
 
   DBUG_RETURN(1);
 
 error_db_udf_copy_tables:
+error_create_dbton_handler:
+error_init_dbton_handler:
+/*
 error_append_set_names:
+*/
+/*
   for (table_conn = copy_tables->table_conn[0];
     table_conn; table_conn = table_conn->next)
     spider_db_free_set_names(table_conn->share);
   for (table_conn = copy_tables->table_conn[1];
     table_conn; table_conn = table_conn->next)
     spider_db_free_set_names(table_conn->share);
+*/
 error:
   if (table_list && table_list->table)
   {
@@ -1116,13 +1210,26 @@ error:
     {
       tmp_spider = &spider[roop_count];
       tmp_conn = tmp_spider->conns[0];
-      if (tmp_conn->lock_table_hash.records)
-      {
-        my_hash_reset(&tmp_conn->lock_table_hash);
+      if (tmp_conn && tmp_conn->db_conn &&
+        tmp_conn->db_conn->get_lock_table_hash_count()
+      ) {
+        tmp_conn->db_conn->reset_lock_table_hash();
         tmp_conn->table_lock = 0;
       }
+      if (tmp_spider->share && spider[roop_count].dbton_handler)
+      {
+        uint dbton_id = tmp_spider->share->use_dbton_ids[0];
+        if (tmp_spider->dbton_handler[dbton_id])
+          delete tmp_spider->dbton_handler[dbton_id];
+        spider_free(spider_current_trx, spider[roop_count].dbton_handler,
+          MYF(0));
+      }
     }
-    spider_free(spider_current_trx, spider, MYF(0));
+    delete [] spider;
+  }
+  if (tmp_sql)
+  {
+    delete [] tmp_sql;
   }
   if (copy_tables)
     spider_udf_free_copy_tables_alloc(copy_tables);

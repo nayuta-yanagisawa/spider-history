@@ -14,6 +14,7 @@ noinst_HEADERS = ha_spider.h spd_conn.h spd_db_conn.h \
                  spd_table.h spd_trx.h spd_include.h spd_param.h \
                  spd_direct_sql.h spd_udf.h spd_ping_table.h \
                  spd_copy_tables.h spd_malloc.h \
+                 spd_db_mysql.h spd_db_handlersocket.h \
                  hs_client/allocator.hpp hs_client/config.hpp \
                  hs_client/mutex.hpp hs_client/string_util.hpp \
                  hs_client/auto_addrinfo.hpp hs_client/escape.hpp \
@@ -45,6 +46,8 @@ ha_spider_la_SOURCES  = \
                    spd_i_s.cc \
                    spd_malloc.cc \
                    ha_spider.cc \
+                   spd_db_mysql.cc \
+                   spd_db_handlersocket.cc \
                    hs_client/config.cpp \
                    hs_client/escape.cpp \
                    hs_client/fatal.cpp \
@@ -71,6 +74,8 @@ libspider_a_SOURCES  = \
                    spd_i_s.cc \
                    spd_malloc.cc \
                    ha_spider.cc \
+                   spd_db_mysql.cc \
+                   spd_db_handlersocket.cc \
                    hs_client/config.cpp \
                    hs_client/escape.cpp \
                    hs_client/fatal.cpp \

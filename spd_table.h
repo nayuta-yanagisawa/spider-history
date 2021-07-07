@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2012 Kentoku Shiba
+/* Copyright (C) 2008-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -266,7 +266,8 @@ int spider_get_sts(
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   int sts_sync,
 #endif
-  int sts_sync_level
+  int sts_sync_level,
+  uint flag
 );
 
 int spider_get_crd(
@@ -293,6 +294,10 @@ SPIDER_INIT_ERROR_TABLE *spider_get_init_error_table(
   bool create
 );
 
+void spider_delete_init_error_table(
+  const char *name
+);
+
 bool spider_check_pk_update(
   TABLE *table
 );
@@ -312,6 +317,22 @@ void spider_set_tmp_share_pointer(
   uint *tmp_connect_info_length,
   long *tmp_long,
   longlong *tmp_longlong
+);
+
+int spider_create_tmp_dbton_share(
+  SPIDER_SHARE *tmp_share
+);
+
+void spider_free_tmp_dbton_share(
+  SPIDER_SHARE *tmp_share
+);
+
+int spider_create_tmp_dbton_handler(
+  ha_spider *tmp_spider
+);
+
+void spider_free_tmp_dbton_handler(
+  ha_spider *tmp_spider
 );
 
 void spider_get_select_limit(

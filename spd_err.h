@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2011 Kentoku Shiba
+/* Copyright (C) 2008-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -53,6 +53,12 @@
 #define ER_SPIDER_LINK_IS_FAILOVER_STR "A link is fail-overed"
 #define ER_SPIDER_AUTOINC_VAL_IS_DIFFERENT_NUM 12520
 #define ER_SPIDER_AUTOINC_VAL_IS_DIFFERENT_STR "Binlog's auto-inc value is probably different from linked table's auto-inc value"
+#define ER_SPIDER_SQL_WRAPPER_IS_INVALID_NUM 12521
+#define ER_SPIDER_SQL_WRAPPER_IS_INVALID_STR "Can't use wrapper '%s' for SQL connection"
+#define ER_SPIDER_NOSQL_WRAPPER_IS_INVALID_NUM 12522
+#define ER_SPIDER_NOSQL_WRAPPER_IS_INVALID_STR "Can't use wrapper '%s' for NOSQL connection"
+#define ER_SPIDER_REQUEST_KEY_NUM 12523
+#define ER_SPIDER_REQUEST_KEY_STR "Request key not found"
 
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_NUM 12601
 #define ER_SPIDER_CANT_USE_BOTH_INNER_XA_AND_SNAPSHOT_STR "Can't use both spider_use_consistent_snapshot = 1 and spider_internal_xa = 1"
@@ -97,8 +103,13 @@
 #define ER_SPIDER_UDF_CANT_OPEN_TABLE_STR "Can't open table %s.%s"
 #define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_NUM 12709
 #define ER_SPIDER_UDF_COPY_TABLE_NEED_PK_STR "Table %s.%s needs PK for copying"
+#define ER_SPIDER_INVALID_REMOTE_TABLE_INFO_NUM 12710
+#define ER_SPIDER_INVALID_REMOTE_TABLE_INFO_STR "Invalid information from remote table '%s.%s'"
 #define ER_SPIDER_HS_STR "Error from HS %d %s"
 #define ER_SPIDER_HS_NUM 12711
+#define ER_SPIDER_ORACLE_STR "Error from Oracle %d %d %s"
+#define ER_SPIDER_ORACLE_NUM 12712
+#define ER_SPIDER_ORACLE_ERR "Oracle error"
 #define ER_SPIDER_COND_SKIP_NUM 12801
 
 #define ER_SPIDER_UNKNOWN_NUM 12500

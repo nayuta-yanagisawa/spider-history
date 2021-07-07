@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2012 Kentoku Shiba
+/* Copyright (C) 2009-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -15,9 +15,6 @@
 
 #define MYSQL_SERVER 1
 #include "mysql_version.h"
-#ifdef HAVE_HANDLERSOCKET
-#include "hstcpcli.hpp"
-#endif
 #if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
@@ -43,6 +40,7 @@
 #include "spd_malloc.h"
 
 extern handlerton *spider_hton_ptr;
+extern SPIDER_DBTON spider_dbton[SPIDER_DBTON_SIZE];
 
 #ifdef HAVE_PSI_INTERFACE
 extern PSI_mutex_key spd_key_mutex_mta_conn;
@@ -139,7 +137,7 @@ int spider_udf_direct_sql_create_table_list(
           thd->db_length + 1);
         tmp_name_ptr += thd->db_length + 1;
       } else {
-        direct_sql->db_names[roop_count] = "";
+        direct_sql->db_names[roop_count] = (char *) "";
       }
     }
 
@@ -289,6 +287,45 @@ int spider_udf_direct_sql_create_conn_key(
       tmp_name++;
 #ifdef HAVE_HANDLERSOCKET
   }
+#endif
+  uint roop_count2;
+  direct_sql->dbton_id = SPIDER_DBTON_SIZE;
+  DBUG_PRINT("info",("spider direct_sql->tgt_wrapper=%s",
+    direct_sql->tgt_wrapper));
+  for (roop_count2 = 0; roop_count2 < SPIDER_DBTON_SIZE; roop_count2++)
+  {
+    DBUG_PRINT("info",("spider spider_dbton[%d].wrapper=%s", roop_count2,
+      spider_dbton[roop_count2].wrapper ?
+        spider_dbton[roop_count2].wrapper : "NULL"));
+    if (
+      spider_dbton[roop_count2].wrapper &&
+      !strcmp(direct_sql->tgt_wrapper, spider_dbton[roop_count2].wrapper)
+    ) {
+#ifdef HAVE_HANDLERSOCKET
+      if (direct_sql->access_mode == 0)
+      {
+#endif
+        if (spider_dbton[roop_count2].db_access_type ==
+          SPIDER_DB_ACCESS_TYPE_SQL)
+        {
+          direct_sql->dbton_id = roop_count2;
+          break;
+        }
+#ifdef HAVE_HANDLERSOCKET
+      } else {
+        if (spider_dbton[roop_count2].db_access_type ==
+          SPIDER_DB_ACCESS_TYPE_NOSQL)
+        {
+          direct_sql->dbton_id = roop_count2;
+          break;
+        }
+      }
+#endif
+    }
+  }
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+  direct_sql->conn_key_hash_value = my_calc_hash(&spider_open_connections,
+    (uchar*) direct_sql->conn_key, direct_sql->conn_key_length);
 #endif
   DBUG_RETURN(0);
 }
@@ -448,9 +485,18 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
     }
   }
 #endif
+  conn->dbton_id = direct_sql->dbton_id;
   conn->conn_need_mon = need_mon;
   conn->need_mon = need_mon;
-  conn->db_conn = NULL;
+  if (!(conn->db_conn = spider_dbton[conn->dbton_id].create_db_conn(conn)))
+  {
+    *error_num = HA_ERR_OUT_OF_MEM;
+    goto error_db_conn_create;
+  }
+  if ((*error_num = conn->db_conn->init()))
+  {
+    goto error_db_conn_init;
+  }
   conn->join_trx = 0;
   conn->thd = NULL;
   conn->table_lock = 0;
@@ -482,31 +528,6 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
     goto error_mta_conn_mutex_init;
   }
 
-  if (
-    my_hash_init(&conn->lock_table_hash, system_charset_info, 32, 0, 0,
-              (my_hash_get_key) spider_link_get_key, 0, 0)
-  ) {
-    *error_num = HA_ERR_OUT_OF_MEM;
-    goto error_init_lock_table_hash;
-  }
-  spider_alloc_calc_mem_init(conn->lock_table_hash, 141);
-  spider_alloc_calc_mem(spider_current_trx,
-    conn->lock_table_hash,
-    conn->lock_table_hash.array.max_element *
-    conn->lock_table_hash.array.size_of_element);
-  if (
-    my_init_dynamic_array2(&conn->handler_open_array,
-      sizeof(SPIDER_LINK_FOR_HASH *), NULL, 16, 16)
-  ) {
-    *error_num = HA_ERR_OUT_OF_MEM;
-    goto error_init_handler_open_array;
-  }
-  spider_alloc_calc_mem_init(conn->handler_open_array, 164);
-  spider_alloc_calc_mem(spider_current_trx,
-    conn->handler_open_array,
-    conn->handler_open_array.max_element *
-    conn->handler_open_array.size_of_element);
-
   if ((*error_num = spider_db_udf_direct_sql_connect(direct_sql, conn)))
     goto error;
   conn->ping_time = (time_t) time((time_t*) 0);
@@ -514,21 +535,12 @@ SPIDER_CONN *spider_udf_direct_sql_create_conn(
   DBUG_RETURN(conn);
 
 error:
-  spider_free_mem_calc(spider_current_trx,
-    conn->handler_open_array_id,
-    conn->handler_open_array.max_element *
-    conn->handler_open_array.size_of_element);
-  delete_dynamic(&conn->handler_open_array);
-error_init_handler_open_array:
-  spider_free_mem_calc(spider_current_trx,
-    conn->lock_table_hash_id,
-    conn->lock_table_hash.array.max_element *
-    conn->lock_table_hash.array.size_of_element);
-  my_hash_free(&conn->lock_table_hash);
-error_init_lock_table_hash:
   DBUG_ASSERT(!conn->mta_conn_mutex_file_pos.file_name);
   pthread_mutex_destroy(&conn->mta_conn_mutex);
 error_mta_conn_mutex_init:
+error_db_conn_init:
+  delete conn->db_conn;
+error_db_conn_create:
   spider_free(spider_current_trx, conn, MYF(0));
 error_alloc_conn:
   DBUG_RETURN(NULL);
@@ -544,6 +556,29 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
   DBUG_PRINT("info",("spider direct_sql->access_mode=%d",
     direct_sql->access_mode));
 
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+  if (
+#ifdef HAVE_HANDLERSOCKET
+    (direct_sql->access_mode == 0 &&
+#endif
+      !(conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
+        &trx->trx_conn_hash, direct_sql->conn_key_hash_value,
+        (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
+#ifdef HAVE_HANDLERSOCKET
+    ) ||
+    (direct_sql->access_mode == 1 &&
+      !(conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
+        &trx->trx_direct_hs_r_conn_hash, direct_sql->conn_key_hash_value,
+        (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
+    ) ||
+    (direct_sql->access_mode == 2 &&
+      !(conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
+        &trx->trx_direct_hs_w_conn_hash, direct_sql->conn_key_hash_value,
+        (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
+    )
+#endif
+  )
+#else
   if (
 #ifdef HAVE_HANDLERSOCKET
     (direct_sql->access_mode == 0 &&
@@ -561,7 +596,9 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
           (uchar*) direct_sql->conn_key, direct_sql->conn_key_length))
     )
 #endif
-  ) {
+  )
+#endif
+  {
     if (
 #ifdef HAVE_HANDLERSOCKET
       (direct_sql->access_mode == 0 &&
@@ -591,9 +628,14 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
       {
 #endif
         pthread_mutex_lock(&spider_conn_mutex);
+#ifdef SPIDER_HAS_HASH_VALUE_TYPE
+        if (!(conn = (SPIDER_CONN*) my_hash_search_using_hash_value(
+          &spider_open_connections, direct_sql->conn_key_hash_value,
+          (uchar*) direct_sql->conn_key, direct_sql->conn_key_length)))
+#else
         if (!(conn = (SPIDER_CONN*) my_hash_search(&spider_open_connections,
-                                               (uchar*) direct_sql->conn_key,
-                                               direct_sql->conn_key_length)))
+          (uchar*) direct_sql->conn_key, direct_sql->conn_key_length)))
+#endif
         {
           pthread_mutex_unlock(&spider_conn_mutex);
           DBUG_PRINT("info",("spider create new conn"));
@@ -601,7 +643,12 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
             error_num)))
             goto error;
         } else {
+#ifdef HASH_UPDATE_WITH_HASH_VALUE
+          my_hash_delete_with_hash_value(&spider_open_connections,
+            conn->conn_key_hash_value, (uchar*) conn);
+#else
           my_hash_delete(&spider_open_connections, (uchar*) conn);
+#endif
           pthread_mutex_unlock(&spider_conn_mutex);
           DBUG_PRINT("info",("spider get global conn"));
         }
@@ -622,7 +669,12 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
     {
 #endif
       uint old_elements = trx->trx_conn_hash.array.max_element;
+#ifdef HASH_UPDATE_WITH_HASH_VALUE
+      if (my_hash_insert_with_hash_value(&trx->trx_conn_hash,
+        direct_sql->conn_key_hash_value, (uchar*) conn))
+#else
       if (my_hash_insert(&trx->trx_conn_hash, (uchar*) conn))
+#endif
       {
         spider_free_conn(conn);
         *error_num = HA_ERR_OUT_OF_MEM;
@@ -639,7 +691,12 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
     } else if (direct_sql->access_mode == 1)
     {
       uint old_elements = trx->trx_direct_hs_r_conn_hash.array.max_element;
+#ifdef HASH_UPDATE_WITH_HASH_VALUE
+      if (my_hash_insert_with_hash_value(&trx->trx_direct_hs_r_conn_hash,
+        direct_sql->conn_key_hash_value, (uchar*) conn))
+#else
       if (my_hash_insert(&trx->trx_direct_hs_r_conn_hash, (uchar*) conn))
+#endif
       {
         spider_free_conn(conn);
         *error_num = HA_ERR_OUT_OF_MEM;
@@ -654,7 +711,12 @@ SPIDER_CONN *spider_udf_direct_sql_get_conn(
       }
     } else {
       uint old_elements = trx->trx_direct_hs_w_conn_hash.array.max_element;
+#ifdef HASH_UPDATE_WITH_HASH_VALUE
+      if (my_hash_insert_with_hash_value(&trx->trx_direct_hs_w_conn_hash,
+        direct_sql->conn_key_hash_value, (uchar*) conn))
+#else
       if (my_hash_insert(&trx->trx_direct_hs_w_conn_hash, (uchar*) conn))
+#endif
       {
         spider_free_conn(conn);
         *error_num = HA_ERR_OUT_OF_MEM;

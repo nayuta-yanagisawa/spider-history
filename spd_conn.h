@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2012 Kentoku Shiba
+/* Copyright (C) 2008-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -16,6 +16,10 @@
 #define SPIDER_LOCK_MODE_NO_LOCK             0
 #define SPIDER_LOCK_MODE_SHARED              1
 #define SPIDER_LOCK_MODE_EXCLUSIVE           2
+
+#define SPIDER_BG_SIMPLE_NO_ACTION           0
+#define SPIDER_BG_SIMPLE_CONNECT             1
+#define SPIDER_BG_SIMPLE_DISCONNECT          2
 
 uchar *spider_conn_get_key(
   SPIDER_CONN *conn,
@@ -208,6 +212,11 @@ int spider_bg_conn_search(
   bool first,
   bool pre_next,
   bool discard_result
+);
+
+void spider_bg_conn_simple_action(
+  SPIDER_CONN *conn,
+  uint simple_action
 );
 
 void *spider_bg_conn_action(

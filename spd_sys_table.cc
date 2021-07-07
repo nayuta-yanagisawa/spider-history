@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2012 Kentoku Shiba
+/* Copyright (C) 2008-2013 Kentoku Shiba
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -15,9 +15,6 @@
 
 #define MYSQL_SERVER 1
 #include "mysql_version.h"
-#ifdef HAVE_HANDLERSOCKET
-#include "hstcpcli.hpp"
-#endif
 #if MYSQL_VERSION_ID < 50500
 #include "mysql_priv.h"
 #include <mysql/plugin.h>
@@ -2271,10 +2268,11 @@ TABLE *spider_mk_sys_tmp_table_for_result(
   TMP_TABLE_PARAM *tmp_tbl_prm,
   const char *field_name1,
   const char *field_name2,
+  const char *field_name3,
   CHARSET_INFO *cs
 ) {
-  Field_blob *field1, *field2;
-  Item_field *i_field1, *i_field2;
+  Field_blob *field1, *field2, *field3;
+  Item_field *i_field1, *i_field2, *i_field3;
   List<Item> i_list;
   TABLE *tmp_table;
   DBUG_ENTER("spider_mk_sys_tmp_table_for_result");
@@ -2301,6 +2299,17 @@ TABLE *spider_mk_sys_tmp_table_for_result(
   if (i_list.push_back(i_field2))
     goto error_push_item2;
 
+  if (!(field3 = new Field_blob(
+    4294967295U, FALSE, field_name3, cs, TRUE)))
+    goto error_alloc_field3;
+  field3->init(table);
+
+  if (!(i_field3 = new Item_field((Field *) field3)))
+    goto error_alloc_item_field3;
+
+  if (i_list.push_back(i_field3))
+    goto error_push_item3;
+
   if (!(tmp_table = create_tmp_table(thd, tmp_tbl_prm,
     i_list, (ORDER*) NULL, FALSE, FALSE, TMP_TABLE_FORCE_MYISAM,
     HA_POS_ERROR, (char *) "")))
@@ -2308,6 +2317,11 @@ TABLE *spider_mk_sys_tmp_table_for_result(
   DBUG_RETURN(tmp_table);
 
 error_create_tmp_table:
+error_push_item3:
+  delete i_field3;
+error_alloc_item_field3:
+  delete field3;
+error_alloc_field3:
 error_push_item2:
   delete i_field2;
 error_alloc_item_field2:
@@ -2329,6 +2343,6 @@ void spider_rm_sys_tmp_table_for_result(
   DBUG_ENTER("spider_rm_sys_tmp_table_for_result");
   free_tmp_table(thd, tmp_table);
   tmp_tbl_prm->cleanup();
-  tmp_tbl_prm->field_count = 2;
+  tmp_tbl_prm->field_count = 3;
   DBUG_VOID_RETURN;
 }

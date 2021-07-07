@@ -64,7 +64,8 @@ struct hstcpcli_i {
     const hstcpcli_filter *fils = 0, size_t filslen = 0,
     int invalues_keypart = -1, const string_ref *invalues = 0,
     size_t invalueslen = 0) = 0; // FIXME: too long
-  virtual void request_buf_append(const char *start, const char *finish) = 0;
+  virtual size_t request_buf_append(const char *start, const char *finish) = 0;
+  virtual void request_reset() = 0;
   virtual int request_send() = 0;
   virtual int response_recv(size_t& num_flds_r) = 0;
   virtual int get_result(hstresult& result) = 0;
@@ -72,11 +73,17 @@ struct hstcpcli_i {
   virtual const string_ref *get_next_row_from_result(hstresult& result) = 0;
   virtual void response_buf_remove() = 0;
   virtual int get_error_code() = 0;
-  virtual String get_error() = 0;
+  virtual String& get_error() = 0;
+  virtual void clear_error() = 0;
   virtual int set_timeout(int send_timeout, int recv_timeout) = 0;
+  virtual size_t get_num_req_bufd() = 0;
+  virtual size_t get_num_req_sent() = 0;
+  virtual size_t get_num_req_rcvd() = 0;
   virtual size_t get_response_end_offset() = 0;
   virtual const char *get_readbuf_begin() = 0;
   virtual const char *get_readbuf_end() = 0;
+  virtual void write_error_to_log(const char *func_name, const char *file_name,
+    ulong line_no) = 0;
   static hstcpcli_ptr create(const socket_args& args);
 };
 
