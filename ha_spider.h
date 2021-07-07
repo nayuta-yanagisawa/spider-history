@@ -27,9 +27,12 @@ public:
   THR_LOCK_DATA      lock;
   SPIDER_SHARE       *share;
   SPIDER_TRX         *trx;
+  ulonglong           spider_thread_id;
+  ulonglong           trx_conn_adjustment;
   SPIDER_CONN        *conn;
   SPIDER_DB_CONN     *db_conn;
   SPIDER_RESULT_LIST result_list;
+  ha_spider          *next;
 
   bool               quick_mode;
   bool               keyread;

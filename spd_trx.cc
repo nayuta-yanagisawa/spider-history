@@ -28,6 +28,7 @@
 #include "spd_conn.h"
 
 extern handlerton *spider_hton_ptr;
+volatile ulonglong spider_thread_id = 1;
 
 // for spider_alter_tables
 uchar *spider_alter_tbl_get_key(
@@ -49,9 +50,16 @@ int spider_free_trx_conn(
   int roop_count = 0;
   SPIDER_CONN *conn;
   DBUG_ENTER("spider_free_trx_conn");
-  while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash, roop_count)))
-  {
-    spider_free_conn_from_trx(trx, conn, FALSE, trx_free, &roop_count);
+  if(
+    THDVAR(trx->thd, conn_recycle_mode) != 2 ||
+    trx_free
+  ) {
+    while ((conn = (SPIDER_CONN*) hash_element(&trx->trx_conn_hash,
+      roop_count)))
+    {
+      spider_free_conn_from_trx(trx, conn, FALSE, trx_free, &roop_count);
+    }
+    trx->trx_conn_adjustment++;
   }
   DBUG_RETURN(0);
 }
@@ -476,6 +484,8 @@ SPIDER_TRX *spider_get_trx(
       goto error_init_alter_hash;
 
     trx->thd = (THD*) thd;
+    trx->spider_thread_id = spider_thread_id++;
+    trx->trx_conn_adjustment = 1;
 
     thd_set_ha_data(thd, spider_hton_ptr, trx);
   }
@@ -2081,15 +2091,14 @@ int spider_check_trx_and_get_conn(
     DBUG_PRINT("info",("spider get trx error"));
     DBUG_RETURN(error_num);
   }
-  if (trx != spider->trx)
+  if (trx->spider_thread_id != spider->spider_thread_id ||
+    trx->trx_conn_adjustment != spider->trx_conn_adjustment)
   {
-    DBUG_PRINT("info",("spider change thd"));
-    if (conn)
-    {
-      spider_conn_user_ha_delete(conn, spider);
-      spider->conn = conn = NULL;
-    }
+    DBUG_PRINT("info",(trx != spider->trx ? "spider change thd" :
+      "spider next trx"));
     spider->trx = trx;
+    spider->spider_thread_id = trx->spider_thread_id;
+    spider->trx_conn_adjustment = trx->trx_conn_adjustment;
     if (
       !(spider->conn = conn =
         spider_get_conn(spider->share, trx, spider, FALSE, TRUE, &error_num))
@@ -2100,6 +2109,7 @@ int spider_check_trx_and_get_conn(
     spider->db_conn = conn->db_conn;
   } else if (!conn)
   {
+    DBUG_PRINT("info",("spider get conn"));
     if (
       !(spider->conn = conn =
         spider_get_conn(spider->share, trx, spider, FALSE, TRUE, &error_num))

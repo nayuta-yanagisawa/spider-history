@@ -24,6 +24,10 @@
 #include "spd_conn.h"
 #include "spd_table.h"
 
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+extern pthread_attr_t spider_pt_attr;
+#endif
+
 HASH spider_open_connections;
 pthread_mutex_t spider_conn_mutex;
 
@@ -41,20 +45,12 @@ uchar *spider_conn_get_key(
 int spider_free_conn_alloc(
   SPIDER_CONN *conn
 ) {
-  ha_spider *spider;
   DBUG_ENTER("spider_free_conn_alloc");
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  spider_free_conn_thread(conn);
+#endif
   spider_db_disconnect(conn);
-  pthread_mutex_lock(&conn->user_ha_mutex);
-  while ((spider = (ha_spider*) hash_element(&conn->user_ha_hash, 0)))
-  {
-    hash_delete(&conn->user_ha_hash, (uchar*) spider);
-    spider->conn = NULL;
-    spider->db_conn = NULL;
-  }
-  pthread_mutex_unlock(&conn->user_ha_mutex);
-  hash_free(&conn->user_ha_hash);
   hash_free(&conn->lock_table_hash);
-  VOID(pthread_mutex_destroy(&conn->user_ha_mutex));
   DBUG_RETURN(0);
 }
 
@@ -73,23 +69,22 @@ void spider_free_conn_from_trx(
   ) {
     conn->thd = NULL;
     if (another)
-      hash_delete(&trx->trx_another_conn_hash, (uchar*) conn);
-    else
-      hash_delete(&trx->trx_conn_hash, (uchar*) conn);
-    pthread_mutex_lock(&conn->user_ha_mutex);
-    while ((spider = (ha_spider*) hash_element(&conn->user_ha_hash, 0)))
     {
-      hash_delete(&conn->user_ha_hash, (uchar*) spider);
-      spider->conn = NULL;
-      spider->db_conn = NULL;
-      if (another)
+      ha_spider *next_spider;
+      hash_delete(&trx->trx_another_conn_hash, (uchar*) conn);
+      spider = (ha_spider*) conn->another_ha_first;
+      while (spider)
       {
+        next_spider = spider->next;
         spider_free_tmp_share_alloc(spider->share);
         my_free(spider->share, MYF(0));
         delete spider;
+        spider = next_spider;
       }
-    }
-    pthread_mutex_unlock(&conn->user_ha_mutex);
+      conn->another_ha_first = NULL;
+      conn->another_ha_last = NULL;
+    } else
+      hash_delete(&trx->trx_conn_hash, (uchar*) conn);
 
     if(
       THDVAR(trx->thd, conn_recycle_mode) == 1 &&
@@ -166,18 +161,6 @@ SPIDER_CONN *spider_create_conn(
   conn->semi_trx_isolation_chk = FALSE;
   conn->semi_trx_chk = FALSE;
 
-  if (pthread_mutex_init(&conn->user_ha_mutex, MY_MUTEX_INIT_FAST))
-  {
-    *error_num = HA_ERR_OUT_OF_MEM;
-    goto error_init_user_ha_mutex;
-  }
-  if (
-    hash_init(&conn->user_ha_hash, system_charset_info, 32, 0, 0,
-              (hash_get_key) spider_ha_get_key, 0, 0)
-  ) {
-    *error_num = HA_ERR_OUT_OF_MEM;
-    goto error_init_hash;
-  }
   if (
     hash_init(&conn->lock_table_hash, system_charset_info, 32, 0, 0,
               (hash_get_key) spider_ha_get_key, 0, 0)
@@ -194,10 +177,6 @@ SPIDER_CONN *spider_create_conn(
 error:
   hash_free(&conn->lock_table_hash);
 error_init_lock_table_hash:
-  hash_free(&conn->user_ha_hash);
-error_init_hash:
-  VOID(pthread_mutex_destroy(&conn->user_ha_mutex));
-error_init_user_ha_mutex:
   my_free(conn, MYF(0));
 error_alloc_conn:
   DBUG_RETURN(NULL);
@@ -252,15 +231,6 @@ SPIDER_CONN *spider_get_conn(
     {
       spider->conn = conn;
       spider->db_conn = conn->db_conn;
-
-      pthread_mutex_lock(&conn->user_ha_mutex);
-      if (my_hash_insert(&conn->user_ha_hash, (uchar*) spider))
-      {
-        pthread_mutex_unlock(&conn->user_ha_mutex);
-        *error_num = HA_ERR_OUT_OF_MEM;
-        goto error;
-      }
-      pthread_mutex_unlock(&conn->user_ha_mutex);
     }
 
     if (another)
@@ -279,16 +249,6 @@ SPIDER_CONN *spider_get_conn(
         goto error;
       }
     }
-  } else if (spider)
-  {
-    pthread_mutex_lock(&conn->user_ha_mutex);
-    if (my_hash_insert(&conn->user_ha_hash, (uchar*) spider))
-    {
-      pthread_mutex_unlock(&conn->user_ha_mutex);
-      *error_num = HA_ERR_OUT_OF_MEM;
-      goto error;
-    }
-    pthread_mutex_unlock(&conn->user_ha_mutex);
   }
 
   DBUG_PRINT("info",("spider conn=%x", conn));
@@ -305,17 +265,6 @@ int spider_free_conn(
   spider_free_conn_alloc(conn);
   my_free(conn, MYF(0));
   DBUG_RETURN(0);
-}
-
-void spider_conn_user_ha_delete(
-  SPIDER_CONN *conn,
-  ha_spider *spider
-) {
-  DBUG_ENTER("spider_conn_user_ha_delete");
-  pthread_mutex_lock(&conn->user_ha_mutex);
-  hash_delete(&conn->user_ha_hash, (uchar*) spider);
-  pthread_mutex_unlock(&conn->user_ha_mutex);
-  DBUG_VOID_RETURN;
 }
 
 void spider_tree_insert(
@@ -465,3 +414,321 @@ SPIDER_CONN *spider_tree_delete(
   }
   DBUG_RETURN(top);
 }
+
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+void spider_set_conn_bg_param(
+  ha_spider *spider
+) {
+  int bgs_mode;
+  SPIDER_SHARE *share = spider->share;
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  THD *thd = spider->trx->thd;
+  DBUG_ENTER("spider_set_conn_bg_param");
+  bgs_mode =
+    THDVAR(thd, bgs_mode) < 0 ?
+    share->bgs_mode :
+    THDVAR(thd, bgs_mode);
+  if (bgs_mode == 0)
+    result_list->bgs_phase = 0;
+  else if (
+    bgs_mode <= 2 &&
+    (result_list->lock_type == F_WRLCK || spider->lock_mode == 2)
+  )
+    result_list->bgs_phase = 0;
+  else if (bgs_mode <= 1 && spider->lock_mode == 1)
+    result_list->bgs_phase = 0;
+  else {
+    result_list->bgs_phase = 1;
+
+    result_list->bgs_first_read =
+      THDVAR(thd, bgs_first_read) < 0 ?
+      share->bgs_first_read :
+      THDVAR(thd, bgs_first_read);
+    result_list->bgs_second_read =
+      THDVAR(thd, bgs_second_read) < 0 ?
+      share->bgs_second_read :
+      THDVAR(thd, bgs_second_read);
+    result_list->bgs_split_read =
+      THDVAR(thd, split_read) < 0 ?
+      share->split_read :
+      THDVAR(thd, split_read);
+
+    result_list->split_read =
+      result_list->bgs_first_read > 0 ?
+      result_list->bgs_first_read :
+      result_list->bgs_split_read;
+  }
+  DBUG_VOID_RETURN;
+}
+
+int spider_create_conn_thread(
+  SPIDER_CONN *conn
+) {
+  int error_num;
+  DBUG_ENTER("spider_create_conn_thread");
+  if (!conn->bg_init)
+  {
+    if (pthread_mutex_init(&conn->bg_conn_sync_mutex, MY_MUTEX_INIT_FAST))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_sync_mutex_init;
+    }
+    if (pthread_mutex_init(&conn->bg_conn_mutex, MY_MUTEX_INIT_FAST))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_mutex_init;
+    }
+    if (pthread_cond_init(&conn->bg_conn_cond, NULL))
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_cond_init;
+    }
+    pthread_mutex_lock(&conn->bg_conn_mutex);
+    if (pthread_create(&conn->bg_thread, &spider_pt_attr,
+      spider_bg_conn_action, (void *) conn)
+    ) {
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_thread_create;
+    }
+    pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
+    pthread_mutex_unlock(&conn->bg_conn_mutex);
+    if (!conn->bg_init)
+    {
+      error_num = HA_ERR_OUT_OF_MEM;
+      goto error_thread_create;
+    }
+  }
+  DBUG_RETURN(0);
+
+error_thread_create:
+  VOID(pthread_cond_destroy(&conn->bg_conn_cond));
+error_cond_init:
+  VOID(pthread_mutex_destroy(&conn->bg_conn_mutex));
+error_mutex_init:
+  VOID(pthread_mutex_destroy(&conn->bg_conn_sync_mutex));
+error_sync_mutex_init:
+  DBUG_RETURN(error_num);
+}
+
+void spider_free_conn_thread(
+  SPIDER_CONN *conn
+) {
+  DBUG_ENTER("spider_free_conn_thread");
+  if (conn->bg_init)
+  {
+    spider_bg_conn_break(conn, NULL);
+    pthread_mutex_lock(&conn->bg_conn_mutex);
+    conn->bg_kill = TRUE;
+    pthread_cond_signal(&conn->bg_conn_cond);
+    pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
+    pthread_mutex_unlock(&conn->bg_conn_mutex);
+    VOID(pthread_cond_destroy(&conn->bg_conn_cond));
+    VOID(pthread_mutex_destroy(&conn->bg_conn_mutex));
+    VOID(pthread_mutex_destroy(&conn->bg_conn_sync_mutex));
+    conn->bg_kill = FALSE;
+    conn->bg_init = FALSE;
+  }
+  DBUG_VOID_RETURN;
+}
+
+void spider_bg_conn_break(
+  SPIDER_CONN *conn,
+  ha_spider *spider
+) {
+  DBUG_ENTER("spider_bg_conn_break");
+  if (
+    conn->bg_init &&
+    (
+      !spider ||
+      (
+        spider->result_list.bgs_working &&
+        conn->bg_target == spider
+      )
+    )
+  ) {
+    conn->bg_break = TRUE;
+    pthread_mutex_lock(&conn->bg_conn_mutex);
+    pthread_mutex_unlock(&conn->bg_conn_mutex);
+    conn->bg_break = FALSE;
+  }
+  DBUG_VOID_RETURN;
+}
+
+int spider_bg_conn_search(
+  ha_spider *spider,
+  bool first
+) {
+  int error_num;
+  SPIDER_CONN *conn = spider->conn;
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  DBUG_ENTER("spider_bg_search");
+  if (first)
+  {
+    DBUG_PRINT("info",("spider bg first search"));
+    pthread_mutex_lock(&conn->bg_conn_mutex);
+    result_list->bgs_working = TRUE;
+    conn->bg_search = TRUE;
+    conn->bg_caller_wait = TRUE;
+    conn->bg_target = spider;
+    pthread_cond_signal(&conn->bg_conn_cond);
+    pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
+    conn->bg_caller_wait = FALSE;
+    if (result_list->bgs_error)
+    {
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
+      DBUG_RETURN(result_list->bgs_error);
+    }
+    if (!result_list->finish_flg)
+    {
+      DBUG_PRINT("info",("spider bg second search"));
+      result_list->bgs_phase = 2;
+      result_list->split_read =
+        result_list->bgs_second_read > 0 ?
+        result_list->bgs_second_read :
+        result_list->bgs_split_read;
+      result_list->sql.length(result_list->limit_pos);
+      if ((error_num = spider_db_append_limit(
+        &result_list->sql,
+        result_list->internal_offset + result_list->record_num,
+        result_list->internal_limit - result_list->record_num >=
+        result_list->split_read ?
+        result_list->split_read :
+        result_list->internal_limit - result_list->record_num)) ||
+        (error_num = spider_db_append_select_lock(spider))
+      )
+        DBUG_RETURN(error_num);
+      result_list->bgs_working = TRUE;
+      conn->bg_search = TRUE;
+      pthread_cond_signal(&conn->bg_conn_cond);
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
+      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+      pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+    } else
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
+  } else {
+    DBUG_PRINT("info",("spider bg search"));
+    if (result_list->current->finish_flg)
+    {
+      result_list->table->status = STATUS_NOT_FOUND;
+      DBUG_RETURN(HA_ERR_END_OF_FILE);
+    }
+    if (result_list->bgs_working)
+    {
+      /* wait */
+      DBUG_PRINT("info",("spider bg working wait"));
+      pthread_mutex_lock(&conn->bg_conn_mutex);
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
+    }
+    if (result_list->bgs_error)
+    {
+      if (result_list->bgs_error == HA_ERR_END_OF_FILE)
+      {
+        result_list->current = result_list->current->next;
+        result_list->current_row_num = 0;
+        result_list->table->status = STATUS_NOT_FOUND;
+      }
+      DBUG_RETURN(result_list->bgs_error);
+    }
+    result_list->current = result_list->current->next;
+    result_list->current_row_num = 0;
+    DBUG_PRINT("info",("spider bg next search"));
+    if (!result_list->current->finish_flg)
+    {
+      pthread_mutex_lock(&conn->bg_conn_mutex);
+      result_list->bgs_phase = 3;
+      result_list->split_read = result_list->bgs_split_read;
+      result_list->sql.length(result_list->limit_pos);
+      if ((error_num = spider_db_append_limit(
+        &result_list->sql,
+        result_list->internal_offset + result_list->record_num,
+        result_list->internal_limit - result_list->record_num >=
+        result_list->split_read ?
+        result_list->split_read :
+        result_list->internal_limit - result_list->record_num))
+      )
+        DBUG_RETURN(error_num);
+      conn->bg_target = spider;
+      result_list->bgs_working = TRUE;
+      conn->bg_search = TRUE;
+      pthread_cond_signal(&conn->bg_conn_cond);
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
+      pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+      pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+    }
+  }
+  DBUG_RETURN(0);
+}
+
+void *spider_bg_conn_action(
+  void *arg
+) {
+  SPIDER_CONN *conn = (SPIDER_CONN*) arg;
+  ha_spider *spider;
+  SPIDER_RESULT_LIST *result_list;
+  THD *thd;
+  my_thread_init();
+  DBUG_ENTER("spider_bg_conn_action");
+  /* init start */
+  if (!(thd = new THD()))
+  {
+    pthread_mutex_lock(&conn->bg_conn_mutex);
+    pthread_cond_signal(&conn->bg_conn_cond);
+    pthread_mutex_unlock(&conn->bg_conn_mutex);
+    my_thread_end();
+    DBUG_RETURN(NULL);
+  }
+  thd->thread_stack = (char*) &thd;
+  thd->store_globals();
+  /* lex_start(thd); */
+  pthread_mutex_lock(&conn->bg_conn_mutex);
+  pthread_cond_signal(&conn->bg_conn_cond);
+  conn->bg_init = TRUE;
+  /* init end */
+
+  while (TRUE)
+  {
+    pthread_mutex_lock(&conn->bg_conn_sync_mutex);
+    pthread_cond_wait(&conn->bg_conn_cond, &conn->bg_conn_mutex);
+    pthread_mutex_unlock(&conn->bg_conn_sync_mutex);
+    DBUG_PRINT("info",("spider bg roop start"));
+    if (conn->bg_kill)
+    {
+      DBUG_PRINT("info",("spider bg kill start"));
+      pthread_cond_signal(&conn->bg_conn_cond);
+      pthread_mutex_unlock(&conn->bg_conn_mutex);
+      /* lex_end(thd->lex); */
+      delete thd;
+      my_pthread_setspecific_ptr(THR_THD, NULL);
+      my_thread_end();
+      DBUG_RETURN(NULL);
+    }
+    if (conn->bg_break)
+    {
+      DBUG_PRINT("info",("spider bg break start"));
+      continue;
+    }
+    if (conn->bg_search)
+    {
+      DBUG_PRINT("info",("spider bg search start"));
+      conn->bg_search = FALSE;
+      spider = (ha_spider*) conn->bg_target;
+      result_list = &spider->result_list;
+      if (spider_db_query(
+        conn,
+        result_list->sql.ptr(),
+        result_list->sql.length())
+      )
+        result_list->bgs_error = spider_db_errorno(conn);
+      else {
+        result_list->bgs_error =
+          spider_db_store_result(spider, result_list->table);
+      }
+      result_list->bgs_working = FALSE;
+      if (conn->bg_caller_wait)
+        pthread_cond_signal(&conn->bg_conn_cond);
+      continue;
+    }
+  }
+}
+#endif

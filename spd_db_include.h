@@ -24,8 +24,14 @@
 typedef struct st_spider_result
 {
   SPIDER_DB_RESULT     *result;
-  st_spider_result     *prev;
-  st_spider_result     *next;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile
+#endif
+    st_spider_result   *prev;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile
+#endif
+    st_spider_result   *next;
   SPIDER_DB_ROW_OFFSET first_row;
   longlong             record_num;
   bool                 finish_flg;
@@ -33,29 +39,49 @@ typedef struct st_spider_result
 
 typedef struct st_spider_result_list
 {
-  SPIDER_RESULT        *first;
-  SPIDER_RESULT        *last;
-  SPIDER_RESULT        *current;
-  KEY                  *key_info;
-  int                  key_order;
-  String               sql;
-  int                  where_pos;
-  int                  order_pos;
-  int                  limit_pos;
-  String               insert_sql;
-  int                  insert_pos;
-  bool                 sorted;
-  bool                 desc_flg;
-  longlong             current_row_num;
-  longlong             record_num;
-  bool                 finish_flg;
-  longlong             internal_offset;
-  longlong             internal_limit;
-  longlong             split_read;
-  int                  multi_split_read;
-  int                  max_order;
-  bool                 keyread;
-  int                  lock_type;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile
+#endif
+    SPIDER_RESULT        *first;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile
+#endif
+    SPIDER_RESULT        *last;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile
+#endif
+    SPIDER_RESULT        *current;
+  KEY                    *key_info;
+  int                    key_order;
+  String                 sql;
+  int                    where_pos;
+  int                    order_pos;
+  int                    limit_pos;
+  String                 insert_sql;
+  int                    insert_pos;
+  bool                   sorted;
+  bool                   desc_flg;
+  longlong               current_row_num;
+  longlong               record_num;
+  bool                   finish_flg;
+  longlong               internal_offset;
+  longlong               internal_limit;
+  longlong               split_read;
+  int                    multi_split_read;
+  int                    max_order;
+  bool                   keyread;
+  int                    lock_type;
+  TABLE                  *table;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile int           bgs_error;
+  volatile bool          bgs_working;
+  /* 0:not use bg 1:first read 2:second read 3:after second read */
+  volatile int           bgs_phase;
+  volatile longlong      bgs_first_read;
+  volatile longlong      bgs_second_read;
+  volatile longlong      bgs_split_read;
+  volatile SPIDER_RESULT *bgs_current;
+#endif
 } SPIDER_RESULT_LIST;
 
 typedef struct st_spider_position

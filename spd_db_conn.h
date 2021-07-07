@@ -342,6 +342,21 @@ int spider_db_seek_tmp(
   TABLE *table
 );
 
+int spider_db_seek_tmp_table(
+  uchar *buf,
+  SPIDER_POSITION *pos,
+  ha_spider *spider,
+  TABLE *table
+);
+
+int spider_db_seek_tmp_key(
+  uchar *buf,
+  SPIDER_POSITION *pos,
+  ha_spider *spider,
+  TABLE *table,
+  const KEY *key_info
+);
+
 int spider_db_show_table_status(
   ha_spider *spider
 );

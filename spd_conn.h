@@ -49,11 +49,6 @@ int spider_free_conn(
   SPIDER_CONN *conn
 );
 
-void spider_conn_user_ha_delete(
-  SPIDER_CONN *conn,
-  ha_spider *spider
-);
-
 void spider_tree_insert(
   SPIDER_CONN *top,
   SPIDER_CONN *conn
@@ -75,3 +70,31 @@ SPIDER_CONN *spider_tree_delete(
   SPIDER_CONN *conn,
   SPIDER_CONN *top
 );
+
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+void spider_set_conn_bg_param(
+  ha_spider *spider
+);
+
+int spider_create_conn_thread(
+  SPIDER_CONN *conn
+);
+
+void spider_free_conn_thread(
+  SPIDER_CONN *conn
+);
+
+void spider_bg_conn_break(
+  SPIDER_CONN *conn,
+  ha_spider *spider
+);
+
+int spider_bg_conn_search(
+  ha_spider *spider,
+  bool first
+);
+
+void *spider_bg_conn_action(
+  void *arg
+);
+#endif

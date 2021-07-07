@@ -24,6 +24,7 @@
 #include "spd_include.h"
 #include "ha_spider.h"
 #include "spd_db_conn.h"
+#include "spd_conn.h"
 
 #define SPIDER_SQL_NAME_QUOTE_STR "`"
 #define SPIDER_SQL_NAME_QUOTE_LEN (sizeof(SPIDER_SQL_NAME_QUOTE_STR) - 1)
@@ -225,12 +226,26 @@ int spider_db_connect(
   const SPIDER_SHARE *share,
   SPIDER_CONN *conn
 ) {
+  uint net_timeout;
+  THD* thd = current_thd;
   DBUG_ENTER("spider_mysql_real_connect");
+
+  if (thd)
+    net_timeout = THDVAR(thd, net_timeout) == -1 ?
+      share->net_timeout : THDVAR(thd, net_timeout);
+  else
+    net_timeout = share->net_timeout;
+  DBUG_PRINT("info",("spider net_timeout=%u", net_timeout));
 
   if (!(conn->db_conn = mysql_init(NULL)))
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
 
+  mysql_options(conn->db_conn, MYSQL_OPT_READ_TIMEOUT,
+    &net_timeout);
+  mysql_options(conn->db_conn, MYSQL_OPT_CONNECT_TIMEOUT,
+    &net_timeout);
   mysql_options(conn->db_conn, MYSQL_SET_CHARSET_NAME, share->csname);
+
 
   /* tgt_db not use */
   if (!mysql_real_connect(conn->db_conn,
@@ -253,31 +268,33 @@ int spider_db_ping(
   ha_spider *spider
 ) {
   int error_num;
-  SPIDER_DB_CONN *db_conn = spider->db_conn;
   SPIDER_CONN *conn = spider->conn;
   DBUG_ENTER("spider_db_ping");
   if (conn->server_lost)
   {
+    conn->trx_isolation = -1;
+    conn->autocommit = -1;
+    conn->sql_log_off = -1;
     if ((error_num = spider_db_connect(spider->share, conn)))
       DBUG_RETURN(error_num);
     conn->server_lost = FALSE;
+    spider->db_conn = conn->db_conn;
   }
-  if (
-    (error_num = simple_command(
-      db_conn, COM_PING, 0, 0, 0)) == CR_SERVER_LOST
-  ) {
-    spider->conn->trx_isolation = -1;
-    spider->conn->autocommit = -1;
-    spider->conn->sql_log_off = -1;
-    spider_db_disconnect(spider->conn);
+  if ((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
+  {
+    conn->trx_isolation = -1;
+    conn->autocommit = -1;
+    conn->sql_log_off = -1;
+    spider_db_disconnect(conn);
     if ((error_num = spider_db_connect(spider->share, conn)))
     {
       conn->server_lost = TRUE;
       DBUG_RETURN(error_num);
     }
-    if((error_num = simple_command(db_conn, COM_PING, 0, 0, 0)))
+    spider->db_conn = conn->db_conn;
+    if((error_num = simple_command(conn->db_conn, COM_PING, 0, 0, 0)))
     {
-      spider_db_disconnect(spider->conn);
+      spider_db_disconnect(conn);
       conn->server_lost = TRUE;
       DBUG_RETURN(error_num);
     }
@@ -322,8 +339,10 @@ int spider_db_errorno(
   if (error_num = mysql_errno(conn->db_conn))
   {
     DBUG_PRINT("info",("spider error_num = %d", error_num));
-    if (error_num == CR_SERVER_GONE_ERROR || error_num == CR_SERVER_LOST)
-    {
+    if (
+      error_num == CR_SERVER_GONE_ERROR ||
+      error_num == CR_SERVER_LOST
+    ) {
       spider_db_disconnect(conn);
       conn->server_lost = TRUE;
       my_message(ER_SPIDER_REMOTE_SERVER_GONE_AWAY_NUM,
@@ -2074,11 +2093,14 @@ int spider_db_free_result(
   bool final
 ) {
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
-  SPIDER_RESULT *result = result_list->first;
+  SPIDER_RESULT *result = (SPIDER_RESULT*) result_list->first;
   SPIDER_RESULT *prev;
   SPIDER_SHARE *share = spider->share;
   SPIDER_TRX *trx = spider->trx;
   DBUG_ENTER("spider_db_free_result");
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  spider_bg_conn_break(spider->conn, spider);
+#endif
   if (
     final ||
     THDVAR(trx->thd, reset_sql_alloc) == 1 ||
@@ -2095,7 +2117,7 @@ int spider_db_free_result(
         mysql_free_result(result->result);
       }
       prev = result;
-      result = result->next;
+      result = (SPIDER_RESULT*) result->next;
       my_free(prev, MYF(0));
     }
     result_list->first = NULL;
@@ -2132,12 +2154,15 @@ int spider_db_free_result(
         result->record_num = 0;
         result->finish_flg = FALSE;
       }
-      result = result->next;
+      result = (SPIDER_RESULT*) result->next;
     }
   }
   result_list->current = NULL;
   result_list->record_num = 0;
   result_list->finish_flg = FALSE;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  result_list->bgs_phase = 0;
+#endif
   DBUG_RETURN(0);
 }
 
@@ -2147,6 +2172,7 @@ int spider_db_store_result(
 ) {
   int error_num;
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  SPIDER_RESULT *current;
   DBUG_ENTER("spider_db_store_result");
   if (!result_list->current)
   {
@@ -2161,46 +2187,87 @@ int spider_db_store_result(
     } else {
       result_list->current = result_list->first;
     }
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    result_list->bgs_current = result_list->current;
+#endif
+    current = (SPIDER_RESULT*) result_list->current;
   } else {
-    if (result_list->current == result_list->last)
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if (result_list->bgs_phase > 0)
     {
-      if (!(result_list->last = (SPIDER_RESULT *)
-        my_malloc(sizeof(*result_list->last), MYF(MY_WME | MY_ZEROFILL)))
-      )
-        DBUG_RETURN(HA_ERR_OUT_OF_MEM);
-      result_list->current->next = result_list->last;
-      result_list->last->prev = result_list->current;
-      result_list->current = result_list->last;
+      if (result_list->bgs_current == result_list->last)
+      {
+        if (!(result_list->last = (SPIDER_RESULT *)
+          my_malloc(sizeof(*result_list->last), MYF(MY_WME | MY_ZEROFILL)))
+        )
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        result_list->bgs_current->next = result_list->last;
+        result_list->last->prev = result_list->bgs_current;
+        result_list->bgs_current = result_list->last;
+      } else {
+        result_list->bgs_current = result_list->bgs_current->next;
+      }
+      if (result_list->bgs_phase == 1)
+        result_list->current = result_list->bgs_current;
+      current = (SPIDER_RESULT*) result_list->bgs_current;
     } else {
-      result_list->current = result_list->current->next;
+#endif
+      if (result_list->current == result_list->last)
+      {
+        if (!(result_list->last = (SPIDER_RESULT *)
+          my_malloc(sizeof(*result_list->last), MYF(MY_WME | MY_ZEROFILL)))
+        )
+          DBUG_RETURN(HA_ERR_OUT_OF_MEM);
+        result_list->current->next = result_list->last;
+        result_list->last->prev = result_list->current;
+        result_list->current = result_list->last;
+      } else {
+        result_list->current = result_list->current->next;
+      }
+      current = (SPIDER_RESULT*) result_list->current;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
     }
+#endif
   }
 
-  if (!(result_list->current->result = mysql_store_result(spider->db_conn)))
+  if (!(current->result = mysql_store_result(spider->db_conn)))
   {
     if ((error_num = spider_db_errorno(spider->conn)))
       DBUG_RETURN(error_num);
     else {
-      result_list->current->finish_flg = TRUE;
-      result_list->current_row_num = 0;
+      current->finish_flg = TRUE;
       result_list->finish_flg = TRUE;
-      table->status = STATUS_NOT_FOUND;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+      if (result_list->bgs_phase <= 1)
+      {
+#endif
+        result_list->current_row_num = 0;
+        table->status = STATUS_NOT_FOUND;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+      }
+#endif
       DBUG_RETURN(HA_ERR_END_OF_FILE);
     }
   } else {
-    result_list->current->record_num =
-      (longlong) mysql_num_rows(result_list->current->result);
-    result_list->record_num += result_list->current->record_num;
+    current->record_num =
+      (longlong) mysql_num_rows(current->result);
+    result_list->record_num += current->record_num;
     if (
-      result_list->internal_limit >= result_list->record_num ||
-      result_list->split_read > result_list->current->record_num
+      result_list->internal_limit <= result_list->record_num ||
+      result_list->split_read > current->record_num
     ) {
-      result_list->current->finish_flg = TRUE;
+      current->finish_flg = TRUE;
       result_list->finish_flg = TRUE;
     }
-    result_list->current_row_num = 0;
-    result_list->current->first_row =
-      result_list->current->result->data_cursor;
+    current->first_row = current->result->data_cursor;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if (result_list->bgs_phase <= 1)
+    {
+#endif
+      result_list->current_row_num = 0;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    }
+#endif
   }
   DBUG_RETURN(0);
 }
@@ -2258,29 +2325,40 @@ int spider_db_seek_next(
   DBUG_ENTER("spider_db_seek_next");
   if (result_list->current_row_num >= result_list->current->record_num)
   {
-    if (result_list->finish_flg)
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+    if (result_list->bgs_phase > 0)
     {
-      table->status = STATUS_NOT_FOUND;
-      DBUG_RETURN(HA_ERR_END_OF_FILE);
+      if ((error_num = spider_bg_conn_search(spider, FALSE)))
+        DBUG_RETURN(error_num);
+    } else {
+#endif
+      if (result_list->finish_flg)
+      {
+        table->status = STATUS_NOT_FOUND;
+        DBUG_RETURN(HA_ERR_END_OF_FILE);
+      }
+      result_list->sql.length(result_list->limit_pos);
+      if ((error_num = spider_db_append_limit(
+        &result_list->sql,
+        result_list->internal_offset + result_list->record_num,
+        result_list->internal_limit - result_list->record_num >=
+        result_list->split_read ?
+        result_list->split_read :
+        result_list->internal_limit - result_list->record_num)) ||
+        (error_num = spider_db_append_select_lock(spider))
+      )
+        DBUG_RETURN(error_num);
+      if (spider_db_query(
+        spider->conn,
+        result_list->sql.ptr(),
+        result_list->sql.length())
+      )
+        DBUG_RETURN(spider_db_errorno(spider->conn));
+      if ((error_num = spider_db_store_result(spider, table)))
+        DBUG_RETURN(error_num);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
     }
-    result_list->sql.length(result_list->limit_pos);
-    if ((error_num = spider_db_append_limit(
-      &result_list->sql,
-      result_list->internal_offset + result_list->record_num,
-      result_list->internal_limit - result_list->record_num >=
-      result_list->split_read ?
-      result_list->split_read :
-      result_list->internal_limit - result_list->record_num))
-    )
-      DBUG_RETURN(error_num);
-    if (spider_db_query(
-      spider->conn,
-      result_list->sql.ptr(),
-      result_list->sql.length())
-    )
-      DBUG_RETURN(spider_db_errorno(spider->conn));
-    if ((error_num = spider_db_store_result(spider, table)))
-      DBUG_RETURN(error_num);
+#endif
     DBUG_RETURN(spider_db_fetch(buf, spider, table));
   } else
     DBUG_RETURN(spider_db_fetch(buf, spider, table));
@@ -2366,11 +2444,14 @@ SPIDER_POSITION *spider_db_create_position(
   ha_spider *spider
 ) {
   SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  SPIDER_DB_RESULT *result = result_list->current->result;
   DBUG_ENTER("spider_db_create_position");
   SPIDER_POSITION *pos = (SPIDER_POSITION*) sql_alloc(sizeof(SPIDER_POSITION));
+  ulong *lengths = (ulong*) sql_alloc(sizeof(ulong) * result->field_count);
   pos->row =
     (result_list->current->first_row + result_list->current_row_num - 1)->data;
-  pos->lengths = mysql_fetch_lengths(result_list->current->result);
+  memcpy(lengths, result->lengths, sizeof(ulong) * result->field_count);
+  pos->lengths = lengths;
   DBUG_RETURN(pos);
 }
 
@@ -2380,9 +2461,28 @@ int spider_db_seek_tmp(
   ha_spider *spider,
   TABLE *table
 ) {
+  int error_num;
+  SPIDER_RESULT_LIST *result_list = &spider->result_list;
+  DBUG_ENTER("spider_db_seek_tmp");
+  if (result_list->keyread)
+    error_num = spider_db_seek_tmp_key(buf, pos, spider, table,
+      result_list->key_info);
+  else
+    error_num = spider_db_seek_tmp_table(buf, pos, spider, table);
+  DBUG_PRINT("info",("spider error_num=%d", error_num));
+  DBUG_RETURN(error_num);
+}
+
+int spider_db_seek_tmp_table(
+  uchar *buf,
+  SPIDER_POSITION *pos,
+  ha_spider *spider,
+  TABLE *table
+) {
   ulong *lengths;
   Field **field;
-  DBUG_ENTER("spider_db_seek_tmp");
+  SPIDER_DB_ROW row = pos->row;
+  DBUG_ENTER("spider_db_seek_tmp_table");
 #ifndef DBUG_OFF
   my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->write_set);
 #endif
@@ -2393,8 +2493,41 @@ int spider_db_seek_tmp(
     field++,
     lengths++
   ) {
-    spider_db_fetch_row(buf, table, *field, pos->row, lengths);
-    pos->row++;
+    spider_db_fetch_row(buf, table, *field, row, lengths);
+    row++;
+  }
+#ifndef DBUG_OFF
+  dbug_tmp_restore_column_map(table->write_set, tmp_map);
+#endif
+  DBUG_RETURN(0);
+}
+
+int spider_db_seek_tmp_key(
+  uchar *buf,
+  SPIDER_POSITION *pos,
+  ha_spider *spider,
+  TABLE *table,
+  const KEY *key_info
+) {
+  KEY_PART_INFO *key_part;
+  uint part_num;
+  SPIDER_DB_ROW row = pos->row;
+  ulong *lengths;
+  DBUG_ENTER("spider_db_seek_tmp_key");
+#ifndef DBUG_OFF
+  my_bitmap_map *tmp_map = dbug_tmp_use_all_columns(table, table->write_set);
+#endif
+  for (
+    key_part = key_info->key_part,
+    part_num = 0,
+    lengths = pos->lengths;
+    part_num < key_info->key_parts;
+    key_part++,
+    part_num++,
+    lengths++
+  ) {
+    spider_db_fetch_row(buf, table, key_part->field, row, lengths);
+    row++;
   }
 #ifndef DBUG_OFF
   dbug_tmp_restore_column_map(table->write_set, tmp_map);

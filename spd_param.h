@@ -44,3 +44,9 @@ extern DECLARE_MYSQL_THDVAR_BASIC(use_all_conns_snapshot, char);
 extern DECLARE_MYSQL_THDVAR_BASIC(lock_exchange, char);
 extern DECLARE_MYSQL_THDVAR_BASIC(internal_unlock, char);
 extern DECLARE_MYSQL_THDVAR_BASIC(semi_trx, char);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(net_timeout, int);
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_mode, int);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_first_read, long long);
+extern DECLARE_MYSQL_THDVAR_SIMPLE(bgs_second_read, long long);
+#endif

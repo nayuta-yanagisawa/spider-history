@@ -174,3 +174,18 @@ void spider_get_partition_info(
   partition_element **sub_elem
 );
 #endif
+
+int spider_get_sts(
+  SPIDER_SHARE *share,
+  time_t tmp_time,
+  ha_spider *spider,
+  int sts_sync
+);
+
+int spider_get_crd(
+  SPIDER_SHARE *share,
+  time_t tmp_time,
+  ha_spider *spider,
+  TABLE *table,
+  int crd_sync
+);

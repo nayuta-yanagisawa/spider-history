@@ -481,6 +481,77 @@ MYSQL_THDVAR_BOOL(
   TRUE /* def */
 );
 
+/*
+ -1 :use table parameter
+  0-:seconds of timeout
+ */
+MYSQL_THDVAR_INT(
+  net_timeout, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Wait timeout of receiving data from remote server", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2147483647, /* max */
+  0 /* blk */
+);
+
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+/*
+ -1 :use table parameter
+  0 :background search is disabled
+  1 :background search is used if search with no lock
+  2 :background search is used if search with no lock or shared lock
+  3 :background search is used regardless of the lock
+ */
+MYSQL_THDVAR_INT(
+  bgs_mode, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Mode of background search", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  3, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :records is gotten usually
+  1-:number of records
+ */
+MYSQL_THDVAR_LONGLONG(
+  bgs_first_read, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Number of first read records when background search is used", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
+
+/*
+ -1 :use table parameter
+  0 :records is gotten usually
+  1-:number of records
+ */
+MYSQL_THDVAR_LONGLONG(
+  bgs_second_read, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Number of second read records when background search is used", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  9223372036854775807LL, /* max */
+  0 /* blk */
+);
+#endif
+
 struct st_mysql_storage_engine spider_storage_engine =
 { MYSQL_HANDLERTON_INTERFACE_VERSION };
 
@@ -515,6 +586,12 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(lock_exchange),
   MYSQL_SYSVAR(internal_unlock),
   MYSQL_SYSVAR(semi_trx),
+  MYSQL_SYSVAR(net_timeout),
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  MYSQL_SYSVAR(bgs_mode),
+  MYSQL_SYSVAR(bgs_first_read),
+  MYSQL_SYSVAR(bgs_second_read),
+#endif
   NULL
 };
 
@@ -528,7 +605,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x0008,
+  0x0009,
   NULL,
   spider_system_variables,
   NULL

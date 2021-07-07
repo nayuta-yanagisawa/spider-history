@@ -59,9 +59,9 @@ typedef struct st_spider_conn
   int                autocommit;
   int                sql_log_off;
   THD                *thd;
-  HASH               user_ha_hash;
-  pthread_mutex_t    user_ha_mutex;
   HASH               lock_table_hash;
+  void               *another_ha_first;
+  void               *another_ha_last;
   st_spider_conn     *p_small;
   st_spider_conn     *p_big;
   st_spider_conn     *c_small;
@@ -84,6 +84,19 @@ typedef struct st_spider_conn
   uint               tgt_password_length;
   uint               tgt_socket_length;
   uint               tgt_wrapper_length;
+
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  volatile bool      bg_init;
+  volatile bool      bg_break;
+  volatile bool      bg_kill;
+  volatile bool      bg_caller_wait;
+  volatile bool      bg_search;
+  pthread_t          bg_thread;
+  pthread_cond_t     bg_conn_cond;
+  pthread_mutex_t    bg_conn_mutex;
+  pthread_mutex_t    bg_conn_sync_mutex;
+  volatile void      *bg_target;
+#endif
 } SPIDER_CONN;
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
@@ -92,7 +105,6 @@ typedef struct st_spider_patition_share
   char               *table_name;
   uint               table_name_length;
   uint               use_count;
-  pthread_mutex_t    mutex;
   pthread_mutex_t    sts_mutex;
   pthread_mutex_t    crd_mutex;
 
@@ -124,7 +136,7 @@ typedef struct st_spider_transaction
   bool               internal_xa;
   uint               internal_xa_snapshot;
 
-  ulong              query_id;
+  query_id_t         query_id;
   bool               tmp_flg;
 
   THD                *thd;
@@ -134,6 +146,8 @@ typedef struct st_spider_transaction
   HASH               trx_alter_table_hash;
   XID_STATE          internal_xid_state;
   SPIDER_CONN        *join_trx_top;
+  ulonglong           spider_thread_id;
+  ulonglong           trx_conn_adjustment;
 } SPIDER_TRX;
 
 typedef struct st_spider_share
@@ -197,6 +211,12 @@ typedef struct st_spider_share
   double             scan_rate;
   double             read_rate;
   longlong           priority;
+  int                net_timeout;
+#ifndef WITHOUT_SPIDER_BG_SEARCH
+  int                bgs_mode;
+  longlong           bgs_first_read;
+  longlong           bgs_second_read;
+#endif
 
   char               *server_name;
   char               *tgt_table_name;
