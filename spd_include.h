@@ -168,10 +168,6 @@ typedef struct st_spider_transaction
   ulonglong          spider_thread_id;
   ulonglong          trx_conn_adjustment;
   uint               locked_connections;
-  pthread_mutex_t    direct_sql_mutex;
-  volatile int       direct_sql_bg_count;
-  volatile char      direct_sql_error[MYSQL_ERRMSG_SIZE];
-  query_id_t         udf_query_id;
   pthread_mutex_t    *udf_table_mutexes;
   CHARSET_INFO       *udf_access_charset;
   String             *udf_set_names;
@@ -345,12 +341,15 @@ typedef struct st_spider_direct_sql
   char                 **db_names;
   char                 **table_names;
   TABLE                **tables;
+  int                  *iop;
 
   char                 *sql;
   ulong                sql_length;
 
   SPIDER_TRX           *trx;
   SPIDER_CONN          *conn;
+
+  bool                 modified_non_trans_table;
 
   int                  table_loop_mode;
   longlong             priority;
@@ -386,6 +385,9 @@ typedef struct st_spider_direct_sql
 typedef struct st_spider_bg_direct_sql
 {
   longlong                   called_cnt;
+  char                       bg_error_msg[MYSQL_ERRMSG_SIZE];
+  volatile int               bg_error;
+  volatile bool              modified_non_trans_table;
   pthread_mutex_t            bg_mutex;
   pthread_cond_t             bg_cond;
   volatile SPIDER_DIRECT_SQL *direct_sql;

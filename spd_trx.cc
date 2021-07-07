@@ -466,7 +466,6 @@ int spider_free_trx_alloc(
   for (roop_count = spider_udf_table_lock_mutex_count - 1; roop_count >= 0;
     roop_count--)
     VOID(pthread_mutex_destroy(&trx->udf_table_mutexes[roop_count]));
-  VOID(pthread_mutex_destroy(&trx->direct_sql_mutex));
   spider_free_trx_conn(trx, TRUE);
   spider_free_trx_alter_table(trx);
   hash_free(&trx->trx_conn_hash);
@@ -499,8 +498,6 @@ SPIDER_TRX *spider_get_trx(
       goto error_alloc_trx;
 
     trx->udf_table_mutexes = udf_table_mutexes;
-    if (pthread_mutex_init(&trx->direct_sql_mutex, MY_MUTEX_INIT_FAST))
-      goto error_init_direct_sql_mutex;
 
     for (roop_count = 0; roop_count < spider_udf_table_lock_mutex_count;
       roop_count++)
@@ -550,8 +547,6 @@ error_init_hash:
       VOID(pthread_mutex_destroy(&trx->udf_table_mutexes[roop_count]));
   }
 error_init_udf_table_mutex:
-  VOID(pthread_mutex_destroy(&trx->direct_sql_mutex));
-error_init_direct_sql_mutex:
   my_free(trx, MYF(0));
 error_alloc_trx:
   *error_num = HA_ERR_OUT_OF_MEM;

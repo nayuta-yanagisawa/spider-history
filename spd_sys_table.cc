@@ -973,3 +973,72 @@ int spider_get_sys_tables_connect_info(
   }
   DBUG_RETURN(error_num);
 }
+
+int spider_sys_replace(
+  TABLE *table,
+  bool *modified_non_trans_table
+) {
+  int error_num, key_num;
+  bool last_uniq_key;
+  char table_key[MAX_KEY_LENGTH];
+  DBUG_ENTER("spider_sys_replace");
+
+  while ((error_num = table->file->ha_write_row(table->record[0])))
+  {
+    if (
+      table->file->is_fatal_error(error_num, HA_CHECK_DUP) ||
+      (key_num = table->file->get_dup_key(error_num)) < 0
+    )
+      goto error;
+
+    if (table->file->ha_table_flags() & HA_DUPLICATE_POS)
+    {
+      error_num = table->file->rnd_pos(table->record[1], table->file->dup_ref);
+      if (error_num)
+      {
+        if (error_num == HA_ERR_RECORD_DELETED)
+          error_num = HA_ERR_KEY_NOT_FOUND;
+        goto error;
+      }
+    } else {
+      if ((error_num = table->file->extra(HA_EXTRA_FLUSH_CACHE)))
+        goto error;
+
+      key_copy((uchar*)table_key, table->record[0],
+        table->key_info + key_num, 0);
+      error_num = table->file->index_read_idx_map(table->record[1], key_num,
+        (const uchar*)table_key, HA_WHOLE_KEY, HA_READ_KEY_EXACT);
+      if (error_num)
+      {
+        if (error_num == HA_ERR_RECORD_DELETED)
+          error_num = HA_ERR_KEY_NOT_FOUND;
+        goto error;
+      }
+    }
+
+    last_uniq_key = TRUE;
+    while (++key_num < table->s->keys)
+      if (table->key_info[key_num].flags & HA_NOSAME)
+        last_uniq_key = FALSE;
+
+    if (
+      last_uniq_key &&
+      !table->file->referenced_by_foreign_key()
+    ) {
+      error_num = table->file->ha_update_row(table->record[1],
+        table->record[0]);
+      if (error_num && error_num != HA_ERR_RECORD_IS_THE_SAME)
+        goto error;
+      DBUG_RETURN(0);
+    } else {
+      if ((error_num = table->file->ha_delete_row(table->record[1])))
+        goto error;
+      *modified_non_trans_table = TRUE;
+    }
+  }
+
+  DBUG_RETURN(0);
+
+error:
+  DBUG_RETURN(error_num);
+}

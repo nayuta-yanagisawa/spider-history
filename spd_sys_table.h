@@ -210,3 +210,8 @@ int spider_get_sys_tables_connect_info(
   SPIDER_SHARE *share,
   MEM_ROOT *mem_root
 );
+
+int spider_sys_replace(
+  TABLE *table,
+  bool *modified_non_trans_table
+);

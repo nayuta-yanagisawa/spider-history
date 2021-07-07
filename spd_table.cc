@@ -428,9 +428,11 @@ char *spider_get_string_between_quote(
       } else if (share->param_name[hint_num].length() > 0) \
         break; \
       char *hint_str = spider_get_string_between_quote(start_ptr, FALSE); \
-      if ((error_num = append_method(&share->param_name[hint_num], hint_str))) \
+      if ((error_num = \
+        append_method(&share->param_name[hint_num], hint_str))) \
         goto error; \
-      DBUG_PRINT("info",("spider "title_name"[%d]=%s", hint_num, share->param_name[hint_num].ptr())); \
+      DBUG_PRINT("info",("spider "title_name"[%d]=%s", hint_num, \
+        share->param_name[hint_num].ptr())); \
     } else { \
       error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
       my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \

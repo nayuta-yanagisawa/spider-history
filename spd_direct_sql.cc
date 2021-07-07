@@ -86,6 +86,7 @@ int spider_udf_direct_sql_create_table_list(
         thd->db_length * table_count +
         2 * table_count
       ),
+      &direct_sql->iop, sizeof(int) * table_count,
       NullS))
   )
     DBUG_RETURN(HA_ERR_OUT_OF_MEM);
@@ -460,6 +461,49 @@ error:
     } \
     break; \
   }
+#define SPIDER_PARAM_HINT_WITH_MAX(title_name, param_name, check_length, max_size, min_val, max_val) \
+  if (!strncasecmp(tmp_ptr, title_name, check_length)) \
+  { \
+    DBUG_PRINT("info",("spider "title_name" start")); \
+    DBUG_PRINT("info",("spider max_size=%d", max_size)); \
+    int hint_num = atoi(tmp_ptr + check_length) - 1; \
+    DBUG_PRINT("info",("spider hint_num=%d", hint_num)); \
+    DBUG_PRINT("info",("spider direct_sql->param_name=%x", \
+      direct_sql->param_name)); \
+    if (direct_sql->param_name) \
+    { \
+      if (hint_num < 0 || hint_num >= max_size) \
+      { \
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+          MYF(0), tmp_ptr); \
+        goto error; \
+      } else if (direct_sql->param_name[hint_num] != -1) \
+        break; \
+      char *hint_str = spider_get_string_between_quote(start_ptr, FALSE); \
+      if (hint_str) \
+      { \
+        direct_sql->param_name[hint_num] = atoi(hint_str); \
+        if (direct_sql->param_name[hint_num] < min_val) \
+          direct_sql->param_name[hint_num] = min_val; \
+        else if (direct_sql->param_name[hint_num] > max_val) \
+          direct_sql->param_name[hint_num] = max_val; \
+      } else { \
+        error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+        my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+          MYF(0), tmp_ptr); \
+        goto error; \
+      } \
+      DBUG_PRINT("info",("spider "title_name"[%d]=%d", hint_num, \
+        direct_sql->param_name[hint_num])); \
+    } else { \
+      error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM; \
+      my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR, \
+        MYF(0), tmp_ptr); \
+      goto error; \
+    } \
+    break; \
+  }
 #define SPIDER_PARAM_INT_WITH_MAX(title_name, param_name, min_val, max_val) \
   if (!strncasecmp(tmp_ptr, title_name, title_length)) \
   { \
@@ -537,7 +581,7 @@ int spider_udf_parse_direct_sql_param(
   char *param,
   int param_length
 ) {
-  int error_num = 0;
+  int error_num = 0, roop_count;
   char *param_string = NULL;
   char *sprit_ptr[2];
   char *tmp_ptr, *tmp_ptr2, *start_ptr;
@@ -548,6 +592,8 @@ int spider_udf_parse_direct_sql_param(
   direct_sql->priority = -1;
   direct_sql->net_timeout = -1;
   direct_sql->bulk_insert_rows = -1;
+  for (roop_count = 0; roop_count < direct_sql->table_count; roop_count++)
+    direct_sql->iop[roop_count] = -1;
 
   if (param_length == 0)
     goto set_default;
@@ -616,6 +662,7 @@ int spider_udf_parse_direct_sql_param(
       case 6:
         SPIDER_PARAM_STR("server", server_name);
         SPIDER_PARAM_STR("socket", tgt_socket);
+        SPIDER_PARAM_HINT_WITH_MAX("iop", iop, 3, direct_sql->table_count, 0, 2);
         error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
         my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,
           MYF(0), tmp_ptr);
@@ -682,7 +729,7 @@ int spider_udf_set_direct_sql_param_default(
   SPIDER_TRX *trx,
   SPIDER_DIRECT_SQL *direct_sql
 ) {
-  int error_num;
+  int error_num, roop_count;
   DBUG_ENTER("spider_udf_set_direct_sql_param_default");
   if (direct_sql->server_name)
   {
@@ -763,6 +810,11 @@ int spider_udf_set_direct_sql_param_default(
     direct_sql->net_timeout = 600;
   if (direct_sql->bulk_insert_rows == -1)
     direct_sql->bulk_insert_rows = 3000;
+  for (roop_count = 0; roop_count < direct_sql->table_count; roop_count++)
+  {
+    if (direct_sql->iop[roop_count] == -1)
+      direct_sql->iop[roop_count] = 0;
+  }
   DBUG_RETURN(0);
 }
 
@@ -860,20 +912,20 @@ long long spider_direct_sql_body(
   }
   direct_sql->trx = trx;
 
-  if (spider_udf_parse_direct_sql_param(
-    trx,
-    direct_sql,
-    args->args[2],
-    args->lengths[2]
-  )) {
-    goto error;
-  }
   if (spider_udf_direct_sql_create_table_list(
     direct_sql,
     args->args[1],
     args->lengths[1]
   )) {
     my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
+    goto error;
+  }
+  if (spider_udf_parse_direct_sql_param(
+    trx,
+    direct_sql,
+    args->args[2],
+    args->lengths[2]
+  )) {
     goto error;
   }
   for (roop_count = 0; roop_count < direct_sql->table_count; roop_count++)
@@ -924,10 +976,14 @@ long long spider_direct_sql_body(
     {
       if (conn->bg_init)
         pthread_mutex_unlock(&conn->bg_conn_mutex);
+      if (direct_sql->modified_non_trans_table)
+        thd->transaction.stmt.modified_non_trans_table = TRUE;
       goto error;
     }
     if (conn->bg_init)
       pthread_mutex_unlock(&conn->bg_conn_mutex);
+    if (direct_sql->modified_non_trans_table)
+      thd->transaction.stmt.modified_non_trans_table = TRUE;
 #ifndef WITHOUT_SPIDER_BG_SEARCH
   }
   if (!bg)
@@ -1018,18 +1074,27 @@ void spider_direct_sql_bg_start(
   SPIDER_BG_DIRECT_SQL *bg_direct_sql = (SPIDER_BG_DIRECT_SQL *) initid->ptr;
   DBUG_ENTER("spider_direct_sql_bg_start");
   bg_direct_sql->called_cnt = 0;
+  bg_direct_sql->bg_error = 0;
   DBUG_VOID_RETURN;
 }
 
 long long spider_direct_sql_bg_end(
   UDF_INIT *initid
 ) {
+  THD *thd = current_thd;
   SPIDER_BG_DIRECT_SQL *bg_direct_sql = (SPIDER_BG_DIRECT_SQL *) initid->ptr;
   DBUG_ENTER("spider_direct_sql_bg_end");
   pthread_mutex_lock(&bg_direct_sql->bg_mutex);
   while (bg_direct_sql->direct_sql)
     pthread_cond_wait(&bg_direct_sql->bg_cond, &bg_direct_sql->bg_mutex);
   pthread_mutex_unlock(&bg_direct_sql->bg_mutex);
+  if (bg_direct_sql->modified_non_trans_table)
+    thd->transaction.stmt.modified_non_trans_table = TRUE;
+  if (bg_direct_sql->bg_error)
+  {
+    my_message(bg_direct_sql->bg_error, bg_direct_sql->bg_error_msg, MYF(0));
+    DBUG_RETURN(0);
+  }
   DBUG_RETURN(bg_direct_sql->called_cnt);
 }
 

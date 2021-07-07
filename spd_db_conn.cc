@@ -22,6 +22,7 @@
 #include "spd_param.h"
 #include "spd_db_include.h"
 #include "spd_include.h"
+#include "spd_sys_table.h"
 #include "ha_spider.h"
 #include "spd_db_conn.h"
 #include "spd_conn.h"
@@ -5196,7 +5197,7 @@ int spider_db_udf_direct_sql(
   long long roop_count2;
   bool end_of_file;
   SPIDER_TRX *trx = direct_sql->trx;
-  THD *thd = trx->thd;
+  THD *thd = trx->thd, *c_thd = current_thd;
   SPIDER_CONN *conn = direct_sql->conn;
   SPIDER_DB_RESULT *result;
   TABLE *table;
@@ -5207,7 +5208,12 @@ int spider_db_udf_direct_sql(
   double ping_interval_at_trx_start =
     THDVAR(thd, ping_interval_at_trx_start);
   time_t tmp_time = (time_t) time((time_t*) 0);
+  bool need_trx_end, insert_start = FALSE;
   DBUG_ENTER("spider_db_udf_direct_sql");
+  if (c_thd->transaction.stmt.ha_list)
+    need_trx_end = FALSE;
+  else
+    need_trx_end = TRUE;
 
   if (!conn->disable_reconnect)
   {
@@ -5269,9 +5275,10 @@ int spider_db_udf_direct_sql(
               pthread_mutex_lock(
                 &trx->udf_table_mutexes[udf_table_mutex_index]);
               table = direct_sql->tables[roop_count];
-              table->in_use = current_thd;
-              if (table->field[0]->null_ptr)
-                *table->field[0]->null_ptr |= (uchar) 128;
+              table->in_use = c_thd;
+              memset((uchar *) table->null_flags, ~(uchar) 0,
+                sizeof(uchar) * table->s->null_bytes);
+              insert_start = TRUE;
 
               field_num = mysql_num_fields(result);
               if (field_num > table->s->fields)
@@ -5287,6 +5294,26 @@ int spider_db_udf_direct_sql(
               for (; roop_count2 < set_off; roop_count2++)
                 bitmap_clear_bit(table->write_set, roop_count2);
 
+              if (table->file->has_transactions())
+              {
+                THR_LOCK_DATA *to[2];
+                table->file->store_lock(table->in_use, to,
+                  TL_WRITE_CONCURRENT_INSERT);
+                if ((error_num = table->file->ha_external_lock(table->in_use,
+                  F_WRLCK)))
+                {
+                  table->file->print_error(error_num, MYF(0));
+                  break;
+                }
+              }
+
+              if (direct_sql->iop)
+              {
+                if (direct_sql->iop[roop_count] == 1)
+                  table->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
+                else if (direct_sql->iop[roop_count] == 2)
+                  table->file->extra(HA_EXTRA_WRITE_CAN_REPLACE);
+              }
               table->file->ha_start_bulk_insert(
                 (ha_rows) bulk_insert_rows);
 
@@ -5304,12 +5331,27 @@ int spider_db_udf_direct_sql(
                   }
                   break;
                 }
-                /* insert */
-                if ((error_num =
+                if (direct_sql->iop && direct_sql->iop[roop_count] == 2)
+                {
+                  if ((error_num = spider_sys_replace(table,
+                    &direct_sql->modified_non_trans_table)))
+                  {
+                    table->file->print_error(error_num, MYF(0));
+                    break;
+                  }
+                } else if ((error_num =
                   table->file->ha_write_row(table->record[0])))
                 {
-                  table->file->print_error(error_num, MYF(0));
-                  break;
+                  /* insert */
+                  if (
+                    !direct_sql->iop || direct_sql->iop[roop_count] != 1 ||
+                    table->file->is_fatal_error(error_num, HA_CHECK_DUP)
+                  ) {
+                    DBUG_PRINT("info",("spider error_num=%d", error_num));
+                    table->file->print_error(error_num, MYF(0));
+                    break;
+                  } else
+                    error_num = 0;
                 }
               }
 
@@ -5317,6 +5359,17 @@ int spider_db_udf_direct_sql(
                 VOID(table->file->ha_end_bulk_insert());
               else
                 error_num = table->file->ha_end_bulk_insert();
+              if (direct_sql->iop)
+              {
+                if (direct_sql->iop[roop_count] == 1)
+                  table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
+                else if (direct_sql->iop[roop_count] == 2)
+                  table->file->extra(HA_EXTRA_WRITE_CANNOT_REPLACE);
+              }
+              if (table->file->has_transactions())
+              {
+                table->file->ha_external_lock(table->in_use, F_UNLCK);
+              }
               table->file->ha_reset();
               table->in_use = thd;
               pthread_mutex_unlock(
@@ -5343,6 +5396,15 @@ int spider_db_udf_direct_sql(
         if (roop_count >= 0)
           roop_count++;
       } while (status == 0);
+    }
+  }
+  if (need_trx_end && insert_start)
+  {
+    if (error_num)
+      (void) ha_rollback_trans(c_thd, 0);
+    else {
+      if ((error_num = ha_commit_trans(c_thd, 0)))
+        my_error(error_num, MYF(0));
     }
   }
   DBUG_RETURN(error_num);

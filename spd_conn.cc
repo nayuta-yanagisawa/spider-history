@@ -720,6 +720,7 @@ int spider_bg_conn_search(
 void *spider_bg_conn_action(
   void *arg
 ) {
+  int error_num;
   SPIDER_CONN *conn = (SPIDER_CONN*) arg;
   ha_spider *spider;
   SPIDER_RESULT_LIST *result_list;
@@ -805,16 +806,27 @@ void *spider_bg_conn_action(
       SPIDER_DIRECT_SQL *direct_sql = (SPIDER_DIRECT_SQL *) conn->bg_target;
       SPIDER_TRX *trx = direct_sql->trx;
       if (
-        spider_db_udf_direct_sql(direct_sql)
+        (error_num = spider_db_udf_direct_sql(direct_sql))
       ) {
-        pthread_mutex_lock(&trx->direct_sql_mutex);
         if (thd->main_da.is_error())
         {
-          strmov((char *) trx->direct_sql_error,
+          SPIDER_BG_DIRECT_SQL *bg_direct_sql =
+            (SPIDER_BG_DIRECT_SQL *) direct_sql->parent;
+          pthread_mutex_lock(direct_sql->bg_mutex);
+          bg_direct_sql->bg_error = thd->main_da.sql_errno();
+          strmov((char *) bg_direct_sql->bg_error_msg,
             thd->main_da.message());
+          pthread_mutex_unlock(direct_sql->bg_mutex);
           thd->clear_error();
         }
-        pthread_mutex_unlock(&trx->direct_sql_mutex);
+      }
+      if (direct_sql->modified_non_trans_table)
+      {
+        SPIDER_BG_DIRECT_SQL *bg_direct_sql =
+          (SPIDER_BG_DIRECT_SQL *) direct_sql->parent;
+        pthread_mutex_lock(direct_sql->bg_mutex);
+        bg_direct_sql->modified_non_trans_table = TRUE;
+        pthread_mutex_unlock(direct_sql->bg_mutex);
       }
       spider_udf_free_direct_sql_alloc(direct_sql, TRUE);
       conn->bg_direct_sql = FALSE;
