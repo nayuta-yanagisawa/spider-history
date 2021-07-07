@@ -1331,6 +1331,7 @@ int spider_parse_connect_info(
   share->internal_offset = -1;
   share->internal_limit = -1;
   share->split_read = -1;
+  share->semi_split_read = -1;
   share->init_sql_alloc_size = -1;
   share->reset_sql_alloc = -1;
   share->multi_split_read = -1;
@@ -1531,6 +1532,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_LONG_LIST_WITH_MAX("svc", tgt_ssl_vscs, 0, 1);
           SPIDER_PARAM_INT("srt", scan_rate, 0);
           SPIDER_PARAM_INT_WITH_MAX("slm", selupd_lock_mode, 0, 2);
+          SPIDER_PARAM_DOUBLE("ssr", semi_split_read, 0);
           SPIDER_PARAM_INT_WITH_MAX("stc", semi_table_lock_conn, 0, 1);
           SPIDER_PARAM_INT_WITH_MAX("stl", semi_table_lock, 0, 1);
           SPIDER_PARAM_STR_LIST("srv", server_names);
@@ -1664,6 +1666,7 @@ int spider_parse_connect_info(
           SPIDER_PARAM_LONGLONG("bgs_second_read", bgs_second_read, 0);
 #endif
           SPIDER_PARAM_LONG_LIST_WITH_MAX("monitoring_kind", monitoring_kind, 0, 3);
+          SPIDER_PARAM_DOUBLE("semi_split_read", semi_split_read, 0);
           error_num = ER_SPIDER_INVALID_CONNECT_INFO_NUM;
           my_printf_error(error_num, ER_SPIDER_INVALID_CONNECT_INFO_STR,
             MYF(0), tmp_ptr);
@@ -2560,6 +2563,8 @@ int spider_set_connect_info_default(
     share->internal_limit = 9223372036854775807LL;
   if (share->split_read == -1)
     share->split_read = 9223372036854775807LL;
+  if (share->semi_split_read == -1)
+    share->semi_split_read = 0;
   if (share->init_sql_alloc_size == -1)
     share->init_sql_alloc_size = 1024;
   if (share->reset_sql_alloc == -1)
@@ -4441,10 +4446,7 @@ void spider_set_result_list_param(
     THDVAR(thd, internal_limit) < 0 ?
     share->internal_limit :
     THDVAR(thd, internal_limit);
-  result_list->split_read =
-    THDVAR(thd, split_read) < 0 ?
-    share->split_read :
-    THDVAR(thd, split_read);
+  result_list->split_read = spider_split_read_param(spider);
   result_list->multi_split_read =
     THDVAR(thd, multi_split_read) < 0 ?
     share->multi_split_read :
@@ -4621,4 +4623,57 @@ void spider_set_tmp_share_pointer(
   tmp_share->monitoring_limit[0] = -1;
   tmp_share->monitoring_sid[0] = -1;
   DBUG_VOID_RETURN;
+}
+
+longlong spider_split_read_param(
+  ha_spider *spider
+) {
+  SPIDER_SHARE *share = spider->share;
+  THD *thd = spider->trx->thd;
+  TABLE *table = spider->get_table();
+  TABLE_LIST *table_list = table->pos_in_table_list;
+  st_select_lex *select_lex = NULL;
+  longlong select_limit = 0;
+  longlong offset_limit = 0;
+  double semi_split_read;
+  longlong split_read;
+  DBUG_ENTER("spider_split_read_param");
+  if (table_list)
+  {
+    while (table_list->parent_l)
+      table_list = table_list->parent_l;
+    select_lex = table_list->select_lex;
+    if (select_lex)
+    {
+      select_limit = select_lex->select_limit ?
+        select_lex->select_limit->val_int() : 0;
+      offset_limit = select_lex->offset_limit ?
+        select_lex->offset_limit->val_int() : 0;
+    }
+  }
+  semi_split_read =
+    THDVAR(thd, semi_split_read) < 0 ?
+    share->semi_split_read :
+    THDVAR(thd, semi_split_read);
+  if (semi_split_read > 0 && select_lex && select_lex->explicit_limit)
+  {
+    semi_split_read = semi_split_read * (select_limit + offset_limit);
+    DBUG_PRINT("info",("spider semi_split_read=%f", semi_split_read));
+    if (semi_split_read > 9223372036854775807LL)
+      DBUG_RETURN(9223372036854775807LL);
+    else {
+      split_read = (longlong) semi_split_read;
+      if (split_read < 0)
+        DBUG_RETURN(9223372036854775807LL);
+      else if (split_read == 0)
+        DBUG_RETURN(1);
+      else
+        DBUG_RETURN(split_read);
+    }
+  } else
+    DBUG_RETURN(
+      THDVAR(thd, split_read) < 0 ?
+      share->split_read :
+      THDVAR(thd, split_read)
+    );
 }

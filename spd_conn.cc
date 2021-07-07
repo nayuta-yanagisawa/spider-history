@@ -575,10 +575,7 @@ void spider_set_conn_bg_param(
       THDVAR(thd, bgs_second_read) < 0 ?
       share->bgs_second_read :
       THDVAR(thd, bgs_second_read);
-    result_list->bgs_split_read =
-      THDVAR(thd, split_read) < 0 ?
-      share->split_read :
-      THDVAR(thd, split_read);
+    result_list->bgs_split_read = spider_split_read_param(spider);
 
     result_list->split_read =
       result_list->bgs_first_read > 0 ?

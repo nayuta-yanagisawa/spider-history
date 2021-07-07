@@ -5423,10 +5423,12 @@ int spider_db_bulk_insert(
   SPIDER_SHARE *share = spider->share;
   String *str = &result_list->insert_sql, *sql;
   Field **field;
+  THD *thd = spider->trx->thd;
   DBUG_ENTER("spider_db_bulk_insert");
   DBUG_PRINT("info",("spider str->length()=%d", str->length()));
   DBUG_PRINT("info",("spider result_list->insert_pos=%d",
     result_list->insert_pos));
+
   if (!bulk_end)
   {
     if (str->reserve(SPIDER_SQL_OPEN_PAREN_LEN))
@@ -5443,8 +5445,13 @@ int spider_db_bulk_insert(
       if (bitmap_is_set(table->write_set, (*field)->field_index))
       {
         add_value = TRUE;
-        if ((*field)->is_null())
-        {
+        if (
+          (*field)->is_null() ||
+          (
+            table->next_number_field == *field &&
+            !table->auto_increment_field_not_null
+          )
+        ) {
           if (str->reserve(SPIDER_SQL_NULL_LEN + SPIDER_SQL_COMMA_LEN))
           {
 #ifndef DBUG_OFF
@@ -5614,20 +5621,22 @@ int spider_db_bulk_insert(
     conn->mta_conn_mutex_lock_already = TRUE;
     conn->mta_conn_mutex_unlock_later = TRUE;
     str->length(result_list->insert_pos);
-    if ((error_num = spider_db_update_auto_increment(spider,
-      first_insert_link_idx)))
-    {
-      conn->mta_conn_mutex_lock_already = FALSE;
-      conn->mta_conn_mutex_unlock_later = FALSE;
-      pthread_mutex_unlock(&conn->mta_conn_mutex);
-      DBUG_RETURN(error_num);
-    }
-    if (table->next_number_field && table->next_number_field->is_null())
-    {
+    if (table->next_number_field &&
+      (
+        !table->auto_increment_field_not_null ||
+        (
+          !table->next_number_field->val_int() &&
+          !(thd->variables.sql_mode & MODE_NO_AUTO_VALUE_ON_ZERO)
+        )
+      )
+    ) {
       table->next_number_field->set_notnull();
-      if((error_num = table->next_number_field->store(
-        conn->db_conn->last_used_con->insert_id, TRUE)))
-      {
+      if (
+        (error_num = spider_db_update_auto_increment(spider,
+          first_insert_link_idx)) ||
+        (error_num = table->next_number_field->store(
+          conn->db_conn->last_used_con->insert_id, TRUE))
+      ) {
         conn->mta_conn_mutex_lock_already = FALSE;
         conn->mta_conn_mutex_unlock_later = FALSE;
         pthread_mutex_unlock(&conn->mta_conn_mutex);

@@ -249,6 +249,23 @@ MYSQL_THDVAR_LONGLONG(
 );
 
 /*
+  -1 :use table parameter
+   0 :doesn't use "offset" and "limit" for "split_read"
+   1-:magnification
+ */
+MYSQL_THDVAR_INT(
+  semi_split_read, /* name */
+  PLUGIN_VAR_RQCMDARG, /* opt */
+  "Use offset and limit parameter in SQL for split_read parameter.", /* comment */
+  NULL, /* check */
+  NULL, /* update */
+  -1, /* def */
+  -1, /* min */
+  2147483647, /* max */
+  0 /* blk */
+);
+
+/*
  -1 :use table parameter
   0 :no alloc
   1-:alloc size
@@ -1267,6 +1284,7 @@ struct st_mysql_sys_var* spider_system_variables[] = {
   MYSQL_SYSVAR(internal_offset),
   MYSQL_SYSVAR(internal_limit),
   MYSQL_SYSVAR(split_read),
+  MYSQL_SYSVAR(semi_split_read),
   MYSQL_SYSVAR(init_sql_alloc_size),
   MYSQL_SYSVAR(reset_sql_alloc),
   MYSQL_SYSVAR(multi_split_read),
@@ -1347,7 +1365,7 @@ mysql_declare_plugin(spider)
   PLUGIN_LICENSE_GPL,
   spider_db_init,
   spider_db_done,
-  0x020f,
+  0x0210,
   NULL,
   spider_system_variables,
   NULL

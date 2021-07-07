@@ -454,7 +454,7 @@ int spider_udf_direct_sql_get_server(
   SPIDER_DIRECT_SQL *direct_sql
 ) {
   MEM_ROOT mem_root;
-  int error_num;
+  int error_num, length;
   FOREIGN_SERVER *server, server_buf;
   DBUG_ENTER("spider_udf_direct_sql_get_server");
   init_alloc_root(&mem_root, 65, 0);
@@ -511,12 +511,12 @@ int spider_udf_direct_sql_get_server(
     DBUG_PRINT("info",("spider tgt_socket=%s", direct_sql->tgt_socket));
   }
 
-  if (!direct_sql->tgt_default_db_name && server->db)
+  if (!direct_sql->tgt_default_db_name && server->db &&
+    (length = strlen(server->db)))
   {
-    direct_sql->tgt_default_db_name_length = strlen(server->db);
+    direct_sql->tgt_default_db_name_length = length;
     if (!(direct_sql->tgt_default_db_name =
-      spider_create_string(server->db,
-        direct_sql->tgt_default_db_name_length)))
+      spider_create_string(server->db, length)))
     {
       error_num = HA_ERR_OUT_OF_MEM;
       my_error(ER_OUT_OF_RESOURCES, MYF(0), HA_ERR_OUT_OF_MEM);
@@ -778,7 +778,7 @@ int spider_udf_parse_direct_sql_param(
         SPIDER_PARAM_STR("sky", tgt_ssl_key);
         SPIDER_PARAM_STR("srv", server_name);
         SPIDER_PARAM_INT_WITH_MAX("svc", tgt_ssl_vsc, 0, 1);
-        SPIDER_PARAM_INT_WITH_MAX("trm", table_loop_mode, 0, 2);
+        SPIDER_PARAM_INT_WITH_MAX("tlm", table_loop_mode, 0, 2);
         SPIDER_PARAM_LONGLONG("prt", priority, 0);
         error_num = ER_SPIDER_INVALID_UDF_PARAM_NUM;
         my_printf_error(error_num, ER_SPIDER_INVALID_UDF_PARAM_STR,

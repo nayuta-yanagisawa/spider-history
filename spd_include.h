@@ -368,6 +368,7 @@ typedef struct st_spider_share
   longlong           internal_offset;
   longlong           internal_limit;
   longlong           split_read;
+  double             semi_split_read;
   int                init_sql_alloc_size;
   int                reset_sql_alloc;
   int                multi_split_read;

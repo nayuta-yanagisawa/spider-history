@@ -270,3 +270,7 @@ void spider_set_tmp_share_pointer(
   long *tmp_long,
   longlong *tmp_longlong
 );
+
+longlong spider_split_read_param(
+  ha_spider *spider
+);

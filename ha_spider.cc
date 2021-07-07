@@ -3673,6 +3673,7 @@ int ha_spider::write_row(
         dbug_tmp_use_all_columns(table, table->write_set);
 #endif
       table->next_number_field->store((longlong) 0, TRUE);
+      table->auto_increment_field_not_null = FALSE;
 #ifndef DBUG_OFF
       dbug_tmp_restore_column_map(table->write_set, tmp_map);
 #endif
@@ -4475,8 +4476,7 @@ bool ha_spider::check_and_start_bulk_update(
     THD *thd = ha_thd();
     int bulk_update_mode = THDVAR(thd, bulk_update_mode) == -1 ?
       share->bulk_update_mode : THDVAR(thd, bulk_update_mode);
-    longlong split_read = THDVAR(thd, split_read) == -1 ?
-      share->split_read : THDVAR(thd, split_read);
+    longlong split_read = spider_split_read_param(this);
     result_list.bulk_update_size = THDVAR(thd, bulk_update_size) == -1 ?
       share->bulk_update_size : THDVAR(thd, bulk_update_size);
 #ifndef WITHOUT_SPIDER_BG_SEARCH
