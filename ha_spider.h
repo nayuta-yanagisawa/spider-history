@@ -49,6 +49,8 @@ public:
   SPIDER_CONDITION   *condition;
   String             *blob_buff;
   uchar              *searched_bitmap;
+  bool               position_bitmap_init;
+  uchar              *position_bitmap;
 #ifdef WITH_PARTITION_STORAGE_ENGINE
   SPIDER_PARTITION_HANDLER_SHARE *partition_handler_share;
   ha_spider          *pt_handler_share_creator;
@@ -76,6 +78,7 @@ public:
   int                select_column_mode;
   bool               update_request;
   bool               pk_update;
+  bool               force_auto_increment;
 
   ha_spider();
   ha_spider(
@@ -190,9 +193,7 @@ public:
   uint max_supported_key_length() const;
   uint max_supported_key_part_length() const;
   uint8 table_cache_type();
-/*
   int update_auto_increment();
-*/
   void get_auto_increment(
     ulonglong offset,
     ulonglong increment,

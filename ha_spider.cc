@@ -142,6 +142,7 @@ int ha_spider::open(
     if (!(searched_bitmap = (uchar *)
       my_multi_malloc(MYF(MY_WME),
         &searched_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+        &position_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
         &partition_handler_share, sizeof(SPIDER_PARTITION_HANDLER_SHARE),
         &idx_read_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
         &idx_write_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
@@ -175,6 +176,7 @@ int ha_spider::open(
     if (!(searched_bitmap = (uchar *)
       my_multi_malloc(MYF(MY_WME),
         &searched_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
+        &position_bitmap, sizeof(uchar) * no_bytes_in_map(table->read_set),
         NullS))
     ) {
       error_num = HA_ERR_OUT_OF_MEM;
@@ -896,6 +898,7 @@ int ha_spider::reset()
           &result_list.upd_tmp_tbl_prms[roop_count]);
         tmp_table[roop_count] = NULL;
       }
+      result_list.update_sqls[roop_count].length(0);
     }
     if (result_list.upd_tmp_tbl)
     {
@@ -903,6 +906,7 @@ int ha_spider::reset()
         &result_list.upd_tmp_tbl_prm);
       result_list.upd_tmp_tbl = NULL;
     }
+    result_list.update_sql.length(0);
     result_list.bulk_update_mode = 0;
     result_list.bulk_update_size = 0;
     result_list.bulk_update_start = SPD_BU_NOT_START;
@@ -3178,6 +3182,31 @@ void ha_spider::position(
   DBUG_PRINT("info",("spider first_row=%x", result_list.current->first_row));
   DBUG_PRINT("info",
     ("spider current_row_num=%ld", result_list.current_row_num));
+  if (!position_bitmap_init)
+  {
+    if (select_column_mode)
+    {
+      int roop_count;
+      for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
+        roop_count++)
+      {
+        position_bitmap[roop_count] =
+          searched_bitmap[roop_count] |
+          ((uchar *) table->read_set->bitmap)[roop_count] |
+          ((uchar *) table->write_set->bitmap)[roop_count];
+        DBUG_PRINT("info",("spider roop_count=%d", roop_count));
+        DBUG_PRINT("info",("spider position_bitmap=%d",
+          position_bitmap[roop_count]));
+        DBUG_PRINT("info",("spider searched_bitmap=%d",
+          searched_bitmap[roop_count]));
+        DBUG_PRINT("info",("spider read_set=%d",
+          ((uchar *) table->read_set->bitmap)[roop_count]));
+        DBUG_PRINT("info",("spider write_set=%d",
+          ((uchar *) table->write_set->bitmap)[roop_count]));
+      }
+    }
+    position_bitmap_init = TRUE;
+  }
   my_store_ptr(ref, ref_length, (my_off_t) spider_db_create_position(this));
   DBUG_VOID_RETURN;
 }
@@ -3705,6 +3734,20 @@ uint8 ha_spider::table_cache_type()
   DBUG_RETURN(HA_CACHE_TBL_NOCACHE);
 }
 
+int ha_spider::update_auto_increment()
+{
+  DBUG_ENTER("ha_spider::update_auto_increment");
+  DBUG_PRINT("info",("spider this=%x", this));
+  if (
+    next_insert_id >= auto_inc_interval_for_cur_row.maximum() &&
+    trx->thd->auto_inc_intervals_forced.get_current()
+  )
+    force_auto_increment = TRUE;
+  else
+    force_auto_increment = FALSE;
+  DBUG_RETURN(handler::update_auto_increment());
+}
+
 void ha_spider::get_auto_increment(
   ulonglong offset,
   ulonglong increment,
@@ -3826,6 +3869,7 @@ int ha_spider::write_row(
 #ifndef DBUG_OFF
       dbug_tmp_restore_column_map(table->write_set, tmp_map);
 #endif
+      force_auto_increment = FALSE;
     } else {
       if (!share->auto_increment_init)
       {
@@ -4561,6 +4605,7 @@ void ha_spider::set_select_column_mode()
   Field *field;
   THD *thd = trx->thd;
   DBUG_ENTER("ha_spider::set_select_column_mode");
+  position_bitmap_init = FALSE;
 #ifndef DBUG_OFF
   for (roop_count = 0; roop_count < (table_share->fields + 7) / 8;
     roop_count++)

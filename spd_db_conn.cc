@@ -2134,8 +2134,11 @@ int spider_db_append_minimum_select(
   DBUG_ENTER("spider_db_append_minimum_select");
   for (field = table->field; *field; field++)
   {
-    if (spider_bit_is_set(spider->searched_bitmap, (*field)->field_index))
-    {
+    if (
+      spider_bit_is_set(spider->searched_bitmap, (*field)->field_index) |
+      bitmap_is_set(table->read_set, (*field)->field_index) |
+      bitmap_is_set(table->write_set, (*field)->field_index)
+    ) {
       field_length = share->column_name_str[(*field)->field_index].length();
       if (str->reserve(field_length +
         (SPIDER_SQL_NAME_QUOTE_LEN) * 2 + SPIDER_SQL_COMMA_LEN))
@@ -3331,8 +3334,11 @@ int spider_db_fetch_minimum_columns(
       bitmap_is_set(table->read_set, (*field)->field_index)));
     DBUG_PRINT("info", ("spider write_set %u",
       bitmap_is_set(table->write_set, (*field)->field_index)));
-    if (spider_bit_is_set(spider->searched_bitmap, (*field)->field_index))
-    {
+    if (
+      spider_bit_is_set(spider->searched_bitmap, (*field)->field_index) |
+      bitmap_is_set(table->read_set, (*field)->field_index) |
+      bitmap_is_set(table->write_set, (*field)->field_index)
+    ) {
       if ((
         bitmap_is_set(table->read_set, (*field)->field_index) |
         bitmap_is_set(table->write_set, (*field)->field_index)
@@ -4640,6 +4646,7 @@ int spider_db_seek_tmp_minimum_columns(
   SPIDER_DB_ROW row = pos->row;
   my_ptrdiff_t ptr_diff = PTR_BYTE_DIFF(buf, table->record[0]);
   DBUG_ENTER("spider_db_seek_tmp_minimum_columns");
+  DBUG_ASSERT(spider->position_bitmap_init);
   for (
     field = table->field,
     lengths = pos->lengths;
@@ -4647,7 +4654,7 @@ int spider_db_seek_tmp_minimum_columns(
     field++
   ) {
     DBUG_PRINT("info", ("spider field_index %u", (*field)->field_index));
-    if (spider_bit_is_set(spider->searched_bitmap, (*field)->field_index))
+    if (spider_bit_is_set(spider->position_bitmap, (*field)->field_index))
     {
 /*
     if ((
@@ -5466,7 +5473,8 @@ int spider_db_bulk_insert(
           (*field)->is_null() ||
           (
             table->next_number_field == *field &&
-            !table->auto_increment_field_not_null
+            !table->auto_increment_field_not_null &&
+            !spider->force_auto_increment
           )
         ) {
           if (str->reserve(SPIDER_SQL_NULL_LEN + SPIDER_SQL_COMMA_LEN))
@@ -5671,15 +5679,41 @@ int spider_db_update_auto_increment(
   ha_spider *spider,
   int link_idx
 ) {
+  THD *thd = spider->trx->thd;
   ulonglong last_insert_id;
+  SPIDER_SHARE *share = spider->share;
+  TABLE *table = spider->get_table();
   SPIDER_DB_CONN *last_used_con =
     spider->conns[link_idx]->db_conn->last_used_con;
   DBUG_ENTER("spider_db_update_auto_increment");
   last_insert_id = last_used_con->insert_id;
-  spider->share->auto_increment_value =
+  share->auto_increment_value =
     last_insert_id + last_used_con->affected_rows;
-  spider->trx->thd->record_first_successful_insert_id_in_cur_stmt(
-    last_insert_id);
+  thd->record_first_successful_insert_id_in_cur_stmt(last_insert_id);
+  if (
+    table->s->next_number_keypart == 0 &&
+    mysql_bin_log.is_open() &&
+    !thd->current_stmt_binlog_row_based
+  ) {
+    int auto_increment_mode = THDVAR(thd, auto_increment_mode) == -1 ?
+      share->auto_increment_mode : THDVAR(thd, auto_increment_mode);
+    if (auto_increment_mode == 2)
+    {
+      if (
+        table->file != spider &&
+        thd->auto_inc_intervals_in_cur_stmt_for_binlog.nb_elements() > 0
+      ) {
+        DBUG_PRINT("info",("spider table partitioning"));
+        Discrete_interval *current =
+          thd->auto_inc_intervals_in_cur_stmt_for_binlog.get_current();
+        current->replace(last_insert_id, last_used_con->affected_rows, 1);
+      } else {
+        DBUG_PRINT("info",("spider table"));
+        thd->auto_inc_intervals_in_cur_stmt_for_binlog.append(
+          last_insert_id, last_used_con->affected_rows, 1);
+      }
+    }
+  }
   DBUG_RETURN(0);
 }
 
@@ -5800,6 +5834,7 @@ error_write_row:
         &result_list->upd_tmp_tbl_prms[roop_count]);
       tmp_table[roop_count] = NULL;
     }
+    result_list->update_sqls[roop_count].length(0);
   }
   if (result_list->upd_tmp_tbl)
   {
@@ -5807,6 +5842,7 @@ error_write_row:
       &result_list->upd_tmp_tbl_prm);
     result_list->upd_tmp_tbl = NULL;
   }
+  result_list->update_sql.length(0);
   DBUG_RETURN(error_num);
 }
 
@@ -5986,6 +6022,7 @@ error_last_query:
         &result_list->upd_tmp_tbl_prms[roop_count]);
       tmp_table[roop_count] = NULL;
     }
+    result_list->update_sqls[roop_count].length(0);
   }
   if (result_list->upd_tmp_tbl)
   {
@@ -5993,6 +6030,7 @@ error_last_query:
       &result_list->upd_tmp_tbl_prm);
     result_list->upd_tmp_tbl = NULL;
   }
+  result_list->update_sql.length(0);
   DBUG_RETURN(error_num);
 }
 
